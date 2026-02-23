@@ -186,13 +186,9 @@ body.rtl .toast{right:auto;left:20px}
 
 <script>
 // ═══════════════════════════════════════════════════════════
-//  ★  PASTE YOUR NEON DETAILS HERE  ★
-//  Get from: neon.tech → your project → Connection Details
-// ═══════════════════════════════════════════════════════════
-const NEON_API_KEY    = 'napi_af5cgyqbiokozu81u97s9wxc26pm8am1qftmho860zyaog4newm792ks5njiyb96';    // neon.tech → Account → API Keys
-const NEON_PROJECT_ID = 'solitary-dream-41220022'; // e.g. autumn-forest-12345678
-const NEON_BRANCH_ID  = 'br-falling-queen-alrimmwc';  // e.g. br-cold-lake-a1b2c3d4
-const NEON_DB_NAME    = 'neondb';                       // default database name (usually neondb)
+//  DB credentials are stored securely as Netlify environment
+//  variables and accessed via /.netlify/functions/sql
+//  Nothing sensitive is stored here.
 // ═══════════════════════════════════════════════════════════
 
 const GPS_RADIUS       = 1000;  // metres
