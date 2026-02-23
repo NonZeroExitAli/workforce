@@ -337,7 +337,7 @@ const esc = s  => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const fmtMs  = ms => { const s=Math.max(0,Math.floor(ms/1000)); return `${Math.floor(s/3600).toString().padStart(2,'0')}:${Math.floor((s%3600)/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; };
 const fmtDur = ms => { const s=Math.max(0,Math.floor(ms/1000)); return `${Math.floor(s/3600)}h ${String(Math.floor((s%3600)/60)).padStart(2,'0')}m`; };
-const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—';
+const fmtTime = ts => { const n=Number(ts); if(!n)return'—'; const d=new Date(n); if(isNaN(d.getTime()))return'—'; return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}); };
 const normPhone = p => (p||'').replace(/\D/g,'').replace(/^0+/,'');
 const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
@@ -838,7 +838,7 @@ async function loadSummary(){
   el.innerHTML=[
     [T.workers,users.length,'#f0c040'],
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
-    [T.late,ts.filter(s=>s.is_late).length,'#e74c3c'],
+    [T.late,ts.filter(s=>s.is_late==true||s.is_late==='true'||s.is_late===1).length,'#e74c3c'],
     [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
     [T.addWorker,phones.length,'#3498db'],
     [T.salDue,'$'+sal,'#f0c040'],
@@ -847,7 +847,9 @@ async function loadSummary(){
 }
 
 function inP(s,per){
-  const d=new Date(s.start_time),n=new Date();
+  const ts=Number(s.start_time);
+  const d=ts?new Date(ts):new Date(s.date);
+  const n=new Date();
   if(per==='today')return s.date===todayStr();
   if(per==='week'){const w=new Date(n);w.setDate(n.getDate()-n.getDay());w.setHours(0,0,0,0);return d>=w;}
   if(per==='month')return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();
@@ -871,7 +873,7 @@ async function buildLive(){
     return`<div class="wcard ${st}">
       <div class="wname">${esc(w.username)}</div>
       <div class="wphone">${esc(w.phone||'—')}${hasLoc?` <span style="color:#2ecc71;font-size:9px">📍</span>`:''}</div>
-      <div class="wbadges">${statusBadge(st)}${active?.is_late?`<span class="badge br">+${active.late_mins}m</span>`:''}<span class="badge by">$${w.hourly_rate||0}/hr</span></div>
+      <div class="wbadges">${statusBadge(st)}${(active?.is_late==true||active?.is_late==='true'||active?.is_late===1)?`<span class="badge br">+${active.late_mins}m</span>`:''}<span class="badge by">$${w.hourly_rate||0}/hr</span></div>
       <div class="wstats">
         <div><div class="wsl">${T.hrsToday}</div><div class="wsv">${h.toFixed(2)}h</div></div>
         <div><div class="wsl">${T.earnToday}</div><div class="wsv">$${e.toFixed(2)}</div></div>
@@ -1045,7 +1047,7 @@ async function buildShifts(fw='',fd=''){
       <td>${s.date}</td><td>${fmtTime(s.start_time)}</td><td>${fmtTime(s.end_time)}</td>
       <td>${fmtDur((parseFloat(s.work_hours)||0)*3600000)}</td>
       <td style="color:#2ecc71;font-weight:700">${s.earnings?'$'+parseFloat(s.earnings).toFixed(2):'—'}</td>
-      <td>${s.is_late?`<span class="badge br">+${s.late_mins}m</span>`:`<span class="badge bg">✓</span>`}</td>
+      <td>${(s.is_late==true||s.is_late==='true'||s.is_late===1)?`<span class="badge br">+${s.late_mins}m</span>`:`<span class="badge bg">✓</span>`}</td>
       <td>${statusBadge(s.status)}</td>
     </tr>`).join('')}
   </tbody></table></div>`;
@@ -1276,34 +1278,83 @@ window.doExport=async()=>{
   const workers=users.filter(u=>u.role==='worker');
 
   const s1=[['Worker','Phone','Rate ($/hr)','Date','Start Time','End Time','Work Hours','Earnings ($)','Late?','Late Mins','Status']];
-  shifts.sort((a,b)=>b.start_time-a.start_time).forEach(s=>{
+  shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).forEach(s=>{
     const u=um[s.worker];
-    const startDate=s.start_time?new Date(s.start_time).toLocaleString('it-IT',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
-    const endDate=s.end_time?new Date(s.end_time).toLocaleString('it-IT',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
-    s1.push([s.worker,u?.phone||'',u?.hourly_rate||s.hourly_rate||0,s.date,startDate,endDate,
+    const tsStart=Number(s.start_time)||0;
+    const tsEnd=Number(s.end_time)||0;
+    const fmtExcel=ts=>{
+      if(!ts)return'—';
+      const d=new Date(ts);
+      if(isNaN(d.getTime()))return'—';
+      const pad=n=>String(n).padStart(2,'0');
+      return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    s1.push([
+      s.worker,
+      u?.phone||'',
+      parseFloat(u?.hourly_rate||s.hourly_rate||0),
+      s.date,
+      fmtExcel(tsStart),
+      fmtExcel(tsEnd),
       parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),
       parseFloat((parseFloat(s.earnings)||0).toFixed(2)),
-      s.is_late?'Yes':'No',s.late_mins||0,s.status]);
+      (s.is_late==true||s.is_late==='true'||s.is_late===1)?'Yes':'No',
+      parseInt(s.late_mins)||0,
+      s.status
+    ]);
   });
 
   const now=new Date();
   const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const s2=[['Worker','Phone','Rate ($/hr)','Period Start','Period End','Total Hours','Regular Hrs','OT Hours','Regular Pay ($)','OT Pay ($)','Deductions ($)','Total Salary ($)','Shifts','Late Count','Month']];
   workers.forEach(w=>{
-    const ws=shifts.filter(s=>s.worker===w.username&&s.status==='completed'&&inP(s,'month'));
+    // Cast all numeric fields from DB strings to numbers
+    const ws=shifts.filter(s=>s.worker===w.username&&s.status==='completed').filter(s=>{
+      const ts=Number(s.start_time);
+      if(!ts)return false;
+      const d=new Date(ts);
+      return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+    });
     const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-    const lc=ws.filter(s=>s.is_late).length;
-    const rh=Math.min(th,ws.length*(cfg.std_hours||8));
+    const lc=ws.filter(s=>s.is_late==true||s.is_late==='true'||s.is_late===1).length;
+    const stdH=parseFloat(cfg.std_hours)||8;
+    const otRate=parseFloat(cfg.ot_rate)||1.5;
+    const lateDeduct=parseFloat(cfg.late_deduct)||0;
+    const workerRate=parseFloat(w.hourly_rate)||0;
+    const rh=Math.min(th,ws.length*stdH);
     const oh=Math.max(0,th-rh);
-    const rp=rh*(w.hourly_rate||0);
-    const op=oh*(w.hourly_rate||0)*(cfg.ot_rate||1.5);
-    const dd=lc*(cfg.late_deduct||0);
-    // Calculate actual period start (earliest shift start) and end (latest shift end)
-    const startTimes=ws.map(s=>s.start_time).filter(Boolean).sort((a,b)=>a-b);
-    const endTimes=ws.map(s=>s.end_time).filter(Boolean).sort((a,b)=>b-a);
-    const periodStart=startTimes.length?new Date(startTimes[0]).toLocaleString('it-IT',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
-    const periodEnd=endTimes.length?new Date(endTimes[0]).toLocaleString('it-IT',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'—';
-    s2.push([w.username,w.phone||'',w.hourly_rate||0,periodStart,periodEnd,parseFloat(th.toFixed(4)),parseFloat(rh.toFixed(4)),parseFloat(oh.toFixed(4)),parseFloat(rp.toFixed(2)),parseFloat(op.toFixed(2)),parseFloat(dd.toFixed(2)),parseFloat(Math.max(0,rp+op-dd).toFixed(2)),ws.length,lc,monthLabel]);
+    const rp=rh*workerRate;
+    const op=oh*workerRate*otRate;
+    const dd=lc*lateDeduct;
+    // Period start = earliest shift, period end = latest shift end
+    const startTimes=ws.map(s=>Number(s.start_time)).filter(Boolean).sort((a,b)=>a-b);
+    const endTimes=ws.map(s=>Number(s.end_time)).filter(Boolean).sort((a,b)=>b-a);
+    const fmtExcel=ts=>{
+      if(!ts)return'—';
+      const d=new Date(ts);
+      if(isNaN(d.getTime()))return'—';
+      const pad=n=>String(n).padStart(2,'0');
+      return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const periodStart=startTimes.length?fmtExcel(startTimes[0]):'—';
+    const periodEnd=endTimes.length?fmtExcel(endTimes[0]):'—';
+    s2.push([
+      w.username,
+      w.phone||'',
+      workerRate,
+      periodStart,
+      periodEnd,
+      parseFloat(th.toFixed(4)),
+      parseFloat(rh.toFixed(4)),
+      parseFloat(oh.toFixed(4)),
+      parseFloat(rp.toFixed(2)),
+      parseFloat(op.toFixed(2)),
+      parseFloat(dd.toFixed(2)),
+      parseFloat(Math.max(0,rp+op-dd).toFixed(2)),
+      ws.length,
+      lc,
+      monthLabel
+    ]);
   });
 
   const script=document.createElement('script');
