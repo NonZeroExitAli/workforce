@@ -372,6 +372,8 @@ async function initDB() {
   )`);
   // Location open/closed column
   try { await sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"); } catch(e){}
+  // Worker label column
+  try { await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"); } catch(e){}
   const mgr = await dbGetUser('mohamed');
   if (!mgr) await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -614,7 +616,7 @@ window.doPhoneLogin=async()=>{
       showErr(T.deviceBlocked);return;
     }
 
-    // GPS check against any registered location
+    // GPS + Assignment check
     const locations=await dbListLocations();
     if(locations.length>0){
       if(!navigator.geolocation){showErr(T.gpsRequired);return;}
@@ -622,41 +624,58 @@ window.doPhoneLogin=async()=>{
       try {
         const pos=await geoPos(15000);
         const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
-        const nearest=locations.map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))})).sort((a,b)=>a.dist-b.dist)[0];
-        S.gpsDist=nearest.dist;
-        S.nearestLocation=nearest;
-        if(nearest.dist>GPS_RADIUS){
-          showErr(`⛔ You are ${nearest.dist}m away from the nearest site (${nearest.name}). Must be within ${GPS_RADIUS}m.`);return;
+
+        // Attach distance to every location
+        const locsWithDist=locations.map(l=>({
+          ...l,
+          dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))
+        }));
+
+        // Which locations is this worker assigned to? (keyed by norm OR username)
+        const allAssignments=await dbListAssignments();
+        const myAssignments=allAssignments.filter(
+          a=>a.worker_username===norm||a.worker_username===workerUser.username
+        );
+        const anyAssignmentsExist=allAssignments.length>0;
+
+        // If assignment system is active and worker has no assignments → block immediately
+        if(anyAssignmentsExist && myAssignments.length===0){
+          showErr('⛔ You are not assigned to any site. Contact your manager.');return;
         }
 
-        // ── Assignment check ──
-        // Assignments keyed by phone norm (from Assign board) or username (legacy)
-        const allAssignments=await dbListAssignments();
-        const anyAssignments=allAssignments.length>0;
-        if(anyAssignments){
-          const myAssignments=allAssignments.filter(a=>a.worker_username===norm||a.worker_username===workerUser.username);
-          if(myAssignments.length===0){
-            showErr('⛔ You are not assigned to any site. Contact your manager.');return;
+        // Determine the candidate locations:
+        // - If worker has assignments → only their assigned locations
+        // - If no assignment system yet → all locations
+        const candidateLocs = myAssignments.length>0
+          ? locsWithDist.filter(l=>myAssignments.some(a=>a.loc_id===l.id))
+          : locsWithDist;
+
+        // Find the nearest candidate location the worker is physically close to
+        const nearbyCandidate = candidateLocs
+          .filter(l=>l.dist<=GPS_RADIUS)
+          .sort((a,b)=>a.dist-b.dist)[0];
+
+        if(!nearbyCandidate){
+          // Worker is not near any of their assigned sites
+          const closestAssigned = candidateLocs.sort((a,b)=>a.dist-b.dist)[0];
+          if(closestAssigned){
+            showErr(`⛔ You are ${closestAssigned.dist}m from your nearest site (${closestAssigned.name}). Must be within ${GPS_RADIUS}m.`);
+          } else {
+            showErr(`⛔ You are not near any assigned site. Must be within ${GPS_RADIUS}m.`);
           }
-          // Check if the nearest (in-range) location is one they're assigned to
-          const assignedToNearest=myAssignments.some(a=>a.loc_id===nearest.id);
-          if(!assignedToNearest){
-            showErr(`⛔ You are not assigned to ${nearest.name}. Contact your manager.`);return;
-          }
-          // ── Open/Closed check ──
-          const nearestIsOpen = nearest.is_open !== false && nearest.is_open !== 'false';
-          if(!nearestIsOpen){
-            showErr(`⛔ ${nearest.name} is currently closed. Contact your manager.`);return;
-          }
-        } else {
-          // No assignments configured — just check if location is open
-          const nearestIsOpen = nearest.is_open !== false && nearest.is_open !== 'false';
-          if(!nearestIsOpen){
-            showErr(`⛔ ${nearest.name} is currently closed. Contact your manager.`);return;
-          }
+          return;
+        }
+
+        // Check open/closed on the site they're at
+        const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== 'false';
+        if(!isOpen){
+          showErr(`⛔ ${nearbyCandidate.name} is currently closed. Contact your manager.`);return;
         }
 
         S.gps='ok';
+        S.gpsDist=nearbyCandidate.dist;
+        S.nearestLocation=nearbyCandidate;
+
       } catch(gpsErr){
         const code=gpsErr.code;
         if(code===1)showErr('📍 Location permission denied. Please allow location access.');
@@ -1473,13 +1492,12 @@ async function ensureWorkerAccount(ph, norm, lb, rt) {
   if (existing) return existing;
   const uname = (lb || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'w' + norm.slice(-6);
   const finalName = users.find(x => x.username === uname) ? uname + '_' + norm.slice(-4) : uname;
+  // Only write columns that exist in wf_users schema
   await dbSetUser(finalName, {
     password: norm, role: 'worker', phone: ph,
-    label: lb || null,
     hourly_rate: rt || 15,
     device_id: null
   });
-  await dbSetPhone(norm, { used: true });
   return await dbGetUser(finalName);
 }
 
@@ -1492,34 +1510,8 @@ window.addPhone=async()=>{
   await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
   await ensureWorkerAccount(ph, norm, lb, rt);
   toast(T.phoneAdded,'success');
-  // Clear inputs so the manager can add the next worker immediately
-  $('np').value='';$('nl').value='';$('np').focus();
-  // Refresh the approved list in place (so form stays visible)
-  const plistEl=$('plist');
-  if(plistEl){
-    const phones2=await dbListPhones();const users2=await dbListUsers();
-    plistEl.innerHTML=!phones2.length?`<div class="empty">${T.noPhonesYet}</div>`:phones2.map(p=>{
-      const n2=p.norm;const linked2=users2.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===n2);
-      return`<div class="phone-row"><div style="flex:1">
-        <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
-        </div>
-        <div class="phone-meta">
-          <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
-          <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(n2)}',this.value)"/>
-          <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
-        </div>
-        <div class="pmbadges">
-          <span class="badge ${linked2.length>=1?'bg':'br'}">${linked2.length===0?'No account yet':'✓ Registered'}</span>
-          ${linked2.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
-        </div>
-      </div>
-      <button class="btn-sm btn-red" onclick="delPhone('${esc(n2)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
-    </div>`;}).join('');
-  }
-  // Also refresh assign board if currently open
-  if(S.mgrTab==='assign'){const p=$('mpanel');if(p){p.innerHTML=await buildAssign();initAssignBoard();}}
   await loadSummary();
+  await mTab('addworker');
 };
 window.delPhone=async norm=>{
   // Delete the phone entry
