@@ -5,49 +5,35 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-export async function handler(event) {
+export default async function handler(req, res) {
   // CORS preflight
-  if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "content-type",
-        "Access-Control-Allow-Methods": "POST,OPTIONS"
-      },
-      body: ""
-    };
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "content-type");
+    res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+    return res.status(200).send("");
   }
 
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: { "Access-Control-Allow-Origin": "*" },
-      body: "POST only"
-    };
+  if (req.method !== "POST") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(405).send("POST only");
   }
 
   try {
-    const { query, params } = JSON.parse(event.body || "{}");
+    const { query, params } = req.body || {};
     if (!query) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        body: JSON.stringify({ ok: false, error: "Missing query" })
-      };
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.status(400).json({ ok: false, error: "Missing query" });
     }
 
     const result = await pool.query(query, Array.isArray(params) ? params : []);
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ ok: true, rows: result.rows })
-    };
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(200).json({ ok: true, rows: result.rows });
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ ok: false, error: err?.message || String(err) })
-    };
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(500).json({ ok: false, error: err?.message || String(err) });
   }
 }
