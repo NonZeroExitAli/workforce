@@ -232,7 +232,7 @@ async function dbDelPhone(norm) { await sql('DELETE FROM wf_phones WHERE norm=$1
 
 async function dbGetConfig() {
   const r = await sql('SELECT * FROM wf_config WHERE id=1 LIMIT 1');
-  return r[0] || { std_hours:8, ot_rate:1.5 };
+  return r[0] || { std_hours:8, ot_rate:1.5, auto_end_time:null };
 }
 async function dbSetConfig(d) {
   const keys = Object.keys(d), vals = Object.values(d);
@@ -307,7 +307,7 @@ async function initDB() {
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_config(
     id INTEGER PRIMARY KEY DEFAULT 1,
-    std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5
+    std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5, auto_end_time TEXT DEFAULT NULL
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_locations(
     id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
@@ -317,6 +317,8 @@ async function initDB() {
     id TEXT PRIMARY KEY, type TEXT, worker TEXT,
     phone TEXT, blocked_device TEXT, ts BIGINT, resolved BOOLEAN DEFAULT false
   )`);
+  // Migration: add auto_end_time column if it doesn't exist yet
+  try { await sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"); } catch(e){}
   const mgr = await dbGetUser('mohamed');
   if (!mgr) await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -621,12 +623,19 @@ async function renderWorkerScreen(){
   const fresh=await dbGetUser(u.username);
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
 
+  // Load config for auto-end time
+  const cfg=await dbGetConfig();
+  const autoEnd=cfg.auto_end_time||null;
+  // Only reset the fired flag when screen re-renders after a completed shift
+  if(!S.shift||S.shift.status==='completed') S._autoEndFired=false;
+  S.autoEndTime=autoEnd; // shared with startTimer
+
   const allShifts=await dbListShifts();
   const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   const active=myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null;
   S.shift=active;
+  if(active) S._autoEndFired=false; // fresh shift, allow auto-end to fire
 
-  const todayEarn=active?'…':myShifts.filter(x=>x.date===todayStr()&&x.status==='completed').reduce((a,x)=>a+(parseFloat(x.earnings)||0),0).toFixed(2);
   const locName=active?.location_name||S.nearestLocation?.name||'—';
 
   $('root').innerHTML=`
@@ -653,7 +662,10 @@ async function renderWorkerScreen(){
         ${active?`<span style="font-family:monospace;font-size:10px;color:#3498db;margin-left:auto">📍 ${esc(active.location_name||'—')}</span>`:''}
       </div>
       <div class="timer-big" id="tbig">00:00:00</div>
-      <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:16px">${T.workTime}</div>
+      <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:8px">${T.workTime}</div>
+      ${autoEnd?`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:14px">
+        ⏰ Auto-end at <strong>${esc(autoEnd)}</strong> — shift ends automatically
+      </div>`:`<div style="margin-bottom:14px"></div>`}
       <div class="act-grid">
         <button class="act-btn" id="bst"
           style="border:2px solid ${active?'#333':'#2ecc71'};color:${active?'#333':'#2ecc71'};opacity:${active?'0.3':'1'};cursor:${active?'not-allowed':'pointer'}"
@@ -686,11 +698,37 @@ function startTimer(){
   clearInterval(S.timerInt);
   if(!S.shift) return;
   const startMs=Number(S.shift.start_time);
-  if(!startMs) return; // guard: don't run if start_time invalid
-  S.timerInt=setInterval(()=>{
-    const wMs=Math.max(0,Date.now()-startMs);
+  if(!startMs) return;
+  S.timerInt=setInterval(async()=>{
+    const now=Date.now();
+    const wMs=Math.max(0,now-startMs);
     const e=$('tbig');if(e)e.textContent=fmtMs(wMs);
     const wt=$('wt');if(wt)wt.textContent=fmtDur(wMs);
+
+    // ── Auto-end check ──
+    if(S.autoEndTime&&!S._autoEndFired){
+      const [ah,am]=S.autoEndTime.split(':').map(Number);
+      const d=new Date();
+      // Fire when clock matches configured auto-end time (within the current minute)
+      if(d.getHours()===ah&&d.getMinutes()===am){
+        S._autoEndFired=true; // prevent repeat trigger
+        clearInterval(S.timerInt);
+        try{
+          const allShifts=await dbListShifts();
+          const active=allShifts.find(x=>x.worker===S.user.username&&x.date===todayStr()&&x.status==='working');
+          if(active){
+            const endMs=now;
+            const wMs2=Math.max(0,endMs-Number(active.start_time));
+            const workHours=wMs2/3600000;
+            const earnings=workHours*(parseFloat(active.hourly_rate)||0);
+            await dbSetShift(active.id,{end_time:endMs,work_hours:workHours,earnings,status:'completed'});
+            S.shift=null;
+            toast('⏰ Shift auto-ended at '+S.autoEndTime,'info');
+            await renderWorkerScreen();
+          }
+        }catch(e){console.error('Auto-end failed:',e);}
+      }
+    }
   },1000);
 }
 
@@ -730,36 +768,8 @@ window.wAct=async action=>{
       // Guard: already completed today (one shift per day)
       if(completedToday){toast('⚠ You already completed a shift today.','warning');await renderWorkerScreen();return;}
 
-      // GPS check — re-fetch locations fresh, check proximity
-      const locations=await dbListLocations();
-      let locationName='No GPS Check';
-      if(locations.length>0){
-        if(!navigator.geolocation){toast('⛔ GPS not available on this device.','error');return;}
-        try{
-          toast('📍 Checking your location…','info');
-          const pos=await geoPos(15000);
-          const uLat=pos.coords.latitude,uLng=pos.coords.longitude;
-          // Find nearest among all locations
-          const ranked=locations
-            .map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))}))
-            .sort((a,b)=>a.dist-b.dist);
-          const nearest=ranked[0];
-          S.gpsDist=nearest.dist;
-          S.nearestLocation=nearest;
-          if(nearest.dist>GPS_RADIUS){
-            toast(`⛔ ${nearest.dist}m from ${nearest.name} — must be within ${GPS_RADIUS}m.`,'error');
-            return;
-          }
-          S.gps='ok';
-          locationName=nearest.name;
-        }catch(gErr){
-          const code=gErr.code;
-          if(code===1)toast('⛔ Location denied. Allow GPS and try again.','error');
-          else if(code===3)toast('⛔ GPS timed out. Move to a better spot.','error');
-          else toast('⛔ GPS error. Enable location.','error');
-          return;
-        }
-      }
+      // Use location already verified at login — no re-check at start
+      const locationName = S.nearestLocation?.name || '—';
 
       // Write shift to DB
       const id='s'+now+'_'+username.slice(0,6);
@@ -1191,7 +1201,26 @@ async function buildAlerts(){
 window.resolveAlert=async id=>{await dbSetAlert(id,{resolved:true});mTab('alerts');loadSummary();};
 
 async function buildSettings(){
+  const cfg=await dbGetConfig();
+  const autoEnd=cfg.auto_end_time||'';
   return`<div class="sg">
+    <div class="sc"><div class="st">⏰ Auto End Time</div>
+      <div class="info-box" style="margin-bottom:14px">
+        If set, all active shifts are automatically ended at this time every day.<br>
+        Workers do not need to tap End — it happens automatically on their screen.<br>
+        Leave blank to require workers to end shifts manually.
+      </div>
+      <div class="sf">
+        <label class="lbl">Daily Auto-End Time <span style="color:#555">(optional)</span></label>
+        <input type="time" id="cfg-autoend" value="${esc(autoEnd)}" style="max-width:180px"/>
+        <div class="hint">e.g. 17:00 to auto-end all shifts at 5 PM daily</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()">💾 Save</button>
+        ${autoEnd?`<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">✕ Clear (manual end)</button>`:''}
+      </div>
+      ${autoEnd?`<div class="warn-box" style="margin-top:12px">⏰ Auto-end is active: shifts end at <strong>${esc(autoEnd)}</strong> daily</div>`:''}
+    </div>
     <div class="sc"><div class="st">📍 GPS Settings</div>
       <div class="sf">
         <label class="lbl">GPS Fence Radius</label>
@@ -1205,6 +1234,17 @@ async function buildSettings(){
     </div>
   </div>`;
 }
+window.saveAutoEnd=async()=>{
+  const t=val('cfg-autoend').trim();
+  await dbSetConfig({auto_end_time:t||null});
+  toast(t?`✅ Auto-end set to ${t}`:'✅ Auto-end cleared','success');
+  mTab('settings');
+};
+window.clearAutoEnd=async()=>{
+  await dbSetConfig({auto_end_time:null});
+  toast('✅ Auto-end cleared — workers end manually','success');
+  mTab('settings');
+};
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
 // ── Phone / worker management ──
