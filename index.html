@@ -630,11 +630,11 @@ window.doPhoneLogin=async()=>{
         }
 
         // ── Assignment check ──
-        // Only enforce if at least one worker has been assigned to at least one location
+        // Assignments keyed by phone norm (from Assign board) or username (legacy)
         const allAssignments=await dbListAssignments();
         const anyAssignments=allAssignments.length>0;
         if(anyAssignments){
-          const myAssignments=allAssignments.filter(a=>a.worker_username===workerUser.username);
+          const myAssignments=allAssignments.filter(a=>a.worker_username===norm||a.worker_username===workerUser.username);
           if(myAssignments.length===0){
             showErr('⛔ You are not assigned to any site. Contact your manager.');return;
           }
@@ -1178,53 +1178,55 @@ window.delLocation=async id=>{
 
 // ════════════════════════ ASSIGN TAB ════════════════════════
 async function buildAssign(){
-  const [workers_all, locs, assignments] = await Promise.all([
-    dbListUsers(), dbListLocations(), dbListAssignments()
+  // Source workers from wf_phones — available immediately after manager adds them,
+  // no need for the worker to sign in first.
+  const [phones, locs, assignments] = await Promise.all([
+    dbListPhones(), dbListLocations(), dbListAssignments()
   ]);
-  const workers = workers_all.filter(u=>u.role==='worker');
 
-  // Build assigned set: { worker_username: Set of loc_ids }
+  // Use phone norm as the stable worker key for assignments
+  // Build assigned set: { norm: Set of loc_ids }
   const assignedMap = {};
   assignments.forEach(a=>{
     if(!assignedMap[a.worker_username]) assignedMap[a.worker_username]=new Set();
     assignedMap[a.worker_username].add(a.loc_id);
   });
 
-  // Unassigned = workers not in any location
-  const unassigned = workers.filter(w=>!assignedMap[w.username]||assignedMap[w.username].size===0);
+  // Unassigned = phones not in any location
+  const unassigned = phones.filter(p=>!assignedMap[p.norm]||assignedMap[p.norm].size===0);
 
-  function workerChip(w, locId){
+  function workerChip(p, locId){
     const removeBtn = locId
-      ? `<span class="chip-remove" title="Remove" onclick="removeAssignment('${esc(w.username)}','${esc(locId)}')">✕</span>`
+      ? `<span class="chip-remove" title="Remove" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">✕</span>`
       : '';
     return `<div class="assign-worker-chip" draggable="true"
-      data-worker="${esc(w.username)}"
+      data-worker="${esc(p.norm)}"
       data-from="${esc(locId||'__unassigned__')}">
       <div style="display:flex;flex-direction:column;flex:1;min-width:0">
-        <span class="chip-name">${esc(w.label||w.username)}</span>
-        <span class="chip-phone">${esc(w.phone||'')}</span>
+        <span class="chip-name">${esc(p.label||p.phone)}</span>
+        <span class="chip-phone">${esc(p.phone)}</span>
       </div>
       ${removeBtn}
     </div>`;
   }
 
   const unassignedChips = unassigned.length
-    ? unassigned.map(w=>workerChip(w,null)).join('')
+    ? unassigned.map(p=>workerChip(p,null)).join('')
     : `<div class="assign-empty-drop">All workers assigned</div>`;
 
   const locCols = !locs.length
     ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">No locations yet. Add locations first.</div>`
     : locs.map(l=>{
-        const isOpen = l.is_open !== false && l.is_open !== 'false'; // default true
-        const assignedWorkers = workers.filter(w=>assignedMap[w.username]?.has(l.id));
-        const chips = assignedWorkers.length
-          ? assignedWorkers.map(w=>workerChip(w,l.id)).join('')
+        const isOpen = l.is_open !== false && l.is_open !== 'false';
+        const assignedPhones = phones.filter(p=>assignedMap[p.norm]?.has(l.id));
+        const chips = assignedPhones.length
+          ? assignedPhones.map(p=>workerChip(p,l.id)).join('')
           : `<div class="assign-empty-drop">Drop workers here</div>`;
         return `<div class="assign-col ${isOpen?'':'loc-closed'}" data-locid="${esc(l.id)}">
           <div class="assign-col-head">
             <div>
               <div class="assign-col-title">📍 ${esc(l.name)}</div>
-              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${assignedWorkers.length} worker${assignedWorkers.length===1?'':'s'}</div>
+              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${assignedPhones.length} worker${assignedPhones.length===1?'':'s'}</div>
             </div>
             <button class="loc-toggle ${isOpen?'open':'closed'}" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
               ${isOpen?'🟢 OPEN':'🔴 CLOSED'}
