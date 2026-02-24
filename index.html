@@ -259,6 +259,8 @@ async function dbSetShift(id, d) {
   );
 }
 async function dbDelAllShifts() { await sql('DELETE FROM wf_shifts'); }
+async function dbDelUser(username) { await sql('DELETE FROM wf_users WHERE username=$1', [username]); }
+async function dbDelAllWorkers() { await sql("DELETE FROM wf_users WHERE role='worker'"); }
 
 async function dbListAlerts() { return sql('SELECT * FROM wf_alerts ORDER BY ts DESC'); }
 async function dbSetAlert(id, d) {
@@ -317,8 +319,10 @@ async function initDB() {
     id TEXT PRIMARY KEY, type TEXT, worker TEXT,
     phone TEXT, blocked_device TEXT, ts BIGINT, resolved BOOLEAN DEFAULT false
   )`);
-  // Migration: add auto_end_time column if it doesn't exist yet
+  // Migrations — add columns that may be missing in older DBs
   try { await sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"); } catch(e){}
+  try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"); } catch(e){}
+  try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"); } catch(e){}
   const mgr = await dbGetUser('mohamed');
   if (!mgr) await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -1257,14 +1261,34 @@ window.addPhone=async()=>{
   await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
   toast(T.phoneAdded,'success');mTab('addworker');
 };
-window.delPhone=async norm=>{await dbDelPhone(norm);toast(T.phoneRemoved,'warning');mTab('addworker');loadSummary();};
+window.delPhone=async norm=>{
+  // Delete the phone entry
+  await dbDelPhone(norm);
+  // Delete the linked worker account (if it exists)
+  const users=await dbListUsers();
+  const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
+  for(const u of linked) await dbDelUser(u.username);
+  toast(T.phoneRemoved,'warning');
+  mTab('addworker');
+  await loadSummary();
+};
 window.updRate=async(norm,rate)=>{
   await dbSetPhone(norm,{rate:parseFloat(rate)||15});
   const users=await dbListUsers();
   for(const u of users){if(u.role==='worker'&&normPhone(u.phone||'')===norm)await dbSetUser(u.username,{hourly_rate:parseFloat(rate)||15});}
   toast(T.rateUpdated,'success');
 };
-window.clearPhones=async()=>{if(!confirm(T.confirmClear))return;const all=await dbListPhones();for(const p of all)await dbDelPhone(p.norm);mTab('addworker');loadSummary();toast(T.cleared,'warning');};
+window.clearPhones=async()=>{
+  if(!confirm(T.confirmClear))return;
+  // Delete all approved phones
+  const all=await dbListPhones();
+  for(const p of all) await dbDelPhone(p.norm);
+  // Also delete all worker user accounts so the counter goes to 0
+  await dbDelAllWorkers();
+  mTab('addworker');
+  await loadSummary();
+  toast(T.cleared,'warning');
+};
 window.handleDrop=e=>{e.preventDefault();const f=e.dataTransfer?.files[0]||e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>procFile(ev.target.result);r.readAsText(f);if(e.target.value!==undefined)e.target.value='';};
 async function procFile(text){
   const defR=parseFloat(val('nr'))||15;
