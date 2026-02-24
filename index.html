@@ -124,6 +124,28 @@ body.rtl .toast{right:auto;left:20px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid #333;border-top-color:#f0c040;border-radius:50%;animation:spin .7s linear infinite}
 @media(max-width:600px){.act-grid{grid-template-columns:1fr 1fr}.info-grid{grid-template-columns:1fr 1fr}.topbar{padding:8px 14px}}
+/* ── Assign Board ── */
+.assign-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
+.assign-col{flex:0 0 220px;background:#141414;border:1px solid #2a2a2a;border-radius:6px;min-height:160px;display:flex;flex-direction:column}
+.assign-col.unassigned{border-color:#444;flex:0 0 200px}
+.assign-col-head{padding:12px 14px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.assign-col-title{font-family:Georgia,serif;font-size:14px;font-weight:900;color:#f0f0f0}
+.assign-col.unassigned .assign-col-title{color:#888}
+.assign-col-body{padding:10px;flex:1;min-height:80px;transition:background .15s}
+.assign-col-body.drag-over{background:rgba(240,192,64,.07);border-radius:0 0 6px 6px}
+.assign-worker-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0d0d0d;border:1px solid #222;border-radius:4px;margin-bottom:6px;cursor:grab;user-select:none;transition:border-color .15s,opacity .15s;font-size:12px}
+.assign-worker-chip:hover{border-color:#444}
+.assign-worker-chip.dragging{opacity:.35;cursor:grabbing}
+.assign-worker-chip .chip-name{flex:1;font-weight:700;font-family:Georgia,serif;font-size:13px;color:#f0f0f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.assign-worker-chip .chip-phone{font-family:monospace;font-size:10px;color:#555}
+.assign-worker-chip .chip-remove{width:18px;height:18px;border-radius:50%;background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
+.assign-worker-chip .chip-remove:hover{background:rgba(231,76,60,.35)}
+.loc-toggle{display:flex;align-items:center;gap:6px;font-family:monospace;font-size:10px;cursor:pointer;padding:4px 8px;border-radius:3px;border:1px solid #2a2a2a;background:#0a0a0a;color:#666;transition:all .2s;white-space:nowrap}
+.loc-toggle.open{background:rgba(46,204,113,.1);border-color:rgba(46,204,113,.3);color:#2ecc71}
+.loc-toggle.closed{background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.3);color:#e74c3c}
+.assign-col.loc-closed{border-color:rgba(231,76,60,.25);opacity:.75}
+.assign-empty-drop{border:2px dashed #1e1e1e;border-radius:4px;padding:18px 10px;text-align:center;font-family:monospace;font-size:10px;color:#333;pointer-events:none}
+.assign-info-bar{background:rgba(52,152,219,.07);border:1px solid rgba(52,152,219,.2);border-radius:4px;padding:10px 14px;font-family:monospace;font-size:11px;color:#7fb3d3;margin-bottom:14px;line-height:1.7}
 </style>
 </head>
 <body>
@@ -290,6 +312,25 @@ async function dbSetLocation(id, d) {
 }
 async function dbDelLocation(id) { await sql('DELETE FROM wf_locations WHERE id=$1', [id]); }
 
+// ── Assignments ──
+async function dbListAssignments() { return sql('SELECT * FROM wf_assignments'); }
+async function dbSetAssignment(worker_username, loc_id) {
+  await sql(
+    `INSERT INTO wf_assignments(worker_username, loc_id) VALUES($1,$2)
+     ON CONFLICT(worker_username, loc_id) DO NOTHING`,
+    [worker_username, loc_id]
+  );
+}
+async function dbDelAssignment(worker_username, loc_id) {
+  await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2', [worker_username, loc_id]);
+}
+async function dbDelAllAssignmentsForWorker(worker_username) {
+  await sql('DELETE FROM wf_assignments WHERE worker_username=$1', [worker_username]);
+}
+async function dbSetLocationOpen(id, is_open) {
+  await sql('UPDATE wf_locations SET is_open=$2 WHERE id=$1', [id, is_open]);
+}
+
 // ── Create tables + seed default manager ──
 async function initDB() {
   await sql(`CREATE TABLE IF NOT EXISTS wf_users(
@@ -324,6 +365,13 @@ async function initDB() {
   try { await sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"); } catch(e){}
   try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"); } catch(e){}
   try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"); } catch(e){}
+  // Assignments table
+  await sql(`CREATE TABLE IF NOT EXISTS wf_assignments(
+    worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
+    PRIMARY KEY(worker_username, loc_id)
+  )`);
+  // Location open/closed column
+  try { await sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"); } catch(e){}
   const mgr = await dbGetUser('mohamed');
   if (!mgr) await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -580,6 +628,34 @@ window.doPhoneLogin=async()=>{
         if(nearest.dist>GPS_RADIUS){
           showErr(`⛔ You are ${nearest.dist}m away from the nearest site (${nearest.name}). Must be within ${GPS_RADIUS}m.`);return;
         }
+
+        // ── Assignment check ──
+        // Only enforce if at least one worker has been assigned to at least one location
+        const allAssignments=await dbListAssignments();
+        const anyAssignments=allAssignments.length>0;
+        if(anyAssignments){
+          const myAssignments=allAssignments.filter(a=>a.worker_username===workerUser.username);
+          if(myAssignments.length===0){
+            showErr('⛔ You are not assigned to any site. Contact your manager.');return;
+          }
+          // Check if the nearest (in-range) location is one they're assigned to
+          const assignedToNearest=myAssignments.some(a=>a.loc_id===nearest.id);
+          if(!assignedToNearest){
+            showErr(`⛔ You are not assigned to ${nearest.name}. Contact your manager.`);return;
+          }
+          // ── Open/Closed check ──
+          const nearestIsOpen = nearest.is_open !== false && nearest.is_open !== 'false';
+          if(!nearestIsOpen){
+            showErr(`⛔ ${nearest.name} is currently closed. Contact your manager.`);return;
+          }
+        } else {
+          // No assignments configured — just check if location is open
+          const nearestIsOpen = nearest.is_open !== false && nearest.is_open !== 'false';
+          if(!nearestIsOpen){
+            showErr(`⛔ ${nearest.name} is currently closed. Contact your manager.`);return;
+          }
+        }
+
         S.gps='ok';
       } catch(gpsErr){
         const code=gpsErr.code;
@@ -879,6 +955,7 @@ async function renderManagerScreen(){
       <button class="nav-tab active" data-tab="live"      onclick="mTab('live')">${T.live}</button>
       <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
       <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 Locations</button>
+      <button class="nav-tab" data-tab="assign"     onclick="mTab('assign')">🗂 Assign</button>
       <button class="nav-tab" data-tab="shifts"     onclick="mTab('shifts')">${T.shifts}</button>
       <button class="nav-tab" data-tab="salary"     onclick="mTab('salary')">${T.salary}</button>
       <button class="nav-tab" data-tab="workers"    onclick="mTab('workers')">${T.workers}</button>
@@ -899,6 +976,7 @@ window.mTab=async tab=>{
   if(tab==='live')      panel.innerHTML=await buildLive();
   if(tab==='addworker') panel.innerHTML=await buildAddWorker();
   if(tab==='locations') panel.innerHTML=await buildLocations();
+  if(tab==='assign')    { panel.innerHTML=await buildAssign(); initAssignBoard(); }
   if(tab==='shifts')    panel.innerHTML=await buildShifts();
   if(tab==='salary')    panel.innerHTML=await buildSalary('month');
   if(tab==='workers')   panel.innerHTML=await buildWorkers();
@@ -1098,6 +1176,139 @@ window.delLocation=async id=>{
   mTab('locations');loadSummary();
 };
 
+// ════════════════════════ ASSIGN TAB ════════════════════════
+async function buildAssign(){
+  const [workers_all, locs, assignments] = await Promise.all([
+    dbListUsers(), dbListLocations(), dbListAssignments()
+  ]);
+  const workers = workers_all.filter(u=>u.role==='worker');
+
+  // Build assigned set: { worker_username: Set of loc_ids }
+  const assignedMap = {};
+  assignments.forEach(a=>{
+    if(!assignedMap[a.worker_username]) assignedMap[a.worker_username]=new Set();
+    assignedMap[a.worker_username].add(a.loc_id);
+  });
+
+  // Unassigned = workers not in any location
+  const unassigned = workers.filter(w=>!assignedMap[w.username]||assignedMap[w.username].size===0);
+
+  function workerChip(w, locId){
+    const removeBtn = locId
+      ? `<span class="chip-remove" title="Remove" onclick="removeAssignment('${esc(w.username)}','${esc(locId)}')">✕</span>`
+      : '';
+    return `<div class="assign-worker-chip" draggable="true"
+      data-worker="${esc(w.username)}"
+      data-from="${esc(locId||'__unassigned__')}">
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+        <span class="chip-name">${esc(w.label||w.username)}</span>
+        <span class="chip-phone">${esc(w.phone||'')}</span>
+      </div>
+      ${removeBtn}
+    </div>`;
+  }
+
+  const unassignedChips = unassigned.length
+    ? unassigned.map(w=>workerChip(w,null)).join('')
+    : `<div class="assign-empty-drop">All workers assigned</div>`;
+
+  const locCols = !locs.length
+    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">No locations yet. Add locations first.</div>`
+    : locs.map(l=>{
+        const isOpen = l.is_open !== false && l.is_open !== 'false'; // default true
+        const assignedWorkers = workers.filter(w=>assignedMap[w.username]?.has(l.id));
+        const chips = assignedWorkers.length
+          ? assignedWorkers.map(w=>workerChip(w,l.id)).join('')
+          : `<div class="assign-empty-drop">Drop workers here</div>`;
+        return `<div class="assign-col ${isOpen?'':'loc-closed'}" data-locid="${esc(l.id)}">
+          <div class="assign-col-head">
+            <div>
+              <div class="assign-col-title">📍 ${esc(l.name)}</div>
+              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${assignedWorkers.length} worker${assignedWorkers.length===1?'':'s'}</div>
+            </div>
+            <button class="loc-toggle ${isOpen?'open':'closed'}" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
+              ${isOpen?'🟢 OPEN':'🔴 CLOSED'}
+            </button>
+          </div>
+          <div class="assign-col-body" data-locid="${esc(l.id)}">${chips}</div>
+        </div>`;
+      }).join('');
+
+  return `<div class="assign-info-bar">
+    🗂 <strong>Drag workers</strong> from the pool into location columns to assign them. Workers can be in <strong>multiple locations</strong>.
+    Toggle <strong>OPEN/CLOSED</strong> on each site — workers assigned to a <em>closed</em> site cannot sign in.
+  </div>
+  <div class="assign-board">
+    <div class="assign-col unassigned" data-locid="__unassigned__">
+      <div class="assign-col-head">
+        <div>
+          <div class="assign-col-title" style="color:#888">👷 Unassigned</div>
+          <div style="font-family:monospace;font-size:10px;color:#444;margin-top:2px">${unassigned.length} worker${unassigned.length===1?'':'s'}</div>
+        </div>
+      </div>
+      <div class="assign-col-body" data-locid="__unassigned__">${unassignedChips}</div>
+    </div>
+    ${locCols}
+  </div>`;
+}
+
+function initAssignBoard(){
+  let dragWorker=null, dragFrom=null, dragEl=null;
+
+  document.querySelectorAll('.assign-worker-chip').forEach(chip=>{
+    chip.addEventListener('dragstart',e=>{
+      dragWorker=chip.dataset.worker;
+      dragFrom=chip.dataset.from;
+      dragEl=chip;
+      setTimeout(()=>chip.classList.add('dragging'),0);
+    });
+    chip.addEventListener('dragend',()=>{
+      chip.classList.remove('dragging');
+      document.querySelectorAll('.assign-col-body').forEach(z=>z.classList.remove('drag-over'));
+    });
+  });
+
+  document.querySelectorAll('.assign-col-body').forEach(zone=>{
+    zone.addEventListener('dragover',e=>{
+      e.preventDefault();
+      document.querySelectorAll('.assign-col-body').forEach(z=>z.classList.remove('drag-over'));
+      zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+    zone.addEventListener('drop',async e=>{
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const toLocId=zone.dataset.locid;
+      if(!dragWorker||toLocId===dragFrom) return;
+      // Do DB work
+      if(toLocId==='__unassigned__'){
+        // Remove from the source location only (keep other assignments)
+        if(dragFrom&&dragFrom!=='__unassigned__') await dbDelAssignment(dragWorker,dragFrom);
+      } else {
+        // Add to this location (keep existing assignments — multi-location)
+        await dbSetAssignment(dragWorker,toLocId);
+      }
+      dragWorker=null;dragFrom=null;dragEl=null;
+      // Refresh
+      const panel=$('mpanel');
+      if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
+    });
+  });
+}
+
+window.removeAssignment=async(worker_username, loc_id)=>{
+  await dbDelAssignment(worker_username, loc_id);
+  const panel=$('mpanel');
+  if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
+};
+
+window.toggleLocOpen=async(loc_id, is_open)=>{
+  await dbSetLocationOpen(loc_id, is_open);
+  toast(is_open?'✅ Site is now OPEN — workers can sign in':'🔴 Site CLOSED — workers cannot sign in', is_open?'success':'warning');
+  const panel=$('mpanel');
+  if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
+};
+
 // ── Worker management ──
 
 async function buildShifts(fw='',fd=''){
@@ -1268,7 +1479,10 @@ window.delPhone=async norm=>{
   // Delete the linked worker account (if it exists)
   const users=await dbListUsers();
   const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
-  for(const u of linked) await dbDelUser(u.username);
+  for(const u of linked){
+    await dbDelUser(u.username);
+    await dbDelAllAssignmentsForWorker(u.username);
+  }
   toast(T.phoneRemoved,'warning');
   mTab('addworker');
   await loadSummary();
@@ -1286,6 +1500,8 @@ window.clearPhones=async()=>{
   for(const p of all) await dbDelPhone(p.norm);
   // Also delete all worker user accounts so the counter goes to 0
   await dbDelAllWorkers();
+  // Clear all assignments
+  await sql('DELETE FROM wf_assignments');
   mTab('addworker');
   await loadSummary();
   toast(T.cleared,'warning');
