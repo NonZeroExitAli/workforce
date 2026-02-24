@@ -1491,7 +1491,35 @@ window.addPhone=async()=>{
   const ex=await dbGetPhone(norm);if(ex){toast(T.dupPhone,'warning');return;}
   await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
   await ensureWorkerAccount(ph, norm, lb, rt);
-  toast(T.phoneAdded,'success');mTab('addworker');
+  toast(T.phoneAdded,'success');
+  // Clear inputs so the manager can add the next worker immediately
+  $('np').value='';$('nl').value='';$('np').focus();
+  // Refresh the approved list in place (so form stays visible)
+  const plistEl=$('plist');
+  if(plistEl){
+    const phones2=await dbListPhones();const users2=await dbListUsers();
+    plistEl.innerHTML=!phones2.length?`<div class="empty">${T.noPhonesYet}</div>`:phones2.map(p=>{
+      const n2=p.norm;const linked2=users2.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===n2);
+      return`<div class="phone-row"><div style="flex:1">
+        <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
+        </div>
+        <div class="phone-meta">
+          <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
+          <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(n2)}',this.value)"/>
+          <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
+        </div>
+        <div class="pmbadges">
+          <span class="badge ${linked2.length>=1?'bg':'br'}">${linked2.length===0?'No account yet':'✓ Registered'}</span>
+          ${linked2.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
+        </div>
+      </div>
+      <button class="btn-sm btn-red" onclick="delPhone('${esc(n2)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
+    </div>`;}).join('');
+  }
+  // Also refresh assign board if currently open
+  if(S.mgrTab==='assign'){const p=$('mpanel');if(p){p.innerHTML=await buildAssign();initAssignBoard();}}
+  await loadSummary();
 };
 window.delPhone=async norm=>{
   // Delete the phone entry
