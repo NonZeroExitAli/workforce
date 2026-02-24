@@ -181,7 +181,7 @@ const DB_READY = true;
 // Uses the official Neon REST API:  POST /v2/projects/{project}/branches/{branch}/query
 // Docs: https://api-docs.neon.tech/reference/executesqlquery
 async function sql(query, params = []) {
-  const res = await fetch("/.netlify/functions/sql", {
+  const res = await fetch("/api/sql", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, params })
