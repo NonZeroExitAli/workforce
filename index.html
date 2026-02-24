@@ -194,6 +194,7 @@ async function sql(query, params = []) {
   return data.rows || [];
 }
 
+
 // ── DB helpers ──
 async function dbGetUser(u) {
   const r = await sql('SELECT * FROM wf_users WHERE username=$1 LIMIT 1', [u]);
