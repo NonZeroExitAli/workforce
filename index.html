@@ -1464,6 +1464,23 @@ window.clearAutoEnd=async()=>{
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
 // ── Phone / worker management ──
+// -- Shared helper: create wf_users worker account from phone entry --
+async function ensureWorkerAccount(ph, norm, lb, rt) {
+  const users = await dbListUsers();
+  const existing = users.find(x => x.role === 'worker' && normPhone(x.phone || '') === norm);
+  if (existing) return existing;
+  const uname = (lb || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'w' + norm.slice(-6);
+  const finalName = users.find(x => x.username === uname) ? uname + '_' + norm.slice(-4) : uname;
+  await dbSetUser(finalName, {
+    password: norm, role: 'worker', phone: ph,
+    label: lb || null,
+    hourly_rate: rt || 15,
+    device_id: null
+  });
+  await dbSetPhone(norm, { used: true });
+  return await dbGetUser(finalName);
+}
+
 window.addPhone=async()=>{
   const ph=val('np').trim(),lb=val('nl').trim(),rt=parseFloat(val('nr'));
   if(!ph){toast(T.badPhone,'error');return;}
@@ -1471,6 +1488,7 @@ window.addPhone=async()=>{
   if(!rt||rt<=0){toast(T.badRate,'error');return;}
   const ex=await dbGetPhone(norm);if(ex){toast(T.dupPhone,'warning');return;}
   await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
+  await ensureWorkerAccount(ph, norm, lb, rt);
   toast(T.phoneAdded,'success');mTab('addworker');
 };
 window.delPhone=async norm=>{
@@ -1520,6 +1538,7 @@ async function procFile(text){
     if(!phone){skipped++;continue;}
     const norm=normPhone(phone);const ex=await dbGetPhone(norm);if(ex){skipped++;continue;}
     await dbSetPhone(norm,{phone:phone.trim(),label:label.trim(),rate,used:false,added_at:Date.now()});
+    await ensureWorkerAccount(phone.trim(), norm, label.trim(), rate);
     added++;
   }
   toast(T.fileAdded(added,skipped),'success');mTab('addworker');loadSummary();
