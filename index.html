@@ -374,6 +374,24 @@ async function initDB() {
   try { await sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"); } catch(e){}
   // Worker label column
   try { await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"); } catch(e){}
+  // Migrate assignments: convert any old username-based keys to phone-norm keys
+  try {
+    const oldAssigns = await sql('SELECT * FROM wf_assignments');
+    for(const a of oldAssigns){
+      const key = a.worker_username;
+      // If key looks like a username (not all digits), find the phone norm and re-key it
+      if(!/^\d+$/.test(key)){
+        const urows = await sql('SELECT phone FROM wf_users WHERE username=$1 LIMIT 1',[key]);
+        if(urows[0]?.phone){
+          const newNorm = urows[0].phone.replace(/\D/g,'').replace(/^0+/,'');
+          if(newNorm && newNorm !== key){
+            await sql('INSERT INTO wf_assignments(worker_username,loc_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[newNorm,a.loc_id]);
+            await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2',[key,a.loc_id]);
+          }
+        }
+      }
+    }
+  } catch(e){}
   const mgr = await dbGetUser('mohamed');
   if (!mgr) await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -631,11 +649,9 @@ window.doPhoneLogin=async()=>{
           dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))
         }));
 
-        // Which locations is this worker assigned to? (keyed by norm OR username)
+        // Assignments are always keyed by phone norm
         const allAssignments=await dbListAssignments();
-        const myAssignments=allAssignments.filter(
-          a=>a.worker_username===norm||a.worker_username===workerUser.username
-        );
+        const myAssignments=allAssignments.filter(a=>a.worker_username===norm);
         const anyAssignmentsExist=allAssignments.length>0;
 
         // If assignment system is active and worker has no assignments → block immediately
@@ -1514,15 +1530,17 @@ window.addPhone=async()=>{
   await mTab('addworker');
 };
 window.delPhone=async norm=>{
-  // Delete the phone entry
-  await dbDelPhone(norm);
+  // Delete assignments keyed by norm
+  await dbDelAllAssignmentsForWorker(norm);
   // Delete the linked worker account (if it exists)
   const users=await dbListUsers();
   const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
   for(const u of linked){
     await dbDelUser(u.username);
-    await dbDelAllAssignmentsForWorker(u.username);
+    await dbDelAllAssignmentsForWorker(u.username); // also clean any old username-keyed rows
   }
+  // Delete the phone entry last
+  await dbDelPhone(norm);
   toast(T.phoneRemoved,'warning');
   mTab('addworker');
   await loadSummary();
