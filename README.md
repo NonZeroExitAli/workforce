@@ -23,15 +23,6 @@ Deployed on **Vercel** with a **Neon PostgreSQL** database.
 
 ---
 
-## Structure
-
-```
-api/sql.js      → serverless API
-index.html      → frontend
-package.json    → dependencies
-```
-
-
 ## Author
 
 Ali Magdi
