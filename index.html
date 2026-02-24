@@ -135,31 +135,13 @@ body.rtl .toast{right:auto;left:20px}
 
 <!-- Edit Worker Modal -->
 <div class="modal-bg" id="editModal">
-  <div class="card" style="max-width:500px;max-height:90vh;overflow-y:auto">
-    <div class="modal-title">EDIT WORKER</div>
-    <div class="sf"><label class="lbl">Username</label><input id="em-name" disabled/></div>
+  <div class="card" style="max-width:420px">
+    <div class="modal-title">✏️ EDIT WORKER</div>
+    <div class="sf"><label class="lbl">Name</label><input id="em-name" disabled/></div>
     <div class="sf"><label class="lbl">Phone</label><input id="em-phone" disabled/></div>
     <div class="sf rh">
-      <label class="lbl" style="color:#f0c040">&#128176; Hourly Rate ($)</label>
+      <label class="lbl" style="color:#f0c040">💰 Hourly Rate ($)</label>
       <input type="number" id="em-rate" min="1" step="0.5"/>
-    </div>
-    <div class="sf"><label class="lbl">Shift Start</label><input type="time" id="em-shift"/></div>
-    <div class="sf gh">
-      <label class="lbl" style="color:#2ecc71">&#128205; Worker GPS Location</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><label class="lbl" style="color:#aaa">Latitude</label><input type="number" id="em-lat" step="0.000001" placeholder="e.g. 24.688000"/></div>
-        <div><label class="lbl" style="color:#aaa">Longitude</label><input type="number" id="em-lng" step="0.000001" placeholder="e.g. 46.722000"/></div>
-      </div>
-      <div class="sf">
-        <label class="lbl">📍 Google Maps Link</label>
-        <div style="display:flex;gap:8px;align-items:flex-start">
-          <input id="em-maplink" placeholder="https://maps.google.com/maps?q=24.688,46.722" style="flex:1"/>
-          <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71" onclick="getEditCoords()">📌 Get Coords</button>
-        </div>
-        <div class="hint" style="margin-top:4px">Paste a Google Maps link and click Get Coords to fill lat/lng automatically</div>
-      </div>
-      <button class="btn btn-dark" style="width:auto;padding:7px 14px;font-size:11px;margin-top:4px" onclick="pickLocForWorker()">&#128205; Use My Current Location</button>
-      <div class="hint" style="margin-top:6px">Worker must be within 1000m and location must be enabled to log in</div>
     </div>
     <div class="modal-btns">
       <button class="btn btn-dark" style="flex:1" onclick="closeModal()">Cancel</button>
@@ -250,7 +232,7 @@ async function dbDelPhone(norm) { await sql('DELETE FROM wf_phones WHERE norm=$1
 
 async function dbGetConfig() {
   const r = await sql('SELECT * FROM wf_config WHERE id=1 LIMIT 1');
-  return r[0] || { shift_start:'09:00', grace:10, std_hours:8, ot_rate:1.5, late_deduct:0 };
+  return r[0] || { std_hours:8, ot_rate:1.5 };
 }
 async function dbSetConfig(d) {
   const keys = Object.keys(d), vals = Object.values(d);
@@ -291,29 +273,45 @@ async function dbSetAlert(id, d) {
   );
 }
 
+async function dbListLocations() { return sql('SELECT * FROM wf_locations ORDER BY added_at ASC'); }
+async function dbSetLocation(id, d) {
+  const keys = Object.keys(d), vals = Object.values(d);
+  const cols = keys.join(',');
+  const placeholders = keys.map((_,i) => `$${i+2}`).join(',');
+  const setCols = keys.map((k,i) => `${k}=$${i+2}`).join(',');
+  await sql(
+    `INSERT INTO wf_locations(id,${cols}) VALUES($1,${placeholders})
+     ON CONFLICT(id) DO UPDATE SET ${setCols}`,
+    [id, ...vals]
+  );
+}
+async function dbDelLocation(id) { await sql('DELETE FROM wf_locations WHERE id=$1', [id]); }
+
 // ── Create tables + seed default manager ──
 async function initDB() {
   await sql(`CREATE TABLE IF NOT EXISTS wf_users(
     username TEXT PRIMARY KEY, password TEXT, role TEXT,
-    phone TEXT, hourly_rate NUMERIC, shift_start TEXT,
-    device_id TEXT, map_link TEXT, worker_lat NUMERIC, worker_lng NUMERIC
+    phone TEXT, hourly_rate NUMERIC,
+    device_id TEXT
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_phones(
     norm TEXT PRIMARY KEY, phone TEXT, label TEXT,
-    rate NUMERIC, shift_start TEXT, map_link TEXT,
-    worker_lat NUMERIC, worker_lng NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
+    rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_shifts(
     id TEXT PRIMARY KEY, worker TEXT, date TEXT,
     start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
     earnings NUMERIC, hourly_rate NUMERIC,
-    is_late BOOLEAN, late_mins INTEGER, status TEXT
+    location_name TEXT,
+    status TEXT
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_config(
     id INTEGER PRIMARY KEY DEFAULT 1,
-    shift_start TEXT DEFAULT '09:00', grace INTEGER DEFAULT 10,
-    std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,
-    late_deduct NUMERIC DEFAULT 0
+    std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5
+  )`);
+  await sql(`CREATE TABLE IF NOT EXISTS wf_locations(
+    id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
+    map_link TEXT, added_at BIGINT
   )`);
   await sql(`CREATE TABLE IF NOT EXISTS wf_alerts(
     id TEXT PRIMARY KEY, type TEXT, worker TEXT,
@@ -478,164 +476,143 @@ function renderAuth(){
       <p class="brand-sub">${T.appSub}</p>
     </div>
     <div class="auth-wrap">
-      <div class="tabs">
-        <button class="tab ${S.authTab==='login'?'active':''}" data-tab="login" onclick="authTab('login')">${T.signIn}</button>
-        <button class="tab ${S.authTab==='register'?'active':''}" data-tab="register" onclick="authTab('register')">${T.signUp}</button>
-      </div>
-      <div class="card-body">
-        <div class="fg" id="lf" style="display:${S.authTab==='login'?'flex':'none'}">
-          <div><label class="lbl">${T.username}</label><input id="lu" placeholder="${T.yourUser}" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <div><label class="lbl">${T.password}</label><input id="lp" type="password" placeholder="${T.yourPass}" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-          <div class="err-box" id="lerr" style="display:none"></div>
-          <button class="btn btn-gold" onclick="doLogin()">${T.signIn} →</button>
+      <div class="card-body" style="border-top:1px solid #2a2a2a;border-radius:4px">
+        <!-- Worker login -->
+        <div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#f0c040;text-transform:uppercase;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #1a1a1a">🔑 ${T.signIn}</div>
+        <div class="fg" id="wf">
+          <div>
+            <label class="lbl">${T.phoneNum}</label>
+            <input id="wph" type="tel" placeholder="e.g. 0501234567" autocomplete="tel"
+              oninput="onPhoneInput()" onkeydown="if(event.key==='Enter')doPhoneLogin()"/>
+            <div id="wph-status" style="display:none;margin-top:8px;font-family:monospace;font-size:12px;padding:10px;border-radius:4px;line-height:1.7"></div>
+          </div>
+          <div class="err-box" id="wph-err" style="display:none"></div>
+          <button class="btn btn-gold" id="wph-btn" onclick="doPhoneLogin()">${T.signIn} →</button>
         </div>
-        <div class="fg" id="rf" style="display:${S.authTab==='register'?'flex':'none'}">
-          <div>
-            <label class="lbl">${T.username}</label>
-            <input id="ru" autocomplete="username" placeholder="${T.yourUser}"/>
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #1a1a1a">
+          <div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;margin-bottom:14px">👔 ${T.mgrDash}</div>
+          <div class="fg" id="lf">
+            <div><label class="lbl">${T.username}</label><input id="lu" placeholder="${T.yourUser}" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+            <div><label class="lbl">${T.password}</label><input id="lp" type="password" placeholder="${T.yourPass}" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+            <div class="err-box" id="lerr" style="display:none"></div>
+            <button class="btn btn-dark" onclick="doLogin()">${T.signIn} →</button>
           </div>
-          <div>
-            <label class="lbl">${T.phoneNum} <span style="color:#e74c3c">${T.phoneReq}</span></label>
-            <input id="rph" type="tel" placeholder="e.g. 0501234567" oninput="regPhoneChange()"/>
-            <div id="rprev" style="display:none;background:#0a0a0a;border:1px solid #2ecc7144;border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7"></div>
-          </div>
-          <div class="err-box" id="rerr" style="display:none"></div>
-          <button class="btn btn-gold" onclick="doRegister()">${T.createAcc}</button>
         </div>
       </div>
     </div>
   </div>`;
 }
 
-window.authTab=tab=>{
-  S.authTab=tab;
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  $('lf').style.display=tab==='login'?'flex':'none';
-  $('rf').style.display=tab==='register'?'flex':'none';
+window.authTab=tab=>{S.authTab=tab;};
+
+// ════════════════════════ PHONE-DIRECT WORKER LOGIN ════════════════════════
+window.onPhoneInput=async()=>{
+  const norm=normPhone(val('wph').trim());
+  const st=$('wph-status'); if(!st)return;
+  if(norm.length<6){st.style.display='none';return;}
+  const match=await dbGetPhone(norm);
+  if(match){
+    st.innerHTML=`✓ ${esc(match.label||'Worker')} — $${match.rate||0}/hr`;
+    st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
+  } else {
+    st.innerHTML='⛔ Phone not authorized. Contact your manager.';
+    st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
+  }
 };
 
-// ════════════════════════ LOGIN — GPS + Device Lock ════════════════════════
-window.doLogin=async()=>{
-  if(!rateLimit('login',1500)) return;
-  const u=val('lu').trim().toLowerCase(), p=val('lp');
-  const errEl=$('lerr');
-  errEl.style.display='none';
-
+window.doPhoneLogin=async()=>{
+  if(!rateLimit('phone_login',1500))return;
+  const ph=val('wph').trim();
+  const errEl=$('wph-err'); errEl.style.display='none';
   const showErr=msg=>{errEl.textContent=msg;errEl.style.display='block';};
-  const btn=document.querySelector('#lf .btn-gold');
+  const btn=$('wph-btn');
   if(btn){btn.disabled=true;btn.textContent='Checking…';}
-
   try {
-    const user=await dbGetUser(u);
-    if(!user||user.password!==p){showErr(T.badLogin);return;}
+    if(!ph){showErr(T.badPhone);return;}
+    const norm=normPhone(ph);
+    if(norm.length<6){showErr(T.badPhoneNum);return;}
+    const match=await dbGetPhone(norm);
+    if(!match){showErr(T.phoneNoAuth);return;}
 
-    if(user.role==='worker'){
-      // ── Hard device lock ──
-      if(!user.device_id){
-        await dbSetUser(u,{device_id:DEVICE_ID});
-        user.device_id=DEVICE_ID;
-      } else if(user.device_id!==DEVICE_ID){
-        // Log blocked attempt
-        await dbSetAlert('blk_'+Date.now()+'_'+u,{type:'device_blocked',worker:u,phone:user.phone||'',blocked_device:DEVICE_ID,ts:Date.now(),resolved:false});
-        showErr(T.deviceBlocked); return;
-      }
+    // Find or auto-create worker account
+    const users=await dbListUsers();
+    let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
+    if(!workerUser){
+      // Auto-create account — username = label or norm, password = norm
+      const uname=(match.label||'').toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')||'w'+norm.slice(-6);
+      const finalName=users.find(x=>x.username===uname)?uname+'_'+norm.slice(-4):uname;
+      await dbSetUser(finalName,{
+        password:norm,role:'worker',phone:ph,
+        hourly_rate:match.rate||15,
+        device_id:DEVICE_ID
+      });
+      await dbSetPhone(norm,{used:true});
+      workerUser=await dbGetUser(finalName);
+    }
 
-      // ── GPS fence on login ──
-      if (user.worker_lat && user.worker_lng) {
-        if (!navigator.geolocation) { showErr(T.gpsRequired); return; }
-        if (btn) btn.textContent = '📍 Requesting location…';
-        try {
-          const pos = await geoPos(15000);
-          const userLat = pos.coords.latitude;
-          const userLng = pos.coords.longitude;
-          const workLat = parseFloat(user.worker_lat);
-          const workLng = parseFloat(user.worker_lng);
-          const dist    = Math.round(haversine(userLat, userLng, workLat, workLng));
-          S.gpsDist = dist;
-          if (dist > GPS_RADIUS) {
-            const over = dist - GPS_RADIUS;
-            showErr(`${T.gpsFarLogin}\n📏 You are ${dist}m away (${over}m outside the ${GPS_RADIUS}m zone).`);
-            return;
-          }
-          S.gps = 'ok';
-        } catch(gpsErr) {
-          // Distinguish permission denied vs timeout vs unavailable
-          const code = gpsErr.code; // 1=PERMISSION_DENIED 2=UNAVAILABLE 3=TIMEOUT
-          if (code === 1) showErr('📍 Location permission denied. Please allow location access and try again.');
-          else if (code === 3) showErr('📍 Location timed out. Move to an area with better signal and retry.');
-          else showErr(T.gpsLoginErr);
-          return;
+    // Device lock
+    if(!workerUser.device_id){
+      await dbSetUser(workerUser.username,{device_id:DEVICE_ID});
+      workerUser.device_id=DEVICE_ID;
+    } else if(workerUser.device_id!==DEVICE_ID){
+      await dbSetAlert('blk_'+Date.now()+'_'+workerUser.username,{type:'device_blocked',worker:workerUser.username,phone:ph,blocked_device:DEVICE_ID,ts:Date.now(),resolved:false});
+      showErr(T.deviceBlocked);return;
+    }
+
+    // GPS check against any registered location
+    const locations=await dbListLocations();
+    if(locations.length>0){
+      if(!navigator.geolocation){showErr(T.gpsRequired);return;}
+      if(btn)btn.textContent='📍 Getting location…';
+      try {
+        const pos=await geoPos(15000);
+        const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
+        const nearest=locations.map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))})).sort((a,b)=>a.dist-b.dist)[0];
+        S.gpsDist=nearest.dist;
+        S.nearestLocation=nearest;
+        if(nearest.dist>GPS_RADIUS){
+          showErr(`⛔ You are ${nearest.dist}m away from the nearest site (${nearest.name}). Must be within ${GPS_RADIUS}m.`);return;
         }
+        S.gps='ok';
+      } catch(gpsErr){
+        const code=gpsErr.code;
+        if(code===1)showErr('📍 Location permission denied. Please allow location access.');
+        else if(code===3)showErr('📍 Location timed out. Try again.');
+        else showErr(T.gpsLoginErr);
+        return;
       }
     }
 
-    S.user=user;
-    if(user.role==='manager') renderManagerScreen();
-    else renderWorkerScreen();
+    S.user=workerUser;
+    renderWorkerScreen();
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
   }
 };
 
-// ════════════════════════ REGISTER ════════════════════════
-window.doRegister=async()=>{
-  if(!rateLimit('register',2000)) return;
-  const u=val('ru').trim().toLowerCase(), ph=val('rph').trim();
-  const err=msg=>{$('rerr').textContent=msg;$('rerr').style.display='block';};
-  $('rerr').style.display='none';
-  if(!u){err(T.namePassReq);return;}
-  if(!/^[a-z0-9_\-\.]{2,30}$/.test(u)){err('Username: 2-30 lowercase letters/numbers only.');return;}
-  if(!ph){err(T.phoneNoAuth);return;}
-  const norm=normPhone(ph);
-  if(norm.length<6){err(T.badPhoneNum);return;}
-  const autoPass=norm; // password = phone digits (no leading zeros)
-  const match=await dbGetPhone(norm);
-  if(!match){err(T.phoneNoAuth);return;}
-  const users=await dbListUsers();
-  const linked=users.filter(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
-  if(linked.length>=1){err(T.maxAcc);return;} // 1 account per phone
-  if(users.find(x=>x.username===u)){err(T.userTaken);return;}
-  await dbSetUser(u,{
-    password:autoPass,role:'worker',phone:ph,
-    hourly_rate:match.rate||15,shift_start:match.shift_start||'09:00',
-    device_id:DEVICE_ID,map_link:match.map_link||'',
-    worker_lat:match.worker_lat||null,worker_lng:match.worker_lng||null
-  });
-  await dbSetPhone(norm,{used:true});
-  toast(T.accCreated,'success');
-  S.authTab='login'; render();
-  setTimeout(()=>{if($('lu'))$('lu').value=u;},50);
+// ════════════════════════ MANAGER LOGIN ════════════════════════
+window.doLogin=async()=>{
+  if(!rateLimit('login',1500)) return;
+  const u=val('lu').trim().toLowerCase(), p=val('lp');
+  const errEl=$('lerr');
+  errEl.style.display='none';
+  const showErr=msg=>{errEl.textContent=msg;errEl.style.display='block';};
+  const btn=document.querySelector('#lf .btn-dark');
+  if(btn){btn.disabled=true;btn.textContent='Checking…';}
+  try {
+    const user=await dbGetUser(u);
+    if(!user||user.password!==p||user.role!=='manager'){showErr(T.badLogin);return;}
+    S.user=user;
+    renderManagerScreen();
+  } finally {
+    if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
+  }
 };
 
 window.doLogout=()=>{
   clearInterval(S.timerInt);clearInterval(S.mgrInt);
-  S.user=null;S.shift=null;S.screen='auth';S.gps='idle';S.gpsDist=null;
+  S.user=null;S.shift=null;S.screen='auth';S.gps='idle';S.gpsDist=null;S.nearestLocation=null;
   render();
-};
-
-window.regPhoneChange=async()=>{
-  const norm=normPhone(val('rph').trim());
-  const prev=$('rprev'); if(!prev) return;
-  if(norm.length>=6){
-    const m=await dbGetPhone(norm);
-    if(m){
-      const users=await dbListUsers();
-      const linked=users.filter(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
-      if(linked.length>=1){
-        prev.innerHTML='&#10006; Account already exists for this phone (<strong>'+esc(linked[0].username)+'</strong>). Only 1 account per phone.';
-        prev.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
-      } else {
-        prev.innerHTML='&#10003; Phone approved!';
-        prev.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
-      }
-      return;
-    } else {
-      prev.innerHTML='&#10006; Phone not authorized. Ask your manager to add it first.';
-      prev.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
-      return;
-    }
-  }
-  prev.style.display='none';
 };
 
 // ════════════════════════ WORKER SCREEN ════════════════════════
@@ -645,14 +622,12 @@ async function renderWorkerScreen(){
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
 
   const allShifts=await dbListShifts();
-  const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>b.start_time-a.start_time);
+  const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   const active=myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null;
   S.shift=active;
 
   const todayEarn=active?'…':myShifts.filter(x=>x.date===todayStr()&&x.status==='completed').reduce((a,x)=>a+(parseFloat(x.earnings)||0),0).toFixed(2);
-
-  // GPS status
-  const hasLoc=u.worker_lat&&u.worker_lng;
+  const locName=active?.location_name||S.nearestLocation?.name||'—';
 
   $('root').innerHTML=`
   <div class="topbar">
@@ -660,7 +635,7 @@ async function renderWorkerScreen(){
     <div class="top-right">
       ${langBar(true)}
       <span class="clock" id="clock"></span>
-      <span>${esc(u.username)}</span>
+      <span>${esc(u.label||u.username)}</span>
       <span class="role-pill pill-wkr">WORKER</span>
       <button class="logout-btn" onclick="doLogout()">${T.logout}</button>
     </div>
@@ -669,16 +644,14 @@ async function renderWorkerScreen(){
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
       <div class="info-card"><div class="il">${T.todayEarn}</div><div class="iv" id="we" style="color:#f0c040">$${todayEarn}</div></div>
+      <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px">${esc(locName)}</div></div>
     </div>
-    <div id="gps-bar" class="gps-bar ${hasLoc?'ok':'noset'}">
-      <span>${hasLoc?'✓':'📍'}</span>
-      <span>${hasLoc?T.gpsOk+` (${S.gpsDist||'?'}m)`:T.gpsNoSet}</span>
-      ${hasLoc?`<a href="https://maps.google.com/?q=${u.worker_lat},${u.worker_lng}" target="_blank" style="color:#3498db;font-size:10px;margin-left:auto">${T.mapLink}</a>`:''}
-    </div>
+    ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
       <div class="status-row">
         <div class="dot ${active?'working':''}" id="sdot"></div>
         <span class="status-lbl" id="slbl">${active?T.wking:T.waiting}</span>
+        ${active?`<span style="font-family:monospace;font-size:10px;color:#3498db;margin-left:auto">📍 ${esc(active.location_name||'—')}</span>`:''}
       </div>
       <div class="timer-big" id="tbig">00:00:00</div>
       <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:16px">${T.workTime}</div>
@@ -693,14 +666,16 @@ async function renderWorkerScreen(){
     </div>
     <div class="table-wrap">
       <div class="table-head">${T.shiftHist}</div>
-      <table><thead><tr>${[T.date,T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <table><thead><tr>${[T.date,'📍 Site',T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${!myShifts.length
-        ?`<tr><td colspan="6"><div class="empty">${T.noShifts}</div></td></tr>`
+        ?`<tr><td colspan="7"><div class="empty">${T.noShifts}</div></td></tr>`
         :myShifts.map(sh=>`<tr>
-          <td>${sh.date}</td><td>${fmtTime(sh.start_time)}</td><td>${fmtTime(sh.end_time)}</td>
+          <td>${sh.date}</td>
+          <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(sh.location_name||'—')}</td>
+          <td>${fmtTime(sh.start_time)}</td><td>${fmtTime(sh.end_time)}</td>
           <td>${fmtDur((parseFloat(sh.work_hours)||0)*3600000)}</td>
           <td style="color:#2ecc71;font-weight:700">${sh.earnings?'$'+parseFloat(sh.earnings).toFixed(2):'—'}</td>
-          <td>${statusBadge(sh.status)}${sh.is_late?`<span class="badge br" style="margin:0 4px">+${sh.late_mins}m</span>`:''}</td>
+          <td>${statusBadge(sh.status)}</td>
         </tr>`).join('')}
       </tbody></table>
     </div>
@@ -725,7 +700,6 @@ function startTimer(){
 window.wAct=async action=>{
   if(!rateLimit('shift',800)) return;
   const now=Date.now();
-  const cfg=await dbGetConfig();
 
   // Re-fetch from DB — no client manipulation
   const allShifts=await dbListShifts();
@@ -733,41 +707,39 @@ window.wAct=async action=>{
 
   if(action==='start'){
     if(active){toast(T.already,'warning');return;}
-    // Also block if already completed today (one shift per day)
     const doneToday=allShifts.find(x=>x.worker===S.user.username&&x.date===todayStr()&&x.status==='completed');
     if(doneToday){toast(T.already,'warning');return;}
 
-    // GPS fence check at start
-    const u=S.user;
-    if(u.worker_lat&&u.worker_lng){
+    // GPS — find nearest location
+    const locations=await dbListLocations();
+    let locationName='Unknown';
+    if(locations.length>0){
       try {
         const pos=await geoPos();
-        const dist=haversine(pos.coords.latitude,pos.coords.longitude,u.worker_lat,u.worker_lng);
-        S.gpsDist=Math.round(dist);
-        if(dist>GPS_RADIUS){toast(`${T.gpsFar} (${S.gpsDist}m away)`,'error');return;}
+        const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
+        const nearest=locations.map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))})).sort((a,b)=>a.dist-b.dist)[0];
+        S.gpsDist=nearest.dist;
+        S.nearestLocation=nearest;
+        if(nearest.dist>GPS_RADIUS){toast(`⛔ ${nearest.dist}m from ${nearest.name}. Must be within ${GPS_RADIUS}m.`,'error');return;}
         S.gps='ok';
+        locationName=nearest.name;
       } catch {toast(T.gpsErr,'error');return;}
     }
 
-    const [sh,sm]=(u.shift_start||cfg.shift_start||'09:00').split(':').map(Number);
-    const exp=new Date();exp.setHours(sh,sm,0,0);
-    const lateMs=now-exp.getTime();
-    const isLate=lateMs>(cfg.grace||10)*60000;
-    const lateMins=isLate?Math.floor(lateMs/60000):0;
-
     const id='s'+now;
-    await dbSetShift(id,{worker:u.username,date:todayStr(),start_time:now,end_time:null,work_hours:null,earnings:null,hourly_rate:u.hourly_rate||0,is_late:isLate,late_mins:lateMins,status:'working'});
-    S.shift={id,worker:u.username,date:todayStr(),start_time:now,status:'working',hourly_rate:u.hourly_rate||0,is_late:isLate,late_mins:lateMins};
+    const u=S.user;
+    await dbSetShift(id,{worker:u.username,date:todayStr(),start_time:now,end_time:null,work_hours:null,earnings:null,hourly_rate:u.hourly_rate||0,location_name:locationName,status:'working'});
+    S.shift={id,worker:u.username,date:todayStr(),start_time:now,status:'working',hourly_rate:u.hourly_rate||0,location_name:locationName};
     await renderWorkerScreen();
     startTimer();
-    isLate?toast(T.lateMsg(lateMins),'warning'):toast(T.shiftStarted,'success');
+    toast(`${T.shiftStarted} 📍 ${locationName}`,'success');
 
   } else if(action==='end'){
     if(!active){toast(T.noEnd,'warning');return;}
     const endTime=now;
-    const wMs=Math.max(0,endTime-active.start_time);
+    const wMs=Math.max(0,endTime-Number(active.start_time));
     const workHours=wMs/3600000;
-    const earnings=workHours*(active.hourly_rate||0);
+    const earnings=workHours*(parseFloat(active.hourly_rate)||0);
     await dbSetShift(active.id,{end_time:endTime,work_hours:workHours,earnings,status:'completed'});
     clearInterval(S.timerInt);S.shift=null;
     toast(T.endMsg(fmtDur(wMs),earnings.toFixed(2)),'success');
@@ -797,7 +769,8 @@ async function renderManagerScreen(){
     <div class="info-grid" id="scards"></div>
     <div class="nav-tabs">
       <button class="nav-tab active" data-tab="live"      onclick="mTab('live')">${T.live}</button>
-      <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">➕ ${T.addWorker}</button>
+      <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
+      <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 Locations</button>
       <button class="nav-tab" data-tab="shifts"     onclick="mTab('shifts')">${T.shifts}</button>
       <button class="nav-tab" data-tab="salary"     onclick="mTab('salary')">${T.salary}</button>
       <button class="nav-tab" data-tab="workers"    onclick="mTab('workers')">${T.workers}</button>
@@ -817,6 +790,7 @@ window.mTab=async tab=>{
   panel.innerHTML=`<div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>`;
   if(tab==='live')      panel.innerHTML=await buildLive();
   if(tab==='addworker') panel.innerHTML=await buildAddWorker();
+  if(tab==='locations') panel.innerHTML=await buildLocations();
   if(tab==='shifts')    panel.innerHTML=await buildShifts();
   if(tab==='salary')    panel.innerHTML=await buildSalary('month');
   if(tab==='workers')   panel.innerHTML=await buildWorkers();
@@ -828,16 +802,15 @@ async function loadSummary(){
   const users=(await dbListUsers()).filter(u=>u.role==='worker');
   const shifts=await dbListShifts();
   const ts=shifts.filter(s=>s.date===todayStr());
-  const phones=await dbListPhones();
+  const locations=await dbListLocations();
   const alerts=(await dbListAlerts()).filter(a=>!a.resolved).length;
   const sal=shifts.filter(s=>inP(s,'month')).reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
   const el=$('scards');if(!el)return;
   el.innerHTML=[
     [T.workers,users.length,'#f0c040'],
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
-    [T.late,ts.filter(s=>s.is_late==true||s.is_late==='true'||s.is_late===1).length,'#e74c3c'],
     [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
-    [T.addWorker,phones.length,'#3498db'],
+    ['📍 Sites',locations.length,'#3498db'],
     [T.salDue,'$'+sal,'#f0c040'],
     [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
@@ -864,18 +837,17 @@ async function buildLive(){
     let h=0,e=0;
     ts.filter(s=>s.worker===w.username).forEach(s=>{
       if(s.status==='completed'){h+=parseFloat(s.work_hours)||0;e+=parseFloat(s.earnings)||0;}
-      else{const wMs=Math.max(0,now-s.start_time);h+=wMs/3600000;e+=wMs/3600000*(w.hourly_rate||0);}
+      else{const wMs=Math.max(0,now-Number(s.start_time));h+=wMs/3600000;e+=wMs/3600000*(parseFloat(w.hourly_rate)||0);}
     });
-    const hasLoc=w.worker_lat&&w.worker_lng;
     return`<div class="wcard ${st}">
-      <div class="wname">${esc(w.username)}</div>
-      <div class="wphone">${esc(w.phone||'—')}${hasLoc?` <span style="color:#2ecc71;font-size:9px">📍</span>`:''}</div>
-      <div class="wbadges">${statusBadge(st)}${(active?.is_late==true||active?.is_late==='true'||active?.is_late===1)?`<span class="badge br">+${active.late_mins}m</span>`:''}<span class="badge by">$${w.hourly_rate||0}/hr</span></div>
+      <div class="wname">${esc(w.label||w.username)}</div>
+      <div class="wphone">${esc(w.phone||'—')}</div>
+      <div class="wbadges">${statusBadge(st)}<span class="badge by">$${w.hourly_rate||0}/hr</span>${active?.location_name?`<span class="badge bb">📍 ${esc(active.location_name)}</span>`:''}</div>
       <div class="wstats">
         <div><div class="wsl">${T.hrsToday}</div><div class="wsv">${h.toFixed(2)}h</div></div>
         <div><div class="wsl">${T.earnToday}</div><div class="wsv">$${e.toFixed(2)}</div></div>
         <div><div class="wsl">${T.startedAt}</div><div class="wsv">${active?fmtTime(active.start_time):'—'}</div></div>
-        <div><div class="wsl">${T.stat}</div><div class="wsv">${st.toUpperCase()}</div></div>
+        <div><div class="wsl">Site</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
       </div>
     </div>`;
   }).join('')}</div>`;
@@ -886,23 +858,19 @@ async function buildAddWorker(){
   const listHtml=!phones.length?`<div class="empty">${T.noPhonesYet}</div>`:phones.map(p=>{
     const norm=p.norm;
     const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
-    const hasLoc=p.worker_lat&&p.worker_lng;
     return`<div class="phone-row">
       <div style="flex:1">
         <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#777;font-size:11px">— ${esc(p.label)}</span>`:''}
-          ${hasLoc?`<span style="color:#2ecc71;font-size:10px">📍 GPS</span>`:`<span style="color:#e74c3c;font-size:10px">⚠ no GPS</span>`}
+          <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
         </div>
         <div class="phone-meta">
           <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
-          <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value,'${esc(p.shift_start||'09:00')}')"/>
+          <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>
           <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
-          <span style="font-family:monospace;font-size:10px;color:#555;margin:0 4px">${T.shiftLabel}</span>
-          <input type="time" value="${esc(p.shift_start||'09:00')}" style="padding:4px 8px;border:1px solid #2a2a2a;border-radius:3px;background:#0a0a0a;color:#aaa;font-family:monospace;font-size:12px;width:100px" onchange="updRate('${esc(norm)}',${p.rate||15},this.value)"/>
         </div>
         <div class="pmbadges">
-          <span class="badge ${linked.length>=1?'br':'bg'}">${linked.length===0?'No account':'Registered'}</span>
-          ${linked.map(u=>`<span class="badge bb">${esc(u.username)}</span>`).join('')}
+          <span class="badge ${linked.length>=1?'bg':'br'}">${linked.length===0?'No account yet':'✓ Registered'}</span>
+          ${linked.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
         </div>
       </div>
       <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
@@ -911,38 +879,10 @@ async function buildAddWorker(){
   return`<div class="sg">
     <div class="sc">
       <div class="st">${T.addManual}</div>
-      <div class="info-box" style="margin-bottom:14px">${T.phonesInfo}</div>
-      <div class="sf"><label class="lbl">${T.phoneLbl}</label><input id="np" placeholder="e.g. 0501234567"/></div>
-      <div class="sf"><label class="lbl">${T.workerLbl}</label><input id="nl" placeholder="e.g. Ahmed"/></div>
+      <div class="info-box" style="margin-bottom:14px">Workers log in directly with their phone number — no signup needed.</div>
+      <div class="sf"><label class="lbl">${T.phoneLbl}</label><input id="np" placeholder="e.g. 0501234567" type="tel"/></div>
+      <div class="sf"><label class="lbl">${T.workerLbl} <span style="color:#555">(used as display name)</span></label><input id="nl" placeholder="e.g. Ahmed"/></div>
       <div class="sf rh"><label class="lbl" style="color:#f0c040">${T.rateLbl}</label><input id="nr" type="number" value="15" min="1" step="0.5"/><div class="hint">${T.rateHint}</div></div>
-      <div class="sf"><label class="lbl">${T.shiftLbl}</label><input id="nsh" type="time" value="09:00"/></div>
-      <div class="sf gh">
-        <label class="lbl" style="color:#2ecc71">📍 Worker Location (GPS Fence — 1000m radius)</label>
-        <div style="background:rgba(46,204,113,.05);border:1px solid rgba(46,204,113,.15);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px">
-          <div>
-            <label class="lbl" style="color:#aaa;margin-bottom:6px">Paste Google Maps link</label>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <input id="nml" placeholder="https://maps.google.com/maps?q=24.688,46.722" style="flex:1"
-                oninput="onNewMapLinkChange()"/>
-              <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71"
-                onclick="getNewCoords()">📌 Get Coords</button>
-            </div>
-            <div id="nml-status" class="hint" style="margin-top:5px"></div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="flex:1;height:1px;background:#2a2a2a"></div>
-            <span style="font-family:monospace;font-size:10px;color:#444">OR</span>
-            <div style="flex:1;height:1px;background:#2a2a2a"></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><label class="lbl" style="color:#aaa">Latitude</label><input type="number" id="nlat" step="0.000001" placeholder="24.6881"/></div>
-            <div><label class="lbl" style="color:#aaa">Longitude</label><input type="number" id="nlng" step="0.000001" placeholder="46.7227"/></div>
-          </div>
-          <div id="ncoord-preview" style="display:none;font-family:monospace;font-size:11px;color:#2ecc71;padding:6px 10px;background:#0a0a0a;border-radius:3px;border:1px solid #2ecc7133"></div>
-          <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;align-self:flex-start" onclick="useMyLocForNew()">📍 Use MY Location Instead</button>
-        </div>
-        <div class="hint" style="margin-top:6px;color:#888">Worker must be within 1000m of these coordinates to log in</div>
-      </div>
       <button class="btn btn-gold" onclick="addPhone()">${T.addBtn}</button>
     </div>
     <div class="sc">
@@ -965,86 +905,114 @@ async function buildAddWorker(){
   </div>`;
 }
 
-// ── New worker form — Maps link handlers ──
-window.onNewMapLinkChange=()=>{
-  const status=$('nml-status');
-  if(!status) return;
-  const url=val('nml').trim();
-  if(!url){status.textContent='';return;}
-  if(/goo\.gl|maps\.app\.goo\.gl/.test(url)){
-    status.innerHTML='&#9888;&#65039; Short URL detected — click <strong>Get Coords</strong> to attempt extraction or open the link and copy the full URL';
-    status.style.color='#f0c040';
-  } else {
-    const c=extractCoordsFromMapsLink(url);
-    if(c){
-      status.textContent='✓ Coordinates ready — press Get Coords to apply';
-      status.style.color='#2ecc71';
-    } else if(url.includes('google')){
-      status.textContent='⚠ Could not auto-read this link format — try opening it and copying the full URL from the address bar';
-      status.style.color='#e67e22';
-    } else {
-      status.textContent='⚠ Paste a Google Maps link (maps.google.com or google.com/maps)';
-      status.style.color='#e74c3c';
-    }
-  }
-};
-window.getNewCoords=()=>{
-  const url=val('nml').trim();
-  const status=$('nml-status');
-  if(!url){if(status)status.textContent='Paste a Google Maps link first';return;}
-  const coords=extractCoordsFromMapsLink(url);
-  if(coords){
-    $('nlat').value=coords.lat.toFixed(6);
-    $('nlng').value=coords.lng.toFixed(6);
-    updateNewCoordPreview(coords.lat,coords.lng);
-    if(status){status.textContent=`✓ Extracted: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;status.style.color='#2ecc71';}
-    toast('✓ Coordinates extracted from link','success');
-  } else if(/goo\.gl|maps\.app\.goo\.gl/.test(url)){
-    if(status){status.innerHTML='Short URLs cannot be resolved in the browser.<br>Open the link → copy the full URL from address bar → paste here.';status.style.color='#e74c3c';}
-    toast('Short URL — open it first and copy the full address','warning');
-  } else {
-    if(status){status.textContent='No coordinates found in this link. Try a different Google Maps URL.';status.style.color='#e74c3c';}
-    toast('No coordinates found in link','error');
-  }
-};
-function updateNewCoordPreview(lat,lng){
-  const el=$('ncoord-preview');
-  if(!el) return;
-  if(lat&&lng&&!isNaN(lat)&&!isNaN(lng)){
-    el.textContent=`📌 ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    el.style.display='block';
-  } else {
-    el.style.display='none';
-  }
+// ════════════════════════ LOCATIONS TAB ════════════════════════
+async function buildLocations(){
+  const locs=await dbListLocations();
+  const locList=!locs.length?`<div class="empty">No locations added yet. Add your first site above.</div>`:locs.map(l=>`
+    <div class="phone-row">
+      <div style="flex:1">
+        <div style="font-weight:700;font-family:Georgia,serif;font-size:16px;color:#f0f0f0;margin-bottom:4px">📍 ${esc(l.name)}</div>
+        <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:6px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
+        ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">🗺 View on Map</a>`:''}
+      </div>
+      <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
+    </div>`).join('');
+
+  return`<div class="sg">
+    <div class="sc" style="max-width:520px">
+      <div class="st">➕ Add New Site Location</div>
+      <div class="info-box" style="margin-bottom:16px">Workers must be within <strong>${GPS_RADIUS}m</strong> of any listed location to start a shift. The nearest location is automatically recorded.</div>
+      <div class="sf"><label class="lbl">📛 Site Name</label><input id="loc-name" placeholder="e.g. Main Warehouse, Site A, Downtown Office"/></div>
+      <div class="sf gh">
+        <label class="lbl" style="color:#2ecc71">📍 Coordinates</label>
+        <div style="margin-bottom:10px">
+          <label class="lbl" style="color:#aaa">Paste Google Maps link</label>
+          <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">
+            <input id="loc-ml" placeholder="https://maps.google.com/maps?q=24.688,46.722" style="flex:1" oninput="onLocLinkChange()"/>
+            <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71" onclick="extractLocCoords()">📌 Get Coords</button>
+          </div>
+          <div id="loc-ml-status" class="hint" style="margin-top:5px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
+          <div style="flex:1;height:1px;background:#2a2a2a"></div><span style="font-family:monospace;font-size:10px;color:#444">OR ENTER MANUALLY</span><div style="flex:1;height:1px;background:#2a2a2a"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label class="lbl" style="color:#aaa">Latitude</label><input type="number" id="loc-lat" step="0.000001" placeholder="24.6881"/></div>
+          <div><label class="lbl" style="color:#aaa">Longitude</label><input type="number" id="loc-lng" step="0.000001" placeholder="46.7227"/></div>
+        </div>
+        <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;margin-top:10px" onclick="useMyLocForSite()">📍 Use My Current Location</button>
+      </div>
+      <button class="btn btn-gold" onclick="addLocation()">➕ Add Site Location</button>
+    </div>
+    <div class="sc" style="min-width:280px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #2a2a2a">
+        <div class="st" style="margin-bottom:0">📍 Registered Sites (${locs.length})</div>
+      </div>
+      <div>${locList}</div>
+    </div>
+  </div>`;
 }
-// watch manual lat/lng input
-function watchNewCoords(){
-  const lat=$('nlat'),lng=$('nlng');
-  if(lat)lat.addEventListener('input',()=>updateNewCoordPreview(parseFloat(lat.value),parseFloat(lng?.value)));
-  if(lng)lng.addEventListener('input',()=>updateNewCoordPreview(parseFloat($('nlat')?.value),parseFloat(lng.value)));
-}
-setTimeout(watchNewCoords,500); // after first render
+
+window.onLocLinkChange=()=>{
+  const url=val('loc-ml').trim(); const st=$('loc-ml-status'); if(!st)return;
+  if(!url){st.textContent='';return;}
+  const c=extractCoordsFromMapsLink(url);
+  if(c){st.textContent='✓ Link ready — click Get Coords';st.style.color='#2ecc71';}
+  else if(/goo\.gl|maps\.app/.test(url)){st.innerHTML='⚠ Short URL — open it and copy the full address';st.style.color='#f0c040';}
+  else{st.textContent='⚠ Paste a Google Maps link';st.style.color='#e74c3c';}
+};
+window.extractLocCoords=()=>{
+  const url=val('loc-ml').trim();
+  const c=extractCoordsFromMapsLink(url);
+  if(c){$('loc-lat').value=c.lat.toFixed(6);$('loc-lng').value=c.lng.toFixed(6);const st=$('loc-ml-status');if(st){st.textContent=`✓ ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;st.style.color='#2ecc71';}toast('✓ Coordinates extracted','success');}
+  else toast('No coordinates found in link','error');
+};
+window.useMyLocForSite=async()=>{
+  try{const pos=await geoPos();$('loc-lat').value=pos.coords.latitude.toFixed(6);$('loc-lng').value=pos.coords.longitude.toFixed(6);toast('✓ Location captured','success');}
+  catch{toast('Could not get location','error');}
+};
+window.addLocation=async()=>{
+  const name=val('loc-name').trim();
+  const lat=parseFloat($('loc-lat')?.value);
+  const lng=parseFloat($('loc-lng')?.value);
+  const ml=val('loc-ml').trim();
+  if(!name){toast('Enter a site name','error');return;}
+  if(isNaN(lat)||isNaN(lng)){toast('Enter valid coordinates','error');return;}
+  const id='loc_'+Date.now();
+  await dbSetLocation(id,{name,lat,lng,map_link:ml||null,added_at:Date.now()});
+  toast(`✓ ${name} added!`,'success');
+  mTab('locations');
+};
+window.delLocation=async id=>{
+  if(!confirm('Remove this location?'))return;
+  await dbDelLocation(id);
+  toast('Location removed','warning');
+  mTab('locations');loadSummary();
+};
+
+// ── Worker management ──
 
 async function buildShifts(fw='',fd=''){
   let shifts=await dbListShifts();
   shifts=shifts.filter(s=>(!fw||s.worker.toLowerCase().includes(fw))&&(!fd||s.date===fd));
   const users=await dbListUsers();const um={};users.forEach(u=>um[u.username]=u);
+  shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   return`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
     <input class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="fw" placeholder="${T.filterW}" value="${fw}" oninput="reShifts()"/>
     <input type="date" class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="fd" value="${fd}" onchange="reShifts()"/>
     <button class="btn-sm btn-dark" onclick="$('fw').value='';$('fd').value='';reShifts()">${T.clear}</button>
   </div>
   <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,T.date,T.start,T.end,T.worked,T.earn,T.late,T.stat].map(h=>`<th>${h}</th>`).join('')}
+    ${[T.name,T.phone,T.rateC,'📍 Site',T.date,T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}
   </tr></thead><tbody>
     ${!shifts.length?`<tr><td colspan="10"><div class="empty">${T.noW}</div></td></tr>`:shifts.map(s=>`<tr>
       <td><strong>${esc(s.worker)}</strong></td>
       <td style="color:#555">${esc(um[s.worker]?.phone||'—')}</td>
       <td style="color:#f0c040">$${um[s.worker]?.hourly_rate||s.hourly_rate||0}/hr</td>
+      <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(s.location_name||'—')}</td>
       <td>${s.date}</td><td>${fmtTime(s.start_time)}</td><td>${fmtTime(s.end_time)}</td>
       <td>${fmtDur((parseFloat(s.work_hours)||0)*3600000)}</td>
       <td style="color:#2ecc71;font-weight:700">${s.earnings?'$'+parseFloat(s.earnings).toFixed(2):'—'}</td>
-      <td>${(s.is_late==true||s.is_late==='true'||s.is_late===1)?`<span class="badge br">+${s.late_mins}m</span>`:`<span class="badge bg">✓</span>`}</td>
       <td>${statusBadge(s.status)}</td>
     </tr>`).join('')}
   </tbody></table></div>`;
@@ -1054,6 +1022,9 @@ window.reShifts=()=>mTab('shifts');
 async function buildSalary(per='month'){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   const cfg=await dbGetConfig();const allS=await dbListShifts();
+  const locations=await dbListLocations();
+  const locNames=[...new Set(allS.map(s=>s.location_name).filter(Boolean))].sort();
+
   return`<div style="margin-bottom:14px">
     <select class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="sp" onchange="reSalary()">
       <option value="today" ${per==='today'?'selected':''}>${T.today}</option>
@@ -1063,25 +1034,37 @@ async function buildSalary(per='month'){
     </select>
   </div>
   <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,T.totalH,T.regPay,T.otH,T.otP,T.deduct,T.total,T.shiftsC,T.late].map(h=>`<th>${h}</th>`).join('')}
+    <th>Worker</th><th>Phone</th><th>Rate</th>
+    ${locNames.map(l=>`<th style="color:#3498db">📍 ${esc(l)}</th>`).join('')}
+    <th>Total Hrs</th><th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th style="color:#2ecc71">TOTAL</th><th>Shifts</th>
   </tr></thead><tbody>
-    ${!workers.length?`<tr><td colspan="11"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
+    ${!workers.length?`<tr><td colspan="${9+locNames.length}"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
       const ws=allS.filter(s=>s.worker===w.username&&s.status==='completed'&&inP(s,per));
       const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-      const lc=ws.filter(s=>s.is_late).length;
-      const rh=Math.min(th,ws.length*(cfg.std_hours||8));
+      const stdH=parseFloat(cfg.std_hours)||8;
+      const otRate=parseFloat(cfg.ot_rate)||1.5;
+      const workerRate=parseFloat(w.hourly_rate)||0;
+      const rh=Math.min(th,ws.length*stdH);
       const oh=Math.max(0,th-rh);
-      const rp=rh*(w.hourly_rate||0);
-      const op=oh*(w.hourly_rate||0)*(cfg.ot_rate||1.5);
-      const dd=lc*(cfg.late_deduct||0);
-      const tot=Math.max(0,rp+op-dd);
+      const rp=rh*workerRate;
+      const op=oh*workerRate*otRate;
+      const tot=rp+op;
+      // Per-location hours
+      const locHrs=locNames.map(ln=>{
+        const lh=ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
+        return lh>0?`<td style="font-family:monospace;color:#3498db">${lh.toFixed(2)}h</td>`:`<td style="color:#333">—</td>`;
+      }).join('');
       return`<tr>
-        <td><strong>${esc(w.username)}</strong></td><td style="color:#555">${esc(w.phone||'—')}</td>
-        <td style="color:#f0c040;font-weight:700">$${w.hourly_rate||0}/hr</td>
-        <td>${th.toFixed(2)}h</td><td>$${rp.toFixed(2)}</td><td>${oh.toFixed(2)}h</td><td>$${op.toFixed(2)}</td>
-        <td style="color:#e74c3c">-$${dd.toFixed(2)}</td>
+        <td><strong>${esc(w.label||w.username)}</strong></td>
+        <td style="color:#555">${esc(w.phone||'—')}</td>
+        <td style="color:#f0c040;font-weight:700">$${workerRate}/hr</td>
+        ${locHrs}
+        <td style="font-weight:700">${th.toFixed(2)}h</td>
+        <td>$${rp.toFixed(2)}</td>
+        <td>${oh.toFixed(2)}h</td>
+        <td>$${op.toFixed(2)}</td>
         <td style="color:#2ecc71;font-weight:700;font-size:14px">$${tot.toFixed(2)}</td>
-        <td>${ws.length}</td><td>${lc?`<span class="badge br">${lc}</span>`:`<span class="badge bg">0</span>`}</td>
+        <td>${ws.length}</td>
       </tr>`;
     }).join('')}
   </tbody></table></div>`;
@@ -1092,17 +1075,17 @@ async function buildWorkers(){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   const allS=await dbListShifts();
   return`<div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,T.shiftC,'GPS',T.shiftsC,T.action].map(h=>`<th>${h}</th>`).join('')}
+    ${[T.name,T.phone,T.rateC,'Last Site',T.shiftsC,T.action].map(h=>`<th>${h}</th>`).join('')}
   </tr></thead><tbody>
-    ${!workers.length?`<tr><td colspan="7"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
-      const tot=allS.filter(s=>s.worker===w.username&&s.status==='completed').length;
-      const hasLoc=w.worker_lat&&w.worker_lng;
+    ${!workers.length?`<tr><td colspan="6"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
+      const wShifts=allS.filter(s=>s.worker===w.username&&s.status==='completed').sort((a,b)=>Number(b.start_time)-Number(a.start_time));
+      const tot=wShifts.length;
+      const lastSite=wShifts[0]?.location_name||'—';
       return`<tr>
-        <td><strong>${esc(w.username)}</strong></td>
+        <td><strong>${esc(w.label||w.username)}</strong></td>
         <td style="color:#666">${esc(w.phone||'—')}</td>
         <td style="color:#f0c040;font-weight:700">$${w.hourly_rate||0}/hr</td>
-        <td>${esc(w.shift_start||'09:00')}</td>
-        <td>${hasLoc?`<span class="badge bg" title="${w.worker_lat},${w.worker_lng}">✓</span>`:`<span class="badge br">⚠</span>`}</td>
+        <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(lastSite)}</td>
         <td>${tot}</td>
         <td><button class="btn-sm btn-dark" onclick="openEdit('${esc(w.username)}')">${T.edit}</button></td>
       </tr>`;
@@ -1128,18 +1111,12 @@ window.resolveAlert=async id=>{await dbSetAlert(id,{resolved:true});mTab('alerts
 async function buildSettings(){
   const cfg=await dbGetConfig();
   return`<div class="sg">
-    <div class="sc"><div class="st">${T.shiftOver}</div>
-      <div class="sf"><label class="lbl">${T.defShift}</label><input id="cs" type="time" value="${cfg.shift_start||'09:00'}"/></div>
-      <div class="sf"><label class="lbl">${T.grace}</label><input id="cg" type="number" value="${cfg.grace||10}"/></div>
-      <div class="sf"><label class="lbl">${T.stdH}</label><input id="ch" type="number" value="${cfg.std_hours||8}"/></div>
-      <div class="sf"><label class="lbl">${T.otMult}</label><input id="co" type="number" step="0.1" value="${cfg.ot_rate||1.5}"/></div>
+    <div class="sc"><div class="st">⏱ Pay Settings</div>
+      <div class="sf"><label class="lbl">${T.stdH}</label><input id="ch" type="number" value="${cfg.std_hours||8}"/><div class="hint">Hours per day before overtime kicks in</div></div>
+      <div class="sf"><label class="lbl">${T.otMult}</label><input id="co" type="number" step="0.1" value="${cfg.ot_rate||1.5}"/><div class="hint">Overtime pay multiplier (e.g. 1.5 = time and a half)</div></div>
       <button class="btn btn-gold" onclick="saveSett()">${T.saveSett}</button>
     </div>
-    <div class="sc"><div class="st">${T.deductT}</div>
-      <div class="sf"><label class="lbl">${T.deductL}</label><input id="cd" type="number" value="${cfg.late_deduct||0}"/></div>
-      <button class="btn btn-gold" onclick="saveSett()">${T.saveSett}</button>
-    </div>
-    <div class="sc"><div class="st">${T.danger}</div>
+    <div class="sc"><div class="st">⚠ ${T.danger}</div>
       <p style="font-family:monospace;font-size:11px;color:#555;margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
       <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>
     </div>
@@ -1147,36 +1124,32 @@ async function buildSettings(){
 }
 
 window.saveSett=async()=>{
-  await dbSetConfig({shift_start:val('cs')||'09:00',grace:clamp(parseFloat(val('cg'))||10,0,120),std_hours:clamp(parseFloat(val('ch'))||8,1,24),ot_rate:clamp(parseFloat(val('co'))||1.5,1,5),late_deduct:Math.max(0,parseFloat(val('cd'))||0)});
+  await dbSetConfig({std_hours:clamp(parseFloat(val('ch'))||8,1,24),ot_rate:clamp(parseFloat(val('co'))||1.5,1,5)});
   toast(T.settSaved,'success');
 };
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
 // ── Phone / worker management ──
 window.addPhone=async()=>{
-  const ph=val('np').trim(),lb=val('nl').trim(),rt=parseFloat(val('nr')),sh=val('nsh')||'09:00';
-  const ml=val('nml').trim();
-  let lat=parseFloat(val('nlat')),lng=parseFloat(val('nlng'));
-  // Try extracting from Maps link if coords blank
-  if((isNaN(lat)||isNaN(lng))&&ml){const c=extractCoordsFromMapsLink(ml);if(c){lat=c.lat;lng=c.lng;}}
+  const ph=val('np').trim(),lb=val('nl').trim(),rt=parseFloat(val('nr'));
   if(!ph){toast(T.badPhone,'error');return;}
   const norm=normPhone(ph);if(norm.length<6){toast(T.badPhoneNum,'error');return;}
   if(!rt||rt<=0){toast(T.badRate,'error');return;}
   const ex=await dbGetPhone(norm);if(ex){toast(T.dupPhone,'warning');return;}
-  await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,shift_start:sh,map_link:ml,worker_lat:isNaN(lat)?null:lat,worker_lng:isNaN(lng)?null:lng,used:false,added_at:Date.now()});
+  await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
   toast(T.phoneAdded,'success');mTab('addworker');
 };
 window.delPhone=async norm=>{await dbDelPhone(norm);toast(T.phoneRemoved,'warning');mTab('addworker');loadSummary();};
-window.updRate=async(norm,rate,shift)=>{
-  await dbSetPhone(norm,{rate:parseFloat(rate)||15,shift_start:shift});
+window.updRate=async(norm,rate)=>{
+  await dbSetPhone(norm,{rate:parseFloat(rate)||15});
   const users=await dbListUsers();
-  for(const u of users){if(u.role==='worker'&&normPhone(u.phone||'')===norm)await dbSetUser(u.username,{hourly_rate:parseFloat(rate)||15,shift_start:shift});}
+  for(const u of users){if(u.role==='worker'&&normPhone(u.phone||'')===norm)await dbSetUser(u.username,{hourly_rate:parseFloat(rate)||15});}
   toast(T.rateUpdated,'success');
 };
 window.clearPhones=async()=>{if(!confirm(T.confirmClear))return;const all=await dbListPhones();for(const p of all)await dbDelPhone(p.norm);mTab('addworker');loadSummary();toast(T.cleared,'warning');};
 window.handleDrop=e=>{e.preventDefault();const f=e.dataTransfer?.files[0]||e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>procFile(ev.target.result);r.readAsText(f);if(e.target.value!==undefined)e.target.value='';};
 async function procFile(text){
-  const defR=parseFloat(val('nr'))||15,defSh=val('nsh')||'09:00';
+  const defR=parseFloat(val('nr'))||15;
   const lines=text.split(/[\r\n]+/).map(l=>l.trim()).filter(Boolean);
   let added=0,skipped=0;
   for(const line of lines){
@@ -1187,62 +1160,28 @@ async function procFile(text){
     if(!phone){const r=line.replace(/[\s\-\+\(\)\.]/g,'');if(/^\d{6,15}$/.test(r))phone=line.trim();}
     if(!phone){skipped++;continue;}
     const norm=normPhone(phone);const ex=await dbGetPhone(norm);if(ex){skipped++;continue;}
-    await dbSetPhone(norm,{phone:phone.trim(),label:label.trim(),rate,shift_start:defSh,map_link:'',worker_lat:null,worker_lng:null,used:false,added_at:Date.now()});
+    await dbSetPhone(norm,{phone:phone.trim(),label:label.trim(),rate,used:false,added_at:Date.now()});
     added++;
   }
   toast(T.fileAdded(added,skipped),'success');mTab('addworker');loadSummary();
 }
-window.useMyLocForNew=async()=>{
-  try{const p=await geoPos();$('nlat').value=p.coords.latitude.toFixed(6);$('nlng').value=p.coords.longitude.toFixed(6);toast('✓ Location captured','success');}
-  catch{toast(T.gpsErr,'error');}
-};
 
 // ── Edit Worker Modal ──
 window.openEdit=async username=>{
   const u=await dbGetUser(username);if(!u)return;
   S.editingWorker=username;
-  $('em-name').value=u.username;
+  $('em-name').value=u.label||u.username;
   $('em-phone').value=u.phone||'';
   $('em-rate').value=u.hourly_rate||15;
-  $('em-shift').value=u.shift_start||'09:00';
-  $('em-maplink').value=u.map_link||'';
-  $('em-lat').value=u.worker_lat||'';
-  $('em-lng').value=u.worker_lng||'';
   $('editModal').classList.add('show');
 };
 window.closeModal=()=>{$('editModal').classList.remove('show');S.editingWorker=null;};
-window.pickLocForWorker=async()=>{
-  try{const p=await geoPos();$('em-lat').value=p.coords.latitude.toFixed(6);$('em-lng').value=p.coords.longitude.toFixed(6);toast('✓ Location captured','success');}
-  catch{toast(T.gpsErr,'error');}
-};
-// Edit modal — Maps link handlers
-window.getEditCoords=()=>{
-  const url=val('em-maplink').trim();
-  if(!url){toast('Paste a Google Maps link first','warning');return;}
-  const coords=extractCoordsFromMapsLink(url);
-  if(coords){
-    $('em-lat').value=coords.lat.toFixed(6);
-    $('em-lng').value=coords.lng.toFixed(6);
-    toast(`✓ Coordinates extracted: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,'success');
-  } else if(/goo\.gl|maps\.app\.goo\.gl/.test(url)){
-    toast('Short URL — open the link, copy the full URL from address bar, paste here','warning');
-  } else {
-    toast('No coordinates found in link — try a different Google Maps URL','error');
-  }
-};
-window.autoExtractEdit=window.getEditCoords; // alias
-$('em-maplink')?.addEventListener('change', window.getEditCoords);
 
 window.saveWorkerEdit=async()=>{
   const u=await dbGetUser(S.editingWorker);if(!u)return;
-  const ml=val('em-maplink')||'';
-  let lat=parseFloat($('em-lat').value),lng=parseFloat($('em-lng').value);
-  // If coords still blank, try extracting from link
-  if((isNaN(lat)||isNaN(lng))&&ml){const c=extractCoordsFromMapsLink(ml);if(c){lat=c.lat;lng=c.lng;}}
-  const rt=parseFloat($('em-rate').value)||15,sh=$('em-shift').value||'09:00';
-  const updates={hourly_rate:rt,shift_start:sh,map_link:ml,worker_lat:isNaN(lat)?null:lat,worker_lng:isNaN(lng)?null:lng};
-  await dbSetUser(S.editingWorker,updates);
-  await dbSetPhone(normPhone(u.phone||''),{rate:rt,shift_start:sh,map_link:ml,worker_lat:isNaN(lat)?null:lat,worker_lng:isNaN(lng)?null:lng});
+  const rt=parseFloat($('em-rate').value)||15;
+  await dbSetUser(S.editingWorker,{hourly_rate:rt});
+  await dbSetPhone(normPhone(u.phone||''),{rate:rt});
   toast(T.workerUpdated,'success');closeModal();mTab('workers');
 };
 
@@ -1273,83 +1212,60 @@ window.doExport=async()=>{
   const cfg=await dbGetConfig();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
   const workers=users.filter(u=>u.role==='worker');
+  const fmtExcel=ts=>{
+    if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';
+    const pad=n=>String(n).padStart(2,'0');
+    return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
-  const s1=[['Worker','Phone','Rate ($/hr)','Date','Start Time','End Time','Work Hours','Earnings ($)','Late?','Late Mins','Status']];
+  // Sheet 1: All Shifts
+  const s1=[['Worker','Phone','Rate ($/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings ($)','Status']];
   shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).forEach(s=>{
     const u=um[s.worker];
-    const tsStart=Number(s.start_time)||0;
-    const tsEnd=Number(s.end_time)||0;
-    const fmtExcel=ts=>{
-      if(!ts)return'—';
-      const d=new Date(ts);
-      if(isNaN(d.getTime()))return'—';
-      const pad=n=>String(n).padStart(2,'0');
-      return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
     s1.push([
-      s.worker,
+      u?.label||s.worker,
       u?.phone||'',
       parseFloat(u?.hourly_rate||s.hourly_rate||0),
+      s.location_name||'—',
       s.date,
-      fmtExcel(tsStart),
-      fmtExcel(tsEnd),
+      fmtExcel(s.start_time),
+      fmtExcel(s.end_time),
       parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),
       parseFloat((parseFloat(s.earnings)||0).toFixed(2)),
-      (s.is_late==true||s.is_late==='true'||s.is_late===1)?'Yes':'No',
-      parseInt(s.late_mins)||0,
       s.status
     ]);
   });
 
+  // Sheet 2: Monthly Salary with per-location breakdown
   const now=new Date();
   const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const s2=[['Worker','Phone','Rate ($/hr)','Period Start','Period End','Total Hours','Regular Hrs','OT Hours','Regular Pay ($)','OT Pay ($)','Deductions ($)','Total Salary ($)','Shifts','Late Count','Month']];
+  const locNames=[...new Set(shifts.map(s=>s.location_name).filter(Boolean))].sort();
+  const s2Header=['Worker','Phone','Rate ($/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Regular Hrs','OT Hours','Regular Pay ($)','OT Pay ($)','Total Salary ($)','Shifts','Month'];
+  const s2=[s2Header];
   workers.forEach(w=>{
-    // Cast all numeric fields from DB strings to numbers
     const ws=shifts.filter(s=>s.worker===w.username&&s.status==='completed').filter(s=>{
-      const ts=Number(s.start_time);
-      if(!ts)return false;
-      const d=new Date(ts);
-      return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      const ts=Number(s.start_time);if(!ts)return false;
+      const d=new Date(ts);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
     });
     const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-    const lc=ws.filter(s=>s.is_late==true||s.is_late==='true'||s.is_late===1).length;
     const stdH=parseFloat(cfg.std_hours)||8;
     const otRate=parseFloat(cfg.ot_rate)||1.5;
-    const lateDeduct=parseFloat(cfg.late_deduct)||0;
     const workerRate=parseFloat(w.hourly_rate)||0;
     const rh=Math.min(th,ws.length*stdH);
     const oh=Math.max(0,th-rh);
     const rp=rh*workerRate;
     const op=oh*workerRate*otRate;
-    const dd=lc*lateDeduct;
-    // Period start = earliest shift, period end = latest shift end
-    const startTimes=ws.map(s=>Number(s.start_time)).filter(Boolean).sort((a,b)=>a-b);
-    const endTimes=ws.map(s=>Number(s.end_time)).filter(Boolean).sort((a,b)=>b-a);
-    const fmtExcel=ts=>{
-      if(!ts)return'—';
-      const d=new Date(ts);
-      if(isNaN(d.getTime()))return'—';
-      const pad=n=>String(n).padStart(2,'0');
-      return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-    const periodStart=startTimes.length?fmtExcel(startTimes[0]):'—';
-    const periodEnd=endTimes.length?fmtExcel(endTimes[0]):'—';
+    const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
     s2.push([
-      w.username,
-      w.phone||'',
-      workerRate,
-      periodStart,
-      periodEnd,
+      w.label||w.username, w.phone||'', workerRate,
+      ...locHrs,
       parseFloat(th.toFixed(4)),
       parseFloat(rh.toFixed(4)),
       parseFloat(oh.toFixed(4)),
       parseFloat(rp.toFixed(2)),
       parseFloat(op.toFixed(2)),
-      parseFloat(dd.toFixed(2)),
-      parseFloat(Math.max(0,rp+op-dd).toFixed(2)),
+      parseFloat((rp+op).toFixed(2)),
       ws.length,
-      lc,
       monthLabel
     ]);
   });
@@ -1359,8 +1275,8 @@ window.doExport=async()=>{
   script.onload=()=>{
     const wb=XLSX.utils.book_new();
     const ws1=XLSX.utils.aoa_to_sheet(s1),ws2=XLSX.utils.aoa_to_sheet(s2);
-    ws1['!cols']=[14,14,10,10,18,18,12,12,7,9,10].map(w=>({wch:w}));
-    ws2['!cols']=[14,14,10,18,18,12,12,10,13,10,12,14,7,9,12].map(w=>({wch:w}));
+    ws1['!cols']=[14,14,10,16,10,18,18,12,12,10].map(w=>({wch:w}));
+    ws2['!cols']=[14,14,10,...locNames.map(()=>14),12,12,10,13,10,14,7,10].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,ws1,'Shifts');
     XLSX.utils.book_append_sheet(wb,ws2,'Monthly Salary');
     XLSX.writeFile(wb,`workforce_${todayStr()}.xlsx`);
