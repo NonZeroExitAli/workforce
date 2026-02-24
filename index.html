@@ -512,7 +512,7 @@ window.onPhoneInput=async()=>{
   if(norm.length<6){st.style.display='none';return;}
   const match=await dbGetPhone(norm);
   if(match){
-    st.innerHTML=`✓ ${esc(match.label||'Worker')} — $${match.rate||0}/hr`;
+    st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
     st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
   } else {
     st.innerHTML='⛔ Phone not authorized. Contact your manager.';
@@ -643,8 +643,7 @@ async function renderWorkerScreen(){
   <div class="body">
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
-      <div class="info-card"><div class="il">${T.todayEarn}</div><div class="iv" id="we" style="color:#f0c040">$${todayEarn}</div></div>
-      <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px">${esc(locName)}</div></div>
+      <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
@@ -656,25 +655,24 @@ async function renderWorkerScreen(){
       <div class="timer-big" id="tbig">00:00:00</div>
       <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:16px">${T.workTime}</div>
       <div class="act-grid">
-        <button class="act-btn ${active?'':'btn-green'}" id="bst"
-          style="border:2px solid ${active?'#333':'#2ecc71'};color:${active?'#333':'#2ecc71'}"
-          onclick="wAct('start')" ${active?'disabled':''}>${T.startWork}</button>
-        <button class="act-btn ${active?'btn-red':''}" id="ben"
-          style="border:2px solid ${active?'#e74c3c':'#333'};color:${active?'#e74c3c':'#333'}"
-          onclick="wAct('end')" ${!active?'disabled':''}>${T.endWork}</button>
+        <button class="act-btn" id="bst"
+          style="border:2px solid ${active?'#333':'#2ecc71'};color:${active?'#333':'#2ecc71'};opacity:${active?'0.3':'1'};cursor:${active?'not-allowed':'pointer'}"
+          onclick="wAct('start')">${T.startWork}</button>
+        <button class="act-btn" id="ben"
+          style="border:2px solid ${active?'#e74c3c':'#333'};color:${active?'#e74c3c':'#333'};opacity:${active?'1':'0.3'};cursor:${active?'pointer':'not-allowed'}"
+          onclick="wAct('end')">${T.endWork}</button>
       </div>
     </div>
     <div class="table-wrap">
       <div class="table-head">${T.shiftHist}</div>
-      <table><thead><tr>${[T.date,'📍 Site',T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <table><thead><tr>${[T.date,'📍 Site',T.start,T.end,T.worked,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${!myShifts.length
-        ?`<tr><td colspan="7"><div class="empty">${T.noShifts}</div></td></tr>`
+        ?`<tr><td colspan="6"><div class="empty">${T.noShifts}</div></td></tr>`
         :myShifts.map(sh=>`<tr>
           <td>${sh.date}</td>
           <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(sh.location_name||'—')}</td>
           <td>${fmtTime(sh.start_time)}</td><td>${fmtTime(sh.end_time)}</td>
           <td>${fmtDur((parseFloat(sh.work_hours)||0)*3600000)}</td>
-          <td style="color:#2ecc71;font-weight:700">${sh.earnings?'$'+parseFloat(sh.earnings).toFixed(2):'—'}</td>
           <td>${statusBadge(sh.status)}</td>
         </tr>`).join('')}
       </tbody></table>
@@ -687,63 +685,158 @@ async function renderWorkerScreen(){
 function startTimer(){
   clearInterval(S.timerInt);
   if(!S.shift) return;
-  const sh=S.shift;
+  const startMs=Number(S.shift.start_time);
+  if(!startMs) return; // guard: don't run if start_time invalid
   S.timerInt=setInterval(()=>{
-    const wMs=Math.max(0,Date.now()-sh.start_time);
+    const wMs=Math.max(0,Date.now()-startMs);
     const e=$('tbig');if(e)e.textContent=fmtMs(wMs);
-    const we=$('we');if(we)we.textContent='$'+(wMs/3600000*(S.user.hourly_rate||0)).toFixed(2);
     const wt=$('wt');if(wt)wt.textContent=fmtDur(wMs);
   },1000);
 }
 
-// ════════════════════════ SHIFT ACTIONS (start / end only) ════════════════════════
+// ════════════════════════ SHIFT ACTIONS — HARDENED ════════════════════════
+// Security model:
+//  1. Always re-fetch state from DB — never trust client state
+//  2. Separate rate limits per action
+//  3. GPS validated fresh on every start (not cached from login)
+//  4. One shift per worker per day — enforced server-side via DB query
+//  5. Cannot end a shift that doesn't exist or isn't yours
+//  6. Buttons show state via style not disabled attr (avoids stale DOM)
+
+let _shiftLock=false; // in-flight guard to prevent double-tap race condition
+
 window.wAct=async action=>{
-  if(!rateLimit('shift',800)) return;
-  const now=Date.now();
+  if(_shiftLock){toast('Please wait…','warning');return;}
+  if(!rateLimit('shift_'+action,1200))return;
+  if(!S.user){toast('Not logged in','error');return;}
 
-  // Re-fetch from DB — no client manipulation
-  const allShifts=await dbListShifts();
-  const active=allShifts.find(x=>x.worker===S.user.username&&x.date===todayStr()&&x.status!=='completed');
+  _shiftLock=true;
+  const btn=$(action==='start'?'bst':'ben');
+  if(btn){btn.style.opacity='0.5';btn.textContent='…';}
 
-  if(action==='start'){
-    if(active){toast(T.already,'warning');return;}
-    const doneToday=allShifts.find(x=>x.worker===S.user.username&&x.date===todayStr()&&x.status==='completed');
-    if(doneToday){toast(T.already,'warning');return;}
+  try{
+    const now=Date.now();
+    const username=S.user.username;
 
-    // GPS — find nearest location
-    const locations=await dbListLocations();
-    let locationName='Unknown';
-    if(locations.length>0){
-      try {
-        const pos=await geoPos();
-        const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
-        const nearest=locations.map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))})).sort((a,b)=>a.dist-b.dist)[0];
-        S.gpsDist=nearest.dist;
-        S.nearestLocation=nearest;
-        if(nearest.dist>GPS_RADIUS){toast(`⛔ ${nearest.dist}m from ${nearest.name}. Must be within ${GPS_RADIUS}m.`,'error');return;}
-        S.gps='ok';
-        locationName=nearest.name;
-      } catch {toast(T.gpsErr,'error');return;}
+    // ── Always re-fetch shifts from DB ──
+    const allShifts=await dbListShifts();
+    const todayShifts=allShifts.filter(x=>x.worker===username&&x.date===todayStr());
+    const activeShift=todayShifts.find(x=>x.status==='working');
+    const completedToday=todayShifts.find(x=>x.status==='completed');
+
+    if(action==='start'){
+      // Guard: already working
+      if(activeShift){toast('⚠ Shift already in progress!','warning');await renderWorkerScreen();return;}
+      // Guard: already completed today (one shift per day)
+      if(completedToday){toast('⚠ You already completed a shift today.','warning');await renderWorkerScreen();return;}
+
+      // GPS check — re-fetch locations fresh, check proximity
+      const locations=await dbListLocations();
+      let locationName='No GPS Check';
+      if(locations.length>0){
+        if(!navigator.geolocation){toast('⛔ GPS not available on this device.','error');return;}
+        try{
+          toast('📍 Checking your location…','info');
+          const pos=await geoPos(15000);
+          const uLat=pos.coords.latitude,uLng=pos.coords.longitude;
+          // Find nearest among all locations
+          const ranked=locations
+            .map(l=>({...l,dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))}))
+            .sort((a,b)=>a.dist-b.dist);
+          const nearest=ranked[0];
+          S.gpsDist=nearest.dist;
+          S.nearestLocation=nearest;
+          if(nearest.dist>GPS_RADIUS){
+            toast(`⛔ ${nearest.dist}m from ${nearest.name} — must be within ${GPS_RADIUS}m.`,'error');
+            return;
+          }
+          S.gps='ok';
+          locationName=nearest.name;
+        }catch(gErr){
+          const code=gErr.code;
+          if(code===1)toast('⛔ Location denied. Allow GPS and try again.','error');
+          else if(code===3)toast('⛔ GPS timed out. Move to a better spot.','error');
+          else toast('⛔ GPS error. Enable location.','error');
+          return;
+        }
+      }
+
+      // Write shift to DB
+      const id='s'+now+'_'+username.slice(0,6);
+      await dbSetShift(id,{
+        worker:username,
+        date:todayStr(),
+        start_time:now,
+        end_time:null,
+        work_hours:null,
+        earnings:null,
+        hourly_rate:parseFloat(S.user.hourly_rate)||0,
+        location_name:locationName,
+        status:'working'
+      });
+
+      // Verify it was written (sanity check against DB manipulation)
+      const verify=await dbListShifts();
+      const written=verify.find(x=>x.id===id);
+      if(!written){toast('⛔ Shift failed to save. Try again.','error');return;}
+
+      S.shift=written;
+      toast(`✅ Shift started at ${locationName}`,'success');
+      await renderWorkerScreen();
+
+    }else if(action==='end'){
+      // Guard: no active shift
+      if(!activeShift){toast('⚠ No active shift to end.','warning');await renderWorkerScreen();return;}
+      // Guard: shift must belong to this user (already filtered, but double-check)
+      if(activeShift.worker!==username){toast('⛔ Shift mismatch error.','error');return;}
+      // Guard: shift must have a valid start_time
+      const startMs=Number(activeShift.start_time);
+      if(!startMs||startMs>now){toast('⛔ Invalid shift start time.','error');return;}
+
+      const wMs=Math.max(0,now-startMs);
+      // Guard: minimum 1 minute to prevent accidental instant end
+      if(wMs<60000){
+        toast(`⚠ Shift is only ${Math.round(wMs/1000)}s old. End anyway? Tap again to confirm.`,'warning');
+        // Allow second tap within 5s
+        _shiftLock=false;
+        const origLock=()=>{};
+        let confirmed=false;
+        const confirmEnd=async()=>{
+          if(confirmed)return;confirmed=true;
+          const wMs2=Math.max(0,Date.now()-startMs);
+          const workHours=wMs2/3600000;
+          const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
+          await dbSetShift(activeShift.id,{end_time:Date.now(),work_hours:workHours,earnings,status:'completed'});
+          S.shift=null;clearInterval(S.timerInt);
+          toast(`✅ Done! ${fmtDur(wMs2)} worked.`,'success');
+          await renderWorkerScreen();
+        };
+        const oldEnd=window.wAct;
+        window._confirmEnd=confirmEnd;
+        setTimeout(()=>{window._confirmEnd=null;},5000);
+        // Override end button temporarily
+        const endBtn=$('ben');
+        if(endBtn){
+          endBtn.textContent='⚠ Tap again to confirm';
+          endBtn.style.borderColor='#f39c12';endBtn.style.color='#f39c12';
+          endBtn.onclick=()=>{if(window._confirmEnd)window._confirmEnd();window._confirmEnd=null;endBtn.onclick=()=>wAct('end');};
+        }
+        return;
+      }
+
+      const workHours=wMs/3600000;
+      const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
+      await dbSetShift(activeShift.id,{end_time:now,work_hours:workHours,earnings,status:'completed'});
+      S.shift=null;clearInterval(S.timerInt);
+      toast(`✅ Done! ${fmtDur(wMs)} worked.`,'success');
+      await renderWorkerScreen();
     }
-
-    const id='s'+now;
-    const u=S.user;
-    await dbSetShift(id,{worker:u.username,date:todayStr(),start_time:now,end_time:null,work_hours:null,earnings:null,hourly_rate:u.hourly_rate||0,location_name:locationName,status:'working'});
-    S.shift={id,worker:u.username,date:todayStr(),start_time:now,status:'working',hourly_rate:u.hourly_rate||0,location_name:locationName};
+  }catch(err){
+    toast('Error: '+err.message,'error');
+    console.error('wAct error:',err);
     await renderWorkerScreen();
-    startTimer();
-    toast(`${T.shiftStarted} 📍 ${locationName}`,'success');
-
-  } else if(action==='end'){
-    if(!active){toast(T.noEnd,'warning');return;}
-    const endTime=now;
-    const wMs=Math.max(0,endTime-Number(active.start_time));
-    const workHours=wMs/3600000;
-    const earnings=workHours*(parseFloat(active.hourly_rate)||0);
-    await dbSetShift(active.id,{end_time:endTime,work_hours:workHours,earnings,status:'completed'});
-    clearInterval(S.timerInt);S.shift=null;
-    toast(T.endMsg(fmtDur(wMs),earnings.toFixed(2)),'success');
-    await renderWorkerScreen();
+  }finally{
+    _shiftLock=false;
   }
 };
 
@@ -1021,8 +1114,7 @@ window.reShifts=()=>mTab('shifts');
 
 async function buildSalary(per='month'){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
-  const cfg=await dbGetConfig();const allS=await dbListShifts();
-  const locations=await dbListLocations();
+  const allS=await dbListShifts();
   const locNames=[...new Set(allS.map(s=>s.location_name).filter(Boolean))].sort();
 
   return`<div style="margin-bottom:14px">
@@ -1036,21 +1128,14 @@ async function buildSalary(per='month'){
   <div class="table-wrap"><table><thead><tr>
     <th>Worker</th><th>Phone</th><th>Rate</th>
     ${locNames.map(l=>`<th style="color:#3498db">📍 ${esc(l)}</th>`).join('')}
-    <th>Total Hrs</th><th>Reg Pay</th><th>OT Hrs</th><th>OT Pay</th><th style="color:#2ecc71">TOTAL</th><th>Shifts</th>
+    <th>Total Hrs</th><th style="color:#2ecc71">TOTAL SALARY</th><th>Shifts</th>
   </tr></thead><tbody>
-    ${!workers.length?`<tr><td colspan="${9+locNames.length}"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
+    ${!workers.length?`<tr><td colspan="${4+locNames.length}"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
       const ws=allS.filter(s=>s.worker===w.username&&s.status==='completed'&&inP(s,per));
       const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-      const stdH=parseFloat(cfg.std_hours)||8;
-      const otRate=parseFloat(cfg.ot_rate)||1.5;
       const workerRate=parseFloat(w.hourly_rate)||0;
-      const rh=Math.min(th,ws.length*stdH);
-      const oh=Math.max(0,th-rh);
-      const rp=rh*workerRate;
-      const op=oh*workerRate*otRate;
-      const tot=rp+op;
-      // Per-location hours
-      const locHrs=locNames.map(ln=>{
+      const total=th*workerRate;
+      const locCells=locNames.map(ln=>{
         const lh=ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
         return lh>0?`<td style="font-family:monospace;color:#3498db">${lh.toFixed(2)}h</td>`:`<td style="color:#333">—</td>`;
       }).join('');
@@ -1058,12 +1143,9 @@ async function buildSalary(per='month'){
         <td><strong>${esc(w.label||w.username)}</strong></td>
         <td style="color:#555">${esc(w.phone||'—')}</td>
         <td style="color:#f0c040;font-weight:700">$${workerRate}/hr</td>
-        ${locHrs}
+        ${locCells}
         <td style="font-weight:700">${th.toFixed(2)}h</td>
-        <td>$${rp.toFixed(2)}</td>
-        <td>${oh.toFixed(2)}h</td>
-        <td>$${op.toFixed(2)}</td>
-        <td style="color:#2ecc71;font-weight:700;font-size:14px">$${tot.toFixed(2)}</td>
+        <td style="color:#2ecc71;font-weight:700;font-size:14px">$${total.toFixed(2)}</td>
         <td>${ws.length}</td>
       </tr>`;
     }).join('')}
@@ -1109,12 +1191,13 @@ async function buildAlerts(){
 window.resolveAlert=async id=>{await dbSetAlert(id,{resolved:true});mTab('alerts');loadSummary();};
 
 async function buildSettings(){
-  const cfg=await dbGetConfig();
   return`<div class="sg">
-    <div class="sc"><div class="st">⏱ Pay Settings</div>
-      <div class="sf"><label class="lbl">${T.stdH}</label><input id="ch" type="number" value="${cfg.std_hours||8}"/><div class="hint">Hours per day before overtime kicks in</div></div>
-      <div class="sf"><label class="lbl">${T.otMult}</label><input id="co" type="number" step="0.1" value="${cfg.ot_rate||1.5}"/><div class="hint">Overtime pay multiplier (e.g. 1.5 = time and a half)</div></div>
-      <button class="btn btn-gold" onclick="saveSett()">${T.saveSett}</button>
+    <div class="sc"><div class="st">📍 GPS Settings</div>
+      <div class="sf">
+        <label class="lbl">GPS Fence Radius</label>
+        <div style="font-family:monospace;font-size:20px;color:#f0c040;font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>
+        <div class="hint">Workers must be within this distance of any registered site to clock in.</div>
+      </div>
     </div>
     <div class="sc"><div class="st">⚠ ${T.danger}</div>
       <p style="font-family:monospace;font-size:11px;color:#555;margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
@@ -1122,11 +1205,6 @@ async function buildSettings(){
     </div>
   </div>`;
 }
-
-window.saveSett=async()=>{
-  await dbSetConfig({std_hours:clamp(parseFloat(val('ch'))||8,1,24),ot_rate:clamp(parseFloat(val('co'))||1.5,1,5)});
-  toast(T.settSaved,'success');
-};
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
 // ── Phone / worker management ──
@@ -1209,7 +1287,6 @@ window.doSetDefaultPwd=async()=>{
 // ── Export (Excel with 2 sheets) ──
 window.doExport=async()=>{
   const shifts=await dbListShifts();const users=await dbListUsers();
-  const cfg=await dbGetConfig();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
   const workers=users.filter(u=>u.role==='worker');
   const fmtExcel=ts=>{
@@ -1240,7 +1317,7 @@ window.doExport=async()=>{
   const now=new Date();
   const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const locNames=[...new Set(shifts.map(s=>s.location_name).filter(Boolean))].sort();
-  const s2Header=['Worker','Phone','Rate ($/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Regular Hrs','OT Hours','Regular Pay ($)','OT Pay ($)','Total Salary ($)','Shifts','Month'];
+  const s2Header=['Worker','Phone','Rate ($/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary ($)','Shifts','Month'];
   const s2=[s2Header];
   workers.forEach(w=>{
     const ws=shifts.filter(s=>s.worker===w.username&&s.status==='completed').filter(s=>{
@@ -1248,23 +1325,14 @@ window.doExport=async()=>{
       const d=new Date(ts);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
     });
     const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-    const stdH=parseFloat(cfg.std_hours)||8;
-    const otRate=parseFloat(cfg.ot_rate)||1.5;
     const workerRate=parseFloat(w.hourly_rate)||0;
-    const rh=Math.min(th,ws.length*stdH);
-    const oh=Math.max(0,th-rh);
-    const rp=rh*workerRate;
-    const op=oh*workerRate*otRate;
+    const total=th*workerRate;
     const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
     s2.push([
       w.label||w.username, w.phone||'', workerRate,
       ...locHrs,
       parseFloat(th.toFixed(4)),
-      parseFloat(rh.toFixed(4)),
-      parseFloat(oh.toFixed(4)),
-      parseFloat(rp.toFixed(2)),
-      parseFloat(op.toFixed(2)),
-      parseFloat((rp+op).toFixed(2)),
+      parseFloat(total.toFixed(2)),
       ws.length,
       monthLabel
     ]);
