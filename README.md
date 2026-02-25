@@ -16,7 +16,7 @@ WorkForce Pro is a browser-based workforce tracking solution that allows:
 - GPS-based work location validation
 - Multi-language support
 
-The system is optimized for deployment on serverless platforms and works across desktop and mobile devices.
+The system works across desktop and mobile devices.
 
 ---
 
