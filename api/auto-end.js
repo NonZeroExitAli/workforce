@@ -2,21 +2,19 @@
 //  /api/auto-end.js  —  WorkForce Pro Auto-End Cron
 //
 //  Called every 30 minutes by cron-job.org.
-//  End times are always on the hour or half-hour (e.g. 16:00, 16:30).
-//  Checks all active shifts and ends any that have reached their
-//  location's configured end_time. Works with no browser open.
+//  FIXED: Uses Europe/Rome timezone so end times match what
+//         the manager configured in the app (Italian local time).
 //
-//  cron-job.org schedule:  every 30 minutes
-//  Cron expression:        */30 * * * *
-//
-//  Environment variables required (same as your /api/sql):
+//  Environment variables required:
 //    DATABASE_URL = postgresql://...   (your Neon connection string)
 //    CRON_SECRET  = any-random-string  (set in Vercel env vars)
+//    TIMEZONE     = Europe/Rome        (set in Vercel env vars — optional, defaults to Europe/Rome)
 // ══════════════════════════════════════════════════════════════
 
 import { neon } from '@neondatabase/serverless';
 
 const CRON_SECRET = process.env.CRON_SECRET || null;
+const TIMEZONE    = process.env.TIMEZONE || 'Europe/Rome';
 
 export default async function handler(req, res) {
 
@@ -35,23 +33,38 @@ export default async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
 
   try {
-    const now = Date.now();
-    const nowDate = new Date(now);
-    const nowH = nowDate.getHours();
-    const nowM = nowDate.getMinutes();
+    const nowUTC = Date.now();
 
-    // Since we run every 30 minutes and end times are always :00 or :30,
-    // we round current minutes down to the nearest half-hour for comparison.
-    // This handles the case where the cron fires at e.g. 16:02 instead of exactly 16:00.
-    const roundedM = nowM < 30 ? 0 : 30;
-    const nowTotalMins = nowH * 60 + roundedM;
+    // ── Get current time in Italy (Europe/Rome) ──
+    // Intl.DateTimeFormat gives us the LOCAL hour/minute/date in the correct timezone,
+    // even accounting for DST (CET = UTC+1, CEST = UTC+2 in summer).
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: TIMEZONE,
+      year:   'numeric', month:  '2-digit', day:    '2-digit',
+      hour:   '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    });
 
-    // Today's date string YYYY-MM-DD
-    const today = [
-      nowDate.getFullYear(),
-      String(nowDate.getMonth() + 1).padStart(2, '0'),
-      String(nowDate.getDate()).padStart(2, '0')
-    ].join('-');
+    const parts = Object.fromEntries(
+      fmt.formatToParts(new Date(nowUTC))
+         .filter(p => p.type !== 'literal')
+         .map(p => [p.type, parseInt(p.value, 10)])
+    );
+
+    const localH    = parts.hour;
+    const localM    = parts.minute;
+    const localDay  = parts.day;
+    const localMon  = parts.month;   // 1-12
+    const localYear = parts.year;
+
+    // Round minutes down to nearest :00 or :30
+    const roundedM      = localM < 30 ? 0 : 30;
+    const nowTotalMins  = localH * 60 + roundedM;
+
+    // Today's date string in local time (YYYY-MM-DD)
+    const today = `${localYear}-${String(localMon).padStart(2,'0')}-${String(localDay).padStart(2,'0')}`;
+
+    const timeLabel = `${localH}:${String(localM).padStart(2,'0')} ${TIMEZONE} → rounded ${localH}:${String(roundedM).padStart(2,'0')}`;
 
     // Fetch all active shifts for today
     const activeShifts = await sql(
@@ -62,7 +75,7 @@ export default async function handler(req, res) {
     if (!activeShifts.length) {
       return res.status(200).json({
         ok: true, checked: 0, ended: 0,
-        time: `${nowH}:${String(nowM).padStart(2,'0')} (rounded to ${nowH}:${String(roundedM).padStart(2,'0')})`,
+        time: timeLabel,
         ts: new Date().toISOString()
       });
     }
@@ -90,27 +103,32 @@ export default async function handler(req, res) {
       // Parse end time — must be HH:MM on the hour or half-hour
       const [eh, em] = endTime.split(':').map(Number);
       if (isNaN(eh) || isNaN(em)) continue;
-      if (em !== 0 && em !== 30) continue; // safety check
+      if (em !== 0 && em !== 30) continue;
 
       const endTotalMins = eh * 60 + em;
 
-      // Fire if current rounded time matches or has passed the end time
+      // Fire if current local time >= end time
       if (nowTotalMins < endTotalMins) continue;
 
-      // Don't end a shift that started at or after the end time (misconfiguration guard)
+      // Guard: don't end a shift that started at or after the end time
       const startMs = Number(shift.start_time);
-      const startDate = new Date(startMs);
-      const startTotalMins = startDate.getHours() * 60 + startDate.getMinutes();
+      // Convert start_time to local time for comparison
+      const startParts = Object.fromEntries(
+        fmt.formatToParts(new Date(startMs))
+           .filter(p => p.type !== 'literal')
+           .map(p => [p.type, parseInt(p.value, 10)])
+      );
+      const startTotalMins = startParts.hour * 60 + startParts.minute;
       if (startTotalMins >= endTotalMins) continue;
 
       // Calculate hours and earnings
-      const endMs = now;
-      const wMs = Math.max(0, endMs - startMs);
+      const endMs    = nowUTC;
+      const wMs      = Math.max(0, endMs - startMs);
       const workHours = wMs / 3600000;
-      const earnings = workHours * (parseFloat(shift.hourly_rate) || 0);
+      const earnings  = workHours * (parseFloat(shift.hourly_rate) || 0);
 
-      // End the shift — use WHERE status='working' to prevent double-ending
-      const result = await sql(
+      // End the shift — WHERE status='working' prevents double-ending
+      await sql(
         `UPDATE wf_shifts
          SET status = 'completed', end_time = $2, work_hours = $3, earnings = $4
          WHERE id = $1 AND status = 'working'`,
@@ -119,22 +137,22 @@ export default async function handler(req, res) {
 
       endedCount++;
       endedWorkers.push({
-        worker: shift.worker,
-        location: shift.location_name,
+        worker:      shift.worker,
+        location:    shift.location_name,
         endTime,
         hoursWorked: Math.round(workHours * 100) / 100
       });
 
-      console.log(`[AutoEnd] Ended shift ${shift.id} | worker: ${shift.worker} | location: ${shift.location_name} | endTime: ${endTime} | hours: ${workHours.toFixed(2)}`);
+      console.log(`[AutoEnd] Ended ${shift.id} | ${shift.worker} | endTime: ${endTime} | hours: ${workHours.toFixed(2)}`);
     }
 
     return res.status(200).json({
-      ok: true,
+      ok:      true,
       checked: activeShifts.length,
-      ended: endedCount,
+      ended:   endedCount,
       workers: endedWorkers,
-      time: `${nowH}:${String(nowM).padStart(2,'0')} (rounded to ${nowH}:${String(roundedM).padStart(2,'0')})`,
-      ts: new Date().toISOString()
+      time:    timeLabel,
+      ts:      new Date().toISOString()
     });
 
   } catch (err) {
