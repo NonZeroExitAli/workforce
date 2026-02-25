@@ -502,30 +502,41 @@ setLang(lang);
 window.switchLang=l=>{setLang(l);render();};
 
 // ════════════════════════ SLEEP DETECTION & AUTO-LOGOUT ════════════════════════
-// Logs out after 1 minute of the screen being hidden (phone locked / tab switched).
-// Also pauses the manager polling interval while hidden to save requests.
-let _sleepTimer = null;
-let _lastVisible = Date.now();
+// ── Auto-logout: 1 minute of sleep OR 1 minute of inactivity ──
+// Sleep  = tab hidden (phone locked / tab switched)
+// Inactive = tab open but no tap, click, or keypress for 1 minute
+const IDLE_MS = 60000; // 1 minute
+let _sleepTimer    = null;
+let _inactiveTimer = null;
+
+function _resetInactiveTimer() {
+  clearTimeout(_inactiveTimer);
+  // Only run when user is logged in and tab is visible
+  if (!S.user || document.hidden) return;
+  _inactiveTimer = setTimeout(() => {
+    if (S.user) doLogout();
+  }, IDLE_MS);
+}
+
+// Reset inactivity timer on any user interaction
+['click','touchstart','keydown','scroll','mousemove'].forEach(ev =>
+  document.addEventListener(ev, _resetInactiveTimer, {passive:true})
+);
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Screen just went hidden — start 1-minute logout countdown
+    // Tab hidden — start sleep logout countdown, pause inactivity timer
+    clearTimeout(_inactiveTimer);
     _sleepTimer = setTimeout(() => {
-      if (S.user && document.hidden) {
-        doLogout();
-      }
-    }, 60000); // 1 minute
-    // Pause manager polling to save requests while hidden
-    if (S.mgrInt) { clearInterval(S.mgrInt); S.mgrInt = null; }
+      if (S.user) doLogout();
+    }, IDLE_MS);
   } else {
-    // Screen came back visible — cancel logout timer
+    // Tab visible again — cancel sleep timer, restart inactivity timer
     clearTimeout(_sleepTimer);
     _sleepTimer = null;
-    _lastVisible = Date.now();
-    // Refresh summary when screen comes back visible (manager)
-    if (S.user && S.screen === 'manager') {
-      loadSummary();
-    }
+    _resetInactiveTimer();
+    // Refresh summary when screen comes back (manager)
+    if (S.user && S.screen === 'manager') loadSummary();
   }
 });
 
@@ -755,6 +766,7 @@ window.doPhoneLogin=async()=>{
     }
 
     S.user=workerUser;
+    _resetInactiveTimer(); // start inactivity countdown
     renderWorkerScreen();
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
@@ -774,6 +786,7 @@ window.doLogin=async()=>{
     const user=await dbGetUser(u);
     if(!user||user.password!==p||user.role!=='manager'){showErr(T.badLogin);return;}
     S.user=user;
+    _resetInactiveTimer(); // start inactivity countdown
     renderManagerScreen();
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
@@ -781,6 +794,7 @@ window.doLogin=async()=>{
 };
 
 window.doLogout=()=>{
+  clearTimeout(_inactiveTimer);clearTimeout(_sleepTimer);
   clearInterval(S.timerInt);
   S.user=null;S.shift=null;S.screen='auth';S.gps='idle';S.gpsDist=null;S.nearestLocation=null;
   render();
