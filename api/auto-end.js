@@ -1,33 +1,34 @@
-// ══════════════════════════════════════════════════════════════
-//  /api/auto-end.js  —  WorkForce Pro Auto-End Cron
-//
-//  Called every 30 minutes by cron-job.org.
-//  FIXED: Uses Europe/Rome timezone so end times match what
-//         the manager configured in the app (Italian local time).
-//
-//  Environment variables required:
-//    DATABASE_URL = postgresql://...   (your Neon connection string)
-//    CRON_SECRET  = any-random-string  (set in Vercel env vars)
-//    TIMEZONE     = Europe/Rome        (set in Vercel env vars — optional, defaults to Europe/Rome)
-// ══════════════════════════════════════════════════════════════
+// /api/auto-end.js — WorkForce Pro Auto-End Cron
+// Called every 30 min by cron-job.org
+// Uses CommonJS (require) for maximum Vercel compatibility
 
-import { neon } from '@neondatabase/serverless';
+const { neon } = require('@neondatabase/serverless');
 
 const CRON_SECRET = process.env.CRON_SECRET || null;
 const TIMEZONE    = process.env.TIMEZONE || 'Europe/Rome';
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
+
+  // ── CORS preflight ──
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   // ── Auth check ──
   if (CRON_SECRET) {
     const auth = req.headers['authorization'] || '';
     if (auth !== `Bearer ${CRON_SECRET}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
   }
 
   if (req.method !== 'GET' && req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  // ── DB ──
+  if (!process.env.DATABASE_URL) {
+    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set in Vercel env vars' });
   }
 
   const sql = neon(process.env.DATABASE_URL);
@@ -35,115 +36,113 @@ export default async function handler(req, res) {
   try {
     const nowUTC = Date.now();
 
-    // ── Get current time in Italy (Europe/Rome) ──
-    // Intl.DateTimeFormat gives us the LOCAL hour/minute/date in the correct timezone,
-    // even accounting for DST (CET = UTC+1, CEST = UTC+2 in summer).
+    // ── Local time in Italy (handles CET/CEST automatically) ──
     const fmt = new Intl.DateTimeFormat('en-GB', {
       timeZone: TIMEZONE,
-      year:   'numeric', month:  '2-digit', day:    '2-digit',
-      hour:   '2-digit', minute: '2-digit', second: '2-digit',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
       hour12: false
     });
 
-    const parts = Object.fromEntries(
-      fmt.formatToParts(new Date(nowUTC))
-         .filter(p => p.type !== 'literal')
-         .map(p => [p.type, parseInt(p.value, 10)])
-    );
+    const parts = {};
+    fmt.formatToParts(new Date(nowUTC)).forEach(p => {
+      if (p.type !== 'literal') parts[p.type] = parseInt(p.value, 10);
+    });
 
-    const localH    = parts.hour;
-    const localM    = parts.minute;
-    const localDay  = parts.day;
-    const localMon  = parts.month;   // 1-12
-    const localYear = parts.year;
+    const localH   = parts.hour;
+    const localM   = parts.minute;
+    const localDay = parts.day;
+    const localMon = parts.month;
+    const localYr  = parts.year;
 
-    // Round minutes down to nearest :00 or :30
-    const roundedM      = localM < 30 ? 0 : 30;
-    const nowTotalMins  = localH * 60 + roundedM;
+    // Round down to nearest :00 or :30
+    const roundedM     = localM < 30 ? 0 : 30;
+    const nowTotalMins = localH * 60 + roundedM;
 
-    // Today's date string in local time (YYYY-MM-DD)
-    const today = `${localYear}-${String(localMon).padStart(2,'0')}-${String(localDay).padStart(2,'0')}`;
+    // Date string in Italian local time
+    const today = `${localYr}-${String(localMon).padStart(2,'0')}-${String(localDay).padStart(2,'0')}`;
 
-    const timeLabel = `${localH}:${String(localM).padStart(2,'0')} ${TIMEZONE} → rounded ${localH}:${String(roundedM).padStart(2,'0')}`;
+    const timeLabel = `${localH}:${String(localM).padStart(2,'0')} (${TIMEZONE}) → rounded to ${localH}:${String(roundedM).padStart(2,'0')}`;
 
-    // Fetch all active shifts for today
+    // ── Fetch active shifts ──
     const activeShifts = await sql(
       `SELECT * FROM wf_shifts WHERE status = 'working' AND date = $1`,
       [today]
     );
 
     if (!activeShifts.length) {
-      return res.status(200).json({
-        ok: true, checked: 0, ended: 0,
-        time: timeLabel,
-        ts: new Date().toISOString()
-      });
+      return res.status(200).json({ ok: true, checked: 0, ended: 0, time: timeLabel, ts: new Date().toISOString() });
     }
 
-    // Fetch locations and global config in parallel
+    // ── Fetch locations + config ──
     const [locations, configRows] = await Promise.all([
-      sql('SELECT * FROM wf_locations'),
-      sql('SELECT * FROM wf_config WHERE id = 1 LIMIT 1')
+      sql('SELECT id, name, end_time FROM wf_locations'),
+      sql('SELECT auto_end_time FROM wf_config WHERE id = 1 LIMIT 1')
     ]);
 
     const globalEndTime = configRows[0]?.auto_end_time || null;
-    const locMap = {};
-    locations.forEach(l => { locMap[l.id] = l; });
+    const locById   = {};
+    const locByName = {};
+    locations.forEach(l => {
+      locById[l.id]     = l;
+      locByName[l.name] = l;
+    });
 
     let endedCount = 0;
     const endedWorkers = [];
 
     for (const shift of activeShifts) {
-      // Resolve end_time: location-specific → global config → skip
-      const loc = locMap[shift.location_id] ||
-                  locations.find(l => l.name === shift.location_name);
-      const endTime = loc?.end_time || globalEndTime;
+      // Resolve end_time: per-location → global config → skip
+      const loc     = locById[shift.location_id] || locByName[shift.location_name];
+      const endTime = (loc && loc.end_time) ? loc.end_time : globalEndTime;
       if (!endTime) continue;
 
-      // Parse end time — must be HH:MM on the hour or half-hour
-      const [eh, em] = endTime.split(':').map(Number);
+      // Parse + validate HH:MM
+      const colonIdx = endTime.indexOf(':');
+      if (colonIdx < 0) continue;
+      const eh = parseInt(endTime.slice(0, colonIdx), 10);
+      const em = parseInt(endTime.slice(colonIdx + 1), 10);
       if (isNaN(eh) || isNaN(em)) continue;
       if (em !== 0 && em !== 30) continue;
 
       const endTotalMins = eh * 60 + em;
 
-      // Fire if current local time >= end time
+      // Not time yet
       if (nowTotalMins < endTotalMins) continue;
 
-      // Guard: don't end a shift that started at or after the end time
+      // Guard: shift started after configured end_time → skip
       const startMs = Number(shift.start_time);
-      // Convert start_time to local time for comparison
-      const startParts = Object.fromEntries(
-        fmt.formatToParts(new Date(startMs))
-           .filter(p => p.type !== 'literal')
-           .map(p => [p.type, parseInt(p.value, 10)])
-      );
-      const startTotalMins = startParts.hour * 60 + startParts.minute;
+      if (!startMs || startMs <= 0) continue;
+
+      const startFmt = {};
+      fmt.formatToParts(new Date(startMs)).forEach(p => {
+        if (p.type !== 'literal') startFmt[p.type] = parseInt(p.value, 10);
+      });
+      const startTotalMins = (startFmt.hour || 0) * 60 + (startFmt.minute || 0);
       if (startTotalMins >= endTotalMins) continue;
 
-      // Calculate hours and earnings
-      const endMs    = nowUTC;
-      const wMs      = Math.max(0, endMs - startMs);
+      // Calculate hours + earnings
+      const wMs       = Math.max(0, nowUTC - startMs);
       const workHours = wMs / 3600000;
       const earnings  = workHours * (parseFloat(shift.hourly_rate) || 0);
 
-      // End the shift — WHERE status='working' prevents double-ending
+      // Update shift — double-end safe
       await sql(
         `UPDATE wf_shifts
          SET status = 'completed', end_time = $2, work_hours = $3, earnings = $4
          WHERE id = $1 AND status = 'working'`,
-        [shift.id, endMs, workHours, earnings]
+        [shift.id, nowUTC, workHours, earnings]
       );
 
       endedCount++;
       endedWorkers.push({
         worker:      shift.worker,
-        location:    shift.location_name,
+        location:    shift.location_name || '—',
         endTime,
-        hoursWorked: Math.round(workHours * 100) / 100
+        hours:       Math.round(workHours * 100) / 100
       });
 
-      console.log(`[AutoEnd] Ended ${shift.id} | ${shift.worker} | endTime: ${endTime} | hours: ${workHours.toFixed(2)}`);
+      console.log(`[AutoEnd] ✓ ${shift.worker} @ ${shift.location_name} ended at ${endTime} — ${workHours.toFixed(2)}h`);
     }
 
     return res.status(200).json({
@@ -156,7 +155,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('[AutoEnd] Error:', err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error('[AutoEnd] FATAL:', err.message, err.stack);
+    return res.status(500).json({ ok: false, error: err.message, stack: err.stack });
   }
-}
+};
