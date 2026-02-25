@@ -614,8 +614,7 @@ function renderAuth(){
           <div>
             <label class="lbl">${T.phoneNum}</label>
             <input id="wph" type="tel" placeholder="e.g. 0501234567" autocomplete="tel"
-              oninput="onPhoneInput()" onkeydown="if(event.key==='Enter')doPhoneLogin()"/>
-            <div id="wph-status" style="display:none;margin-top:8px;font-family:monospace;font-size:12px;padding:10px;border-radius:4px;line-height:1.7"></div>
+              onkeydown="if(event.key==='Enter')doPhoneLogin()"/>
           </div>
           <div class="err-box" id="wph-err" style="display:none"></div>
           <button class="btn btn-gold" id="wph-btn" onclick="doPhoneLogin()">${T.signIn} →</button>
@@ -637,27 +636,7 @@ function renderAuth(){
 window.authTab=tab=>{S.authTab=tab;};
 
 // ════════════════════════ PHONE-DIRECT WORKER LOGIN ════════════════════════
-let _phoneInputTimer=null;
-window.onPhoneInput=()=>{
-  // Debounce: wait 500ms after user stops typing before hitting DB
-  clearTimeout(_phoneInputTimer);
-  const st=$('wph-status');if(!st)return;
-  const norm=normPhone(val('wph').trim());
-  if(norm.length<6){st.style.display='none';return;}
-  // Show subtle "checking" state immediately so UI feels responsive
-  st.innerHTML='Checking…';
-  st.style.cssText='display:block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#555;line-height:1.7';
-  _phoneInputTimer=setTimeout(async()=>{
-    const match=await dbGetPhone(norm);
-    if(match){
-      st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
-      st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
-    } else {
-      st.innerHTML='⛔ Phone not authorized. Contact your manager.';
-      st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
-    }
-  }, 500);
-};
+
 
 window.doPhoneLogin=async()=>{
   if(!rateLimit('phone_login',1500))return;
