@@ -501,6 +501,39 @@ function setLang(l){lang=l;T=TR[l];localStorage.setItem('wf_lang',l);document.do
 setLang(lang);
 window.switchLang=l=>{setLang(l);render();};
 
+// ════════════════════════ SLEEP DETECTION & AUTO-LOGOUT ════════════════════════
+// Logs out after 1 minute of the screen being hidden (phone locked / tab switched).
+// Also pauses the manager polling interval while hidden to save requests.
+let _sleepTimer = null;
+let _lastVisible = Date.now();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Screen just went hidden — start 1-minute logout countdown
+    _sleepTimer = setTimeout(() => {
+      if (S.user && document.hidden) {
+        doLogout();
+      }
+    }, 60000); // 1 minute
+    // Pause manager polling to save requests while hidden
+    if (S.mgrInt) { clearInterval(S.mgrInt); S.mgrInt = null; }
+  } else {
+    // Screen came back visible — cancel logout timer
+    clearTimeout(_sleepTimer);
+    _sleepTimer = null;
+    _lastVisible = Date.now();
+    // Resume manager polling if manager is logged in
+    if (S.user && S.screen === 'manager' && !S.mgrInt) {
+      loadSummary();
+      if (S.mgrTab === 'live') mTab('live');
+      S.mgrInt = setInterval(() => {
+        loadSummary();
+        if (S.mgrTab === 'live') mTab('live');
+      }, 30000); // resumed at slower 30s rate
+    }
+  }
+});
+
 // ── App state ──
 const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
 
@@ -514,96 +547,6 @@ function langBar(inline=false){
     <button class="lang-btn ${lang==='it'?'active':''}" onclick="switchLang('it')">🇮🇹</button>
     <button class="lang-btn ${lang==='ar'?'active':''}" onclick="switchLang('ar')">🇸🇦</button>
   </div>`;
-}
-
-// ════════════════════════ GLOBAL AUTO-END BACKGROUND LOOP ════════════════════════
-// Runs every 30s regardless of which screen is active or whether worker is logged in.
-// Checks ALL active (working) shifts and ends any that have passed their location's end_time.
-// This is the authoritative auto-end mechanism — the worker does NOT need to be logged in.
-let _autoEndLoopRunning = false;
-
-async function runAutoEndCheck() {
-  if(_autoEndLoopRunning) return; // prevent overlap
-  _autoEndLoopRunning = true;
-  try {
-    const now = Date.now();
-    const nowDate = new Date(now);
-    const nowH = nowDate.getHours();
-    const nowM = nowDate.getMinutes();
-
-    // Fetch everything needed
-    const [allShifts, allLocs, cfg] = await Promise.all([
-      dbListShifts(), dbListLocations(), dbGetConfig()
-    ]);
-    const globalEndTime = cfg.auto_end_time || null;
-
-    // Only look at shifts that are currently 'working' and started today
-    const today = todayStr();
-    const activeShifts = allShifts.filter(x => x.status === 'working' && x.date === today);
-    if(!activeShifts.length) return;
-
-    for(const shift of activeShifts) {
-      // Resolve end_time: location-specific first, then global config
-      const loc = allLocs.find(l => l.id === shift.location_id) ||
-                  allLocs.find(l => l.name === shift.location_name);
-      const endTime = loc?.end_time || globalEndTime;
-      if(!endTime) continue; // no auto-end configured for this shift
-
-      const [eh, em] = endTime.split(':').map(Number);
-
-      // End if current time has reached or passed the configured end time
-      // (use >= so it fires even if the check runs slightly after the minute boundary)
-      const nowTotalMins = nowH * 60 + nowM;
-      const endTotalMins = eh * 60 + em;
-
-      if(nowTotalMins < endTotalMins) continue; // not yet time
-
-      // Don't end a shift that was started AFTER the end_time today
-      // (e.g. end_time=17:00 but shift started at 17:05 — that's a misconfiguration, skip)
-      const startMs = Number(shift.start_time);
-      const startDate = new Date(startMs);
-      const startTotalMins = startDate.getHours() * 60 + startDate.getMinutes();
-      if(startTotalMins >= endTotalMins) continue;
-
-      // Auto-end this shift
-      const endMs = now;
-      const wMs = Math.max(0, endMs - startMs);
-      const workHours = wMs / 3600000;
-      const earnings = workHours * (parseFloat(shift.hourly_rate) || 0);
-
-      try {
-        await dbSetShift(shift.id, {
-          end_time: endMs,
-          work_hours: workHours,
-          earnings,
-          status: 'completed'
-        });
-        console.log(`[AutoEnd] Ended shift ${shift.id} for ${shift.worker} at ${endTime}`);
-
-        // If this worker is currently on screen, refresh their view
-        if(S.user && S.user.username === shift.worker && S.screen === 'worker') {
-          S.shift = null;
-          S._autoEndFired = true;
-          clearInterval(S.timerInt);
-          toast('⏰ Shift auto-ended at ' + endTime, 'info');
-          await renderWorkerScreen();
-        }
-      } catch(err) {
-        console.error('[AutoEnd] Failed to end shift', shift.id, err);
-      }
-    }
-  } catch(err) {
-    console.error('[AutoEnd] Check failed:', err);
-  } finally {
-    _autoEndLoopRunning = false;
-  }
-}
-
-function startAutoEndLoop() {
-  // Run immediately on boot (catches shifts that ended while app was closed)
-  runAutoEndCheck();
-  // Then every 30 seconds — tight enough to end within 30s of the scheduled time
-  setInterval(runAutoEndCheck, 30000);
 }
 
 // ════════════════════════ TIME SELECT HELPER ════════════════════════
@@ -627,7 +570,6 @@ async function init() {
     await initDB();
     S.screen='auth'; render();
     S.clockInt=setInterval(()=>{const el=$('clock');if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
-    startAutoEndLoop(); // ← global background auto-end, runs regardless of screen/login
   } catch(e) {
     $('root').innerHTML=`<div class="center"><div style="max-width:520px;text-align:center;padding:40px">
       <div style="font-size:36px;margin-bottom:16px">⚠</div>
@@ -692,7 +634,7 @@ window.authTab=tab=>{S.authTab=tab;};
 window.onPhoneInput=async()=>{
   const norm=normPhone(val('wph').trim());
   const st=$('wph-status'); if(!st)return;
-  if(norm.length<7){st.style.display='none';return;}
+  if(norm.length<6){st.style.display='none';return;}
   const match=await dbGetPhone(norm);
   if(match){
     st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
@@ -934,8 +876,7 @@ function startTimer(){
   if(!S.shift) return;
   const startMs=Number(S.shift.start_time);
   if(!startMs) return;
-  // Timer only handles live countdown display.
-  // Auto-end is handled by the global runAutoEndCheck() loop (runs every 30s, always active).
+  // Timer only handles live countdown display. Auto-end is handled by cron-job.org server-side.
   S.timerInt=setInterval(()=>{
     const now=Date.now();
     const wMs=Math.max(0,now-startMs);
@@ -1104,7 +1045,7 @@ async function renderManagerScreen(){
     <div id="mpanel"></div>
   </div>`;
   loadSummary();mTab('live');
-  S.mgrInt=setInterval(()=>{loadSummary();if(S.mgrTab==='live')mTab('live');},12000);
+  S.mgrInt=setInterval(()=>{if(!document.hidden){loadSummary();if(S.mgrTab==='live')mTab('live');}},30000);
 }
 
 window.mTab=async tab=>{
@@ -1123,7 +1064,13 @@ window.mTab=async tab=>{
   if(tab==='settings')  panel.innerHTML=await buildSettings();
 };
 
-async function loadSummary(){
+let _summaryCache=null, _summaryCacheTs=0;
+async function loadSummary(force=false){
+  const now=Date.now();
+  // Use cached result if less than 30s old and not forced
+  if(!force && _summaryCache && now-_summaryCacheTs < 30000){
+    const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
+  }
   const users=(await dbListUsers()).filter(u=>u.role==='worker');
   const shifts=await dbListShifts();
   const ts=shifts.filter(s=>s.date===todayStr());
@@ -1131,7 +1078,7 @@ async function loadSummary(){
   const alerts=(await dbListAlerts()).filter(a=>!a.resolved).length;
   const sal=shifts.filter(s=>inP(s,'month')).reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
   const el=$('scards');if(!el)return;
-  el.innerHTML=[
+  _summaryCache=[
     [T.workers,users.length,'#f0c040'],
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
     [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
@@ -1139,6 +1086,8 @@ async function loadSummary(){
     [T.salDue,'$'+sal,'#f0c040'],
     [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
+  _summaryCacheTs=now;
+  el.innerHTML=_summaryCache;
 }
 
 function inP(s,per){
@@ -1191,8 +1140,9 @@ window.mgrEndShift=async(shiftId, workerName)=>{
     const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
     await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
     toast(`✅ Shift ended for ${workerName} — ${fmtDur(wMs)} worked`,'success');
+    _summaryCacheTs=0; // invalidate cache
     await mTab('live');
-    loadSummary();
+    loadSummary(true);
   }catch(e){toast('Error: '+e.message,'error');}
 };
 
