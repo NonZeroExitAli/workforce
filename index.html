@@ -692,7 +692,7 @@ window.authTab=tab=>{S.authTab=tab;};
 window.onPhoneInput=async()=>{
   const norm=normPhone(val('wph').trim());
   const st=$('wph-status'); if(!st)return;
-  if(norm.length<6){st.style.display='none';return;}
+  if(norm.length<7){st.style.display='none';return;}
   const match=await dbGetPhone(norm);
   if(match){
     st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
