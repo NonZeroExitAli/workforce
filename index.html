@@ -522,20 +522,15 @@ document.addEventListener('visibilitychange', () => {
     clearTimeout(_sleepTimer);
     _sleepTimer = null;
     _lastVisible = Date.now();
-    // Resume manager polling if manager is logged in
-    if (S.user && S.screen === 'manager' && !S.mgrInt) {
+    // Refresh summary when screen comes back visible (manager)
+    if (S.user && S.screen === 'manager') {
       loadSummary();
-      if (S.mgrTab === 'live') mTab('live');
-      S.mgrInt = setInterval(() => {
-        loadSummary();
-        if (S.mgrTab === 'live') mTab('live');
-      }, 30000); // resumed at slower 30s rate
     }
   }
 });
 
 // ── App state ──
-const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
+const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
 
 function statusBadge(st){
   const c={working:'bg',completed:'bb',ended:'bb',absent:'bgr'};
@@ -631,18 +626,26 @@ function renderAuth(){
 window.authTab=tab=>{S.authTab=tab;};
 
 // ════════════════════════ PHONE-DIRECT WORKER LOGIN ════════════════════════
-window.onPhoneInput=async()=>{
+let _phoneInputTimer=null;
+window.onPhoneInput=()=>{
+  // Debounce: wait 500ms after user stops typing before hitting DB
+  clearTimeout(_phoneInputTimer);
+  const st=$('wph-status');if(!st)return;
   const norm=normPhone(val('wph').trim());
-  const st=$('wph-status'); if(!st)return;
   if(norm.length<6){st.style.display='none';return;}
-  const match=await dbGetPhone(norm);
-  if(match){
-    st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
-    st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
-  } else {
-    st.innerHTML='⛔ Phone not authorized. Contact your manager.';
-    st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
-  }
+  // Show subtle "checking" state immediately so UI feels responsive
+  st.innerHTML='Checking…';
+  st.style.cssText='display:block;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#555;line-height:1.7';
+  _phoneInputTimer=setTimeout(async()=>{
+    const match=await dbGetPhone(norm);
+    if(match){
+      st.innerHTML=`✓ ${esc(match.label||'Worker')} — authorized`;
+      st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#2ecc71;line-height:1.7';
+    } else {
+      st.innerHTML='⛔ Phone not authorized. Contact your manager.';
+      st.style.cssText='display:block;background:#0a0a0a;border:1px solid rgba(231,76,60,.3);border-radius:4px;padding:10px;margin-top:8px;font-family:monospace;font-size:12px;color:#e74c3c;line-height:1.7';
+    }
+  }, 500);
 };
 
 window.doPhoneLogin=async()=>{
@@ -778,7 +781,7 @@ window.doLogin=async()=>{
 };
 
 window.doLogout=()=>{
-  clearInterval(S.timerInt);clearInterval(S.mgrInt);
+  clearInterval(S.timerInt);
   S.user=null;S.shift=null;S.screen='auth';S.gps='idle';S.gpsDist=null;S.nearestLocation=null;
   render();
 };
@@ -1045,7 +1048,7 @@ async function renderManagerScreen(){
     <div id="mpanel"></div>
   </div>`;
   loadSummary();mTab('live');
-  S.mgrInt=setInterval(()=>{if(!document.hidden){loadSummary();if(S.mgrTab==='live')mTab('live');}},30000);
+  // No auto-refresh interval — manager uses the ↺ Refresh button on the live tab
 }
 
 window.mTab=async tab=>{
@@ -1104,7 +1107,12 @@ async function buildLive(){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   if(!workers.length)return`<div class="empty">${T.noWorkers}</div>`;
   const shifts=await dbListShifts();const ts=shifts.filter(s=>s.date===todayStr());const now=Date.now();
-  return`<div class="worker-grid">${workers.map(w=>{
+  const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+  return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">LAST UPDATED ${updatedAt}</span>
+    <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="mTab('live')">↺ REFRESH</button>
+  </div>
+  <div class="worker-grid">${workers.map(w=>{
     const active=ts.find(s=>s.worker===w.username&&s.status!=='completed');
     const done=ts.find(s=>s.worker===w.username&&s.status==='completed');
     const st=active?'working':done?'ended':'absent';
@@ -1125,7 +1133,7 @@ async function buildLive(){
       </div>
       ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">■ END SHIFT</button>`:''}
     </div>`;
-  }).join('')}</div>`;
+  }).join('')}</div></div>`;
 }
 
 window.mgrEndShift=async(shiftId, workerName)=>{
