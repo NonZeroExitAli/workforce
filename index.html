@@ -648,7 +648,7 @@ window.doPhoneLogin=async()=>{
   try {
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
-    if(norm.length<6){showErr(T.badPhoneNum);return;}
+    if(!norm){showErr(T.badPhoneNum);return;}
     const match=await dbGetPhone(norm);
     if(!match){showErr(T.phoneNoAuth);return;}
 
@@ -922,6 +922,17 @@ window.wAct=async action=>{
         const minsUntil=(7*60)-(nowD.getHours()*60+nowD.getMinutes());
         toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
         await renderWorkerScreen();return;
+      }
+
+      // Guard: cannot start after auto-end time
+      if(S.autoEndTime){
+        const [eh,em]=S.autoEndTime.split(':').map(Number);
+        const nowMins=nowD.getHours()*60+nowD.getMinutes();
+        const endMins=eh*60+em;
+        if(nowMins>=endMins){
+          toast(`⛔ Shifts for today have ended at ${S.autoEndTime}. See you tomorrow!`,'error');
+          await renderWorkerScreen();return;
+        }
       }
 
       // Use location already verified at login — no re-check at start
@@ -1633,7 +1644,7 @@ async function ensureWorkerAccount(ph, norm, lb, rt) {
 window.addPhone=async()=>{
   const ph=val('np').trim(),lb=val('nl').trim(),rt=parseFloat(val('nr'));
   if(!ph){toast(T.badPhone,'error');return;}
-  const norm=normPhone(ph);if(norm.length<6){toast(T.badPhoneNum,'error');return;}
+  const norm=normPhone(ph);if(!norm){toast(T.badPhoneNum,'error');return;}
   if(!rt||rt<=0){toast(T.badRate,'error');return;}
   const ex=await dbGetPhone(norm);if(ex){toast(T.dupPhone,'warning');return;}
   await dbSetPhone(norm,{phone:ph,label:lb,rate:rt,used:false,added_at:Date.now()});
