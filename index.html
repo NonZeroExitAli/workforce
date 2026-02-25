@@ -1079,7 +1079,7 @@ async function loadSummary(force=false){
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
     [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
     ['📍 Sites',locations.length,'#3498db'],
-    [T.salDue,'$'+sal,'#f0c040'],
+    [T.salDue,'€'+sal,'#f0c040'],
     [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
   _summaryCacheTs=now;
