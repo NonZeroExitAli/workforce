@@ -606,6 +606,21 @@ function startAutoEndLoop() {
   setInterval(runAutoEndCheck, 30000);
 }
 
+// ════════════════════════ TIME SELECT HELPER ════════════════════════
+// Generates hour/half-hour options (07:00 – 23:30) for end time selects
+function buildTimeOptions(selected=''){
+  const opts=['<option value="">— No auto-end (manual) —</option>'];
+  for(let h=7;h<=23;h++){
+    for(const m of [0,30]){
+      if(h===23&&m===30)continue; // skip 23:30
+      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+      const label=(h>12?h-12:h)+':'+(m===0?'00':'30')+' '+(h>=12?'PM':'AM');
+      opts.push(`<option value="${val}"${selected===val?' selected':''}>${label} (${val})</option>`);
+    }
+  }
+  return opts.join('');
+}
+
 // ════════════════════════ BOOT ════════════════════════
 async function init() {
   try {
@@ -966,7 +981,7 @@ window.wAct=async action=>{
       if(completedToday){toast('⚠ You already completed a shift today.','warning');await renderWorkerScreen();return;}
       // Guard: cannot start before 07:00
       const nowD=new Date(now);
-      if(nowD.getHours()<6){
+      if(nowD.getHours()<7){
         const minsUntil=(7*60)-(nowD.getHours()*60+nowD.getMinutes());
         toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
         await renderWorkerScreen();return;
@@ -1159,9 +1174,27 @@ async function buildLive(){
         <div><div class="wsl">${T.startedAt}</div><div class="wsv">${active?fmtTime(active.start_time):'—'}</div></div>
         <div><div class="wsl">Site</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
       </div>
+      ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">■ END SHIFT</button>`:''}
     </div>`;
   }).join('')}</div>`;
 }
+
+window.mgrEndShift=async(shiftId, workerName)=>{
+  if(!confirm(`End shift for ${workerName} now?`))return;
+  try{
+    const allShifts=await dbListShifts();
+    const shift=allShifts.find(s=>s.id===shiftId&&s.status==='working');
+    if(!shift){toast('⚠ Shift already ended or not found','warning');await mTab('live');return;}
+    const now=Date.now();
+    const wMs=Math.max(0,now-Number(shift.start_time));
+    const workHours=wMs/3600000;
+    const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
+    await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
+    toast(`✅ Shift ended for ${workerName} — ${fmtDur(wMs)} worked`,'success');
+    await mTab('live');
+    loadSummary();
+  }catch(e){toast('Error: '+e.message,'error');}
+};
 
 async function buildAddWorker(){
   const phones=await dbListPhones();const users=await dbListUsers();
@@ -1235,7 +1268,7 @@ async function buildLocations(){
       <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">⏰ Auto-End Time</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="time" id="loc-et-${esc(l.id)}" value="${esc(l.end_time||'')}" style="max-width:160px;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:3px;color:#f0f0f0;padding:8px 12px;font-size:13px"/>
+          <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}  </select>
           <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 Save</button>
           <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ Clear</button>
           <span style="font-family:monospace;font-size:10px;color:#555">Leave blank for manual end</span>
@@ -1248,7 +1281,7 @@ async function buildLocations(){
       <div class="st">➕ Add New Site Location</div>
       <div class="info-box" style="margin-bottom:16px">Workers must be within <strong>${GPS_RADIUS}m</strong> of any listed location to start a shift. The nearest location is automatically recorded.</div>
       <div class="sf"><label class="lbl">📛 Site Name</label><input id="loc-name" placeholder="e.g. Main Warehouse, Site A, Downtown Office"/></div>
-      <div class="sf"><label class="lbl">⏰ Auto-End Time <span style="color:#555">(optional)</span></label><input type="time" id="loc-end" style="max-width:180px"/><div class="hint">If set, all workers at this site will have their shift ended automatically at this time. Leave blank for manual end.</div></div>
+      <div class="sf"><label class="lbl">⏰ Auto-End Time <span style="color:#555">(optional)</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">Workers at this site will have their shift ended automatically. Hour or half-hour only.</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">📍 Coordinates</label>
         <div style="margin-bottom:10px">
@@ -1325,6 +1358,7 @@ window.toggleLocEdit=id=>{
 window.saveLocEndTime=async id=>{
   const input=document.getElementById('loc-et-'+id);
   const et=input?.value?.trim()||null;
+  if(et&&!/^([0-9]{2}):(00|30)$/.test(et)){toast('⛔ End time must be on the hour or half hour (e.g. 17:00 or 17:30)','error');return;}
   try{
     await sql('UPDATE wf_locations SET end_time=$2 WHERE id=$1',[id,et||null]);
     toast(et?`⏰ Auto-end set to ${et}`:'⏰ Auto-end cleared','success');
@@ -1593,8 +1627,8 @@ async function buildSettings(){
       </div>
       <div class="sf">
         <label class="lbl">Daily Auto-End Time <span style="color:#555">(optional)</span></label>
-        <input type="time" id="cfg-autoend" value="${esc(autoEnd)}" style="max-width:180px"/>
-        <div class="hint">e.g. 17:00 to auto-end all shifts at 5 PM daily</div>
+        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>
+        <div class="hint">Global fallback — applies to locations with no specific end time set. Hour or half-hour only.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()">💾 Save</button>
