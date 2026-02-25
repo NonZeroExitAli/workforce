@@ -478,7 +478,7 @@ const geoPos = (timeout=12000) => new Promise((res,rej) =>
 const _rl = {};
 function rateLimit(key,ms=2000) {
   const now=Date.now();
-  if (_rl[key]&&now-_rl[key]<ms) return false;
+  if (_rl[key]!==undefined&&now-_rl[key]<ms) return false;
   _rl[key]=now; return true;
 }
 
@@ -938,7 +938,7 @@ window.wAct=async action=>{
       if(activeShift.worker!==username){toast('⛔ Shift mismatch error.','error');return;}
       // Guard: shift must have a valid start_time
       const startMs=Number(activeShift.start_time);
-      if(!startMs||startMs>now){toast('⛔ Invalid shift start time.','error');return;}
+      if(!startMs||startMs<=0||startMs>now){toast('⛔ Invalid shift start time.','error');return;}
 
       const wMs=Math.max(0,now-startMs);
       // Guard: minimum 1 minute to prevent accidental instant end
@@ -1151,14 +1151,28 @@ async function buildAddWorker(){
 async function buildLocations(){
   const locs=await dbListLocations();
   const locList=!locs.length?`<div class="empty">No locations added yet. Add your first site above.</div>`:locs.map(l=>`
-    <div class="phone-row">
-      <div style="flex:1">
-        <div style="font-weight:700;font-family:Georgia,serif;font-size:16px;color:#f0f0f0;margin-bottom:4px">📍 ${esc(l.name)}</div>
-        <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
-        ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">⏰ Auto-ends at <strong>${esc(l.end_time)}</strong></div>`:'<div style="font-family:monospace;font-size:10px;color:#444;margin-bottom:4px">⏰ No auto-end (manual)</div>'}
-        ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">🗺 View on Map</a>`:''}
+    <div class="phone-row" style="flex-direction:column;gap:0">
+      <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
+        <div style="flex:1">
+          <div style="font-weight:700;font-family:Georgia,serif;font-size:16px;color:#f0f0f0;margin-bottom:4px">📍 ${esc(l.name)}</div>
+          <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
+          ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">⏰ Auto-ends at <strong>${esc(l.end_time)}</strong></div>`:'<div style="font-family:monospace;font-size:10px;color:#444;margin-bottom:4px">⏰ No auto-end (manual)</div>'}
+          ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">🗺 View on Map</a>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f39c12;padding:6px 10px;font-size:12px" onclick="toggleLocEdit('${esc(l.id)}')" title="Edit end time">✏</button>
+          <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="padding:6px 10px;font-size:14px">✕</button>
+        </div>
       </div>
-      <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
+      <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">⏰ Auto-End Time</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="time" id="loc-et-${esc(l.id)}" value="${esc(l.end_time||'')}" style="max-width:160px;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:3px;color:#f0f0f0;padding:8px 12px;font-size:13px"/>
+          <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 Save</button>
+          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ Clear</button>
+          <span style="font-family:monospace;font-size:10px;color:#555">Leave blank for manual end</span>
+        </div>
+      </div>
     </div>`).join('');
 
   return`<div class="sg">
@@ -1233,6 +1247,28 @@ window.delLocation=async id=>{
   await dbDelLocation(id);
   toast('Location removed','warning');
   mTab('locations');loadSummary();
+};
+window.toggleLocEdit=id=>{
+  const panel=document.getElementById('loc-edit-'+id);
+  if(!panel)return;
+  const open=panel.style.display==='none';
+  panel.style.display=open?'block':'none';
+};
+window.saveLocEndTime=async id=>{
+  const input=document.getElementById('loc-et-'+id);
+  const et=input?.value?.trim()||null;
+  try{
+    await sql('UPDATE wf_locations SET end_time=$2 WHERE id=$1',[id,et||null]);
+    toast(et?`⏰ Auto-end set to ${et}`:'⏰ Auto-end cleared','success');
+    mTab('locations');
+  }catch(e){toast('Failed to save: '+e.message,'error');}
+};
+window.clearLocEndTime=async id=>{
+  try{
+    await sql('UPDATE wf_locations SET end_time=NULL WHERE id=$1',[id]);
+    toast('⏰ Auto-end cleared','success');
+    mTab('locations');
+  }catch(e){toast('Failed: '+e.message,'error');}
 };
 
 // ════════════════════════ ASSIGN TAB ════════════════════════
