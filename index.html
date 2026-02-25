@@ -966,7 +966,7 @@ window.wAct=async action=>{
       if(completedToday){toast('⚠ You already completed a shift today.','warning');await renderWorkerScreen();return;}
       // Guard: cannot start before 07:00
       const nowD=new Date(now);
-      if(nowD.getHours()<7){
+      if(nowD.getHours()<6){
         const minsUntil=(7*60)-(nowD.getHours()*60+nowD.getMinutes());
         toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
         await renderWorkerScreen();return;
