@@ -29,7 +29,6 @@
 
 *{box-sizing:border-box;margin:0;padding:0}
 
-/* ── Pipe background ── */
 body{
   background:var(--bg);
   color:var(--text);
@@ -51,7 +50,6 @@ body::before{
   pointer-events:none;z-index:0;
 }
 
-/* Pipe joint decorations */
 body::after{
   content:'';
   position:fixed;
@@ -61,13 +59,11 @@ body::after{
   z-index:999;
 }
 
-#grid{display:none} /* replaced by body::before */
+#grid{display:none}
 #root{position:relative;z-index:1;min-height:100vh}
 
-/* ── Loading ── */
 .center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 
-/* ── Brand ── */
 .brand-title{
   font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:clamp(52px,14vw,96px);
@@ -89,15 +85,9 @@ body::after{
   text-align:center;
 }
 
-/* Pipe icon in brand */
-.brand-icon{
-  width:64px;height:64px;
-  margin:0 auto 16px;
-  position:relative;
-}
+.brand-icon{width:64px;height:64px;margin:0 auto 16px;position:relative;}
 .brand-icon svg{width:100%;height:100%}
 
-/* ── Auth ── */
 .auth-wrap{width:100%;max-width:480px}
 .lang-bar{display:flex;gap:6px;margin-bottom:20px;justify-content:center;flex-wrap:wrap}
 .lang-btn{
@@ -169,7 +159,6 @@ input,select{
 input:focus,select:focus{border-color:var(--copper);box-shadow:0 0 0 2px rgba(184,115,51,.15)}
 input:disabled{background:var(--bg2);border-color:var(--border);color:var(--muted);cursor:not-allowed}
 
-/* ── Buttons ── */
 .btn{
   width:100%;padding:13px;border:none;
   border-radius:3px;
@@ -193,12 +182,10 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .btn-dark:hover{border-color:var(--copper);color:var(--copper)}
 .btn-sm{padding:7px 14px;border:none;border-radius:3px;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:12px;letter-spacing:1px;cursor:pointer;font-weight:700;text-transform:uppercase}
 
-/* ── Alerts/info boxes ── */
 .err-box{color:#ff6b6b;font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.25);border-radius:3px;line-height:1.6;border-left:3px solid var(--red)}
 .info-box{color:var(--steel2);font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(127,168,200,.07);border:1px solid rgba(127,168,200,.2);border-radius:3px;line-height:1.7}
 .warn-box{color:#ffb347;font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:3px;line-height:1.7;border-left:3px solid var(--orange)}
 
-/* ── Topbar ── */
 .topbar{
   display:flex;align-items:center;justify-content:space-between;
   padding:0 24px;min-height:58px;
@@ -222,11 +209,7 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
   display:flex;align-items:center;gap:10px;
 }
 .top-brand span{color:var(--copper2)}
-.top-brand .pipe-dot{
-  width:8px;height:8px;border-radius:50%;
-  background:var(--copper);
-  box-shadow:0 0 8px var(--copper);
-}
+.top-brand .pipe-dot{width:8px;height:8px;border-radius:50%;background:var(--copper);box-shadow:0 0 8px var(--copper);}
 
 .top-right{display:flex;align-items:center;gap:8px;font-family:'Consolas','Courier New',monospace;font-size:11px;color:var(--muted);flex-wrap:wrap}
 .role-pill{padding:3px 10px;border-radius:2px;font-size:9px;font-weight:700;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase}
@@ -246,7 +229,6 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .logout-btn:hover{border-color:var(--red);color:var(--red)}
 .clock{font-family:'Consolas','Courier New',monospace;font-size:14px;color:var(--copper2);letter-spacing:2px}
 
-/* ── Body layout ── */
 .body{padding:24px;max-width:1200px;margin:0 auto}
 .sec-title{
   font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
@@ -258,7 +240,6 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 
 .top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
 
-/* ── Info cards ── */
 .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px}
 .info-card{
   background:var(--bg1);
@@ -273,7 +254,6 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .info-card .il{font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
 .info-card .iv{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:1px}
 
-/* ── Nav tabs ── */
 .nav-tabs{
   display:flex;
   border-bottom:2px solid var(--border2);
@@ -294,7 +274,6 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .nav-tab:hover{color:var(--steel)}
 .nav-tab.active{border-bottom-color:var(--copper);color:var(--copper)}
 
-/* ── Worker shift card ── */
 .stat-card{
   background:var(--bg1);
   border:1px solid var(--border2);
@@ -321,7 +300,6 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
 .status-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .status-lbl{font-family:'Consolas','Courier New',monospace;font-size:11px;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
 
-/* ── GIANT timer ── */
 .timer-big{
   font-family:'Consolas','Courier New',monospace;
   font-size:clamp(42px,10vw,72px);
@@ -329,13 +307,13 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
   color:var(--copper2);
   letter-spacing:4px;margin:12px 0;
   text-shadow:0 0 30px rgba(184,115,51,.3);
+  position:relative;
 }
 .stat-card.working .timer-big{
   color:var(--green);
   text-shadow:0 0 30px rgba(0,208,132,.25);
 }
 
-/* ── Action buttons ── */
 .act-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px}
 .act-btn{
   display:flex;flex-direction:column;align-items:center;gap:8px;
@@ -352,7 +330,6 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
 .act-btn:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.15)}
 .act-btn .ico{font-size:32px;line-height:1}
 
-/* ── Tables ── */
 .table-wrap{
   background:var(--bg1);
   border:1px solid var(--border2);
@@ -379,7 +356,6 @@ body.rtl th{text-align:right}
 td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text)}
 tr:hover td{background:rgba(184,115,51,.03)}
 
-/* ── Badges ── */
 .badge{padding:3px 8px;border-radius:2px;font-size:9px;font-family:'Consolas','Courier New',monospace;font-weight:700;display:inline-block;letter-spacing:1px}
 .bg{background:rgba(0,208,132,.1);color:var(--green);border:1px solid rgba(0,208,132,.25)}
 .br{background:rgba(255,68,68,.1);color:var(--red);border:1px solid rgba(255,68,68,.25)}
@@ -387,7 +363,6 @@ tr:hover td{background:rgba(184,115,51,.03)}
 .bb{background:rgba(127,168,200,.1);color:var(--steel);border:1px solid rgba(127,168,200,.25)}
 .bgr{background:rgba(58,96,128,.15);color:var(--muted);border:1px solid var(--border)}
 
-/* ── Worker cards (manager live tab) ── */
 .worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-bottom:20px}
 .wcard{
   background:var(--bg1);
@@ -408,7 +383,6 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .wsl{font-family:'Consolas','Courier New',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
 .wsv{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:16px;font-weight:800;letter-spacing:1px}
 
-/* ── Settings ── */
 .sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 .sc{background:var(--bg1);border:1px solid var(--border2);border-radius:4px;padding:22px;position:relative;overflow:hidden}
 .sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--copper),transparent)}
@@ -423,7 +397,6 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .sf{margin-bottom:14px}
 .empty{text-align:center;padding:40px;color:var(--muted);font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:2}
 
-/* ── Phone/worker rows ── */
 .phone-row{display:flex;align-items:flex-start;gap:10px;padding:14px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:8px;transition:border-color .2s}
 .phone-row:hover{border-color:var(--copper)}
 .phone-meta{display:flex;align-items:center;gap:7px;margin:6px 0;flex-wrap:wrap}
@@ -441,7 +414,6 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .gh{background:rgba(0,208,132,.05);border:1px solid rgba(0,208,132,.2);border-radius:4px;padding:14px}
 .hint{font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--muted);margin-top:5px}
 
-/* ── GPS bar ── */
 .gps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:1px}
 .gps-bar.ok{background:rgba(0,208,132,.07);border:1px solid rgba(0,208,132,.2);color:var(--green)}
 .gps-bar.far{background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.2);color:var(--red)}
@@ -449,12 +421,10 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .gps-bar.idle,.gps-bar.noset{background:rgba(58,96,128,.1);border:1px solid var(--border2);color:var(--muted)}
 .gps-bar.error{background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.2);color:var(--red)}
 
-/* ── Alerts ── */
 .alert-row{display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:8px;border-left:3px solid var(--orange)}
 .alert-row.resolved{border-left-color:var(--green);opacity:.5}
 body.rtl .alert-row{border-left:none;border-right:3px solid var(--orange)}
 
-/* ── Toast ── */
 .toast{
   position:fixed;bottom:24px;right:24px;z-index:9999;
   background:var(--bg1);
@@ -474,7 +444,6 @@ body.rtl .toast{right:auto;left:24px}
 .toast.warning{border-left-color:var(--orange)}
 .toast.info{border-left-color:var(--steel)}
 
-/* ── Modal ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 .modal-bg.show{display:flex}
 .modal-title{
@@ -485,11 +454,9 @@ body.rtl .toast{right:auto;left:24px}
 }
 .modal-btns{display:flex;gap:10px;margin-top:8px}
 
-/* ── Spinner ── */
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--copper);border-radius:50%;animation:spin .7s linear infinite}
 
-/* ── Assign board ── */
 .assign-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:14px;align-items:flex-start}
 .assign-col{flex:0 0 220px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;min-height:160px;display:flex;flex-direction:column;transition:border-color .2s}
 .assign-col.unassigned{border-color:var(--border);flex:0 0 200px}
@@ -498,7 +465,7 @@ body.rtl .toast{right:auto;left:24px}
 .assign-col.unassigned .assign-col-title{color:var(--muted)}
 .assign-col-body{padding:10px;flex:1;min-height:80px;transition:background .15s}
 .assign-col-body.drag-over{background:rgba(184,115,51,.07);border-radius:0 0 6px 6px}
-.assign-worker-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:6px;cursor:grab;user-select:none;transition:border-color .15s,opacity .15s}
+.assign-worker-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:6px;cursor:grab;user-select:none;transition:border-color .15px,opacity .15s}
 .assign-worker-chip:hover{border-color:var(--copper)}
 .assign-worker-chip.dragging{opacity:.3;cursor:grabbing}
 .assign-worker-chip .chip-name{flex:1;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-weight:800;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px}
@@ -512,7 +479,6 @@ body.rtl .toast{right:auto;left:24px}
 .assign-empty-drop{border:2px dashed var(--border);border-radius:4px;padding:20px 10px;text-align:center;font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--border2);pointer-events:none}
 .assign-info-bar{background:rgba(127,168,200,.06);border:1px solid rgba(127,168,200,.15);border-radius:4px;padding:11px 16px;font-family:'Consolas','Courier New',monospace;font-size:11px;color:var(--steel);margin-bottom:16px;line-height:1.8}
 
-/* ── Pipe decorations on headings ── */
 .pipe-heading{display:flex;align-items:center;gap:12px;margin-bottom:18px}
 .pipe-heading::before,.pipe-heading::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--copper),transparent)}
 .pipe-heading::before{background:linear-gradient(90deg,transparent,var(--copper))}
@@ -526,7 +492,6 @@ body.rtl .toast{right:auto;left:24px}
 </style>
 
 <style>
-/* ── Pipe drip accent ── */
 @keyframes drip{
   0%{transform:translateY(0) scaleY(0);opacity:0}
   20%{opacity:1;transform:translateY(0) scaleY(1)}
@@ -542,18 +507,12 @@ body.rtl .toast{right:auto;left:24px}
   animation:drip 3s ease-in infinite;
   pointer-events:none;
 }
-/* ── Manager section heading with pipe line ── */
 .sec-title::after{
   content:'';display:block;
   height:3px;width:60px;
   background:linear-gradient(90deg,var(--copper),var(--copper2),transparent);
   margin-top:8px;border-radius:2px;
 }
-/* ── Scanline effect on timer ── */
-.timer-big{
-  position:relative;
-}
-/* ── Hex pattern on auth background ── */
 .center::before{
   content:'';
   position:fixed;inset:0;
@@ -563,26 +522,21 @@ body.rtl .toast{right:auto;left:24px}
     radial-gradient(circle at 50% 50%,rgba(184,115,51,.03) 0%,transparent 60%);
   pointer-events:none;z-index:0;
 }
-/* ── Glowing copper ring on active shift ── */
 .stat-card.working{
   box-shadow:0 0 0 1px rgba(0,208,132,.15), 0 8px 32px rgba(0,208,132,.08);
 }
-/* ── Input focus glow ── */
 input:focus{
   box-shadow:0 0 0 3px rgba(184,115,51,.12),0 0 12px rgba(184,115,51,.08);
 }
-/* ── Topbar pipe line bottom ── */
 .topbar{
   border-bottom:1px solid var(--border2);
   box-shadow:0 2px 20px rgba(0,0,0,.4);
 }
-/* ── Card hover lift ── */
 .sc:hover{
   border-color:rgba(184,115,51,.3);
   box-shadow:0 4px 24px rgba(0,0,0,.3);
   transition:all .3s;
 }
-/* ── Worker screen body background ── */
 .body{
   background:radial-gradient(ellipse at top,rgba(184,115,51,.03) 0%,transparent 50%);
 }
@@ -629,33 +583,20 @@ input:focus{
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════
-//  DB credentials are stored securely as Netlify environment
-//  variables and accessed via /.netlify/functions/sql
-//  Nothing sensitive is stored here.
-// ═══════════════════════════════════════════════════════════
-
-const GPS_RADIUS       = 500;  // metres
+const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
 const DB_READY = true;
 
-// ── Neon Serverless API (CORS-safe, works in any browser) ──
-// Uses the official Neon REST API:  POST /v2/projects/{project}/branches/{branch}/query
-// Docs: https://api-docs.neon.tech/reference/executesqlquery
 async function sql(query, params = []) {
   const res = await fetch("/api/sql", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, params })
   });
-
   const data = await res.json().catch(() => null);
-  if (!data || !data.ok) {
-    throw new Error(data?.error || `SQL failed (${res.status})`);
-  }
+  if (!data || !data.ok) throw new Error(data?.error || `SQL failed (${res.status})`);
   return data.rows || [];
 }
-
 
 // ── DB helpers ──
 async function dbGetUser(u) {
@@ -752,7 +693,6 @@ async function dbSetLocation(id, d) {
 }
 async function dbDelLocation(id) { await sql('DELETE FROM wf_locations WHERE id=$1', [id]); }
 
-// ── Assignments ──
 async function dbListAssignments() { return sql('SELECT * FROM wf_assignments'); }
 async function dbSetAssignment(worker_username, loc_id) {
   await sql(
@@ -773,7 +713,6 @@ async function dbSetLocationOpen(id, is_open) {
 
 // ── Create tables + seed default manager ──
 async function initDB() {
-  // ── Single batched call for all table creation (17 queries → 1) ──
   await sql(`
     CREATE TABLE IF NOT EXISTS wf_users(
       username TEXT PRIMARY KEY, password TEXT, role TEXT,
@@ -808,7 +747,7 @@ async function initDB() {
       PRIMARY KEY(worker_username, loc_id)
     );
   `);
-  // ── Migrations in parallel (fire-and-forget) ──
+  // ── Migrations (fire-and-forget) ──
   Promise.allSettled([
     sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
     sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
@@ -817,6 +756,8 @@ async function initDB() {
     sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
     sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
     sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
+    // ── NEW: can_restart flag for multi-shift per day ──
+    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
   ]);
   // ── Manager account ──
   await sql(
@@ -824,7 +765,7 @@ async function initDB() {
      ON CONFLICT(username) DO NOTHING`,
     [MGR_DEFAULT_PASS]
   );
-  // ── Assignment migration (background, non-blocking) ──
+  // ── Assignment migration (background) ──
   (async()=>{
     try {
       const oldAssigns = await sql('SELECT * FROM wf_assignments');
@@ -856,7 +797,6 @@ const fmtTime = ts => { const n=Number(ts); if(!n)return'—'; const d=new Date(
 const normPhone = p => (p||'').replace(/\D/g,'').replace(/^0+/,'');
 const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
-// ── Device fingerprint ──
 function getDeviceId() {
   let id = localStorage.getItem('wf_device');
   if (!id) { id='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,10); localStorage.setItem('wf_device',id); }
@@ -864,26 +804,23 @@ function getDeviceId() {
 }
 const DEVICE_ID = getDeviceId();
 
-// ── Extract coordinates from Google Maps URL ──
-// Handles all known Google Maps URL formats including short links
 function extractCoordsFromMapsLink(url) {
   if (!url) return null;
   const u = url.trim();
-  // Short URL — cannot extract coords without resolving redirect
-  if (/goo\.gl|maps\.app\.goo\.gl/.test(u)) return null; // needs server-side resolve
+  if (/goo\.gl|maps\.app\.goo\.gl/.test(u)) return null;
   if (!u.includes('google') && !u.includes('maps.google')) return null;
-  const COORD = '(-?\\d{1,3}\\.\\d{4,})'; // require ≥4 decimal places for accuracy
+  const COORD = '(-?\\d{1,3}\\.\\d{4,})';
   const patterns = [
-    new RegExp(`[?&]q=${COORD},${COORD}`),         // ?q=lat,lng
-    new RegExp(`[?&]ll=${COORD},${COORD}`),         // ?ll=lat,lng
-    new RegExp(`/@${COORD},${COORD}`),              // /@lat,lng,zoom
-    new RegExp(`/place/${COORD},${COORD}`),         // /place/lat,lng
-    new RegExp(`[?&]daddr=${COORD},${COORD}`),      // daddr=lat,lng
+    new RegExp(`[?&]q=${COORD},${COORD}`),
+    new RegExp(`[?&]ll=${COORD},${COORD}`),
+    new RegExp(`/@${COORD},${COORD}`),
+    new RegExp(`/place/${COORD},${COORD}`),
+    new RegExp(`[?&]daddr=${COORD},${COORD}`),
     new RegExp(`[?&]destination=${COORD},${COORD}`),
     new RegExp(`[?&]center=${COORD},${COORD}`),
     new RegExp(`[?&]saddr=${COORD},${COORD}`),
-    new RegExp(`!3d${COORD}!4d${COORD}`),           // /data=!3d{lat}!4d{lng}
-    new RegExp(`${COORD}\\+${COORD}`),            // lat+lng URL-encoded
+    new RegExp(`!3d${COORD}!4d${COORD}`),
+    new RegExp(`${COORD}\\+${COORD}`),
   ];
   for (const p of patterns) {
     const m = u.match(p);
@@ -894,18 +831,14 @@ function extractCoordsFromMapsLink(url) {
   }
   return null;
 }
-// Async version — tries instant parse first, then warns about short URLs
 async function extractCoordsAsync(url) {
   if (!url) return null;
   const instant = extractCoordsFromMapsLink(url);
   if (instant) return instant;
-  if (/goo\.gl|maps\.app\.goo\.gl/.test(url)) {
-    return { _shortUrl: true }; // signal to caller
-  }
+  if (/goo\.gl|maps\.app\.goo\.gl/.test(url)) return { _shortUrl: true };
   return null;
 }
 
-// ── GPS helpers ──
 function haversine(la1,lo1,la2,lo2) {
   const R=6371000,dL=(la2-la1)*Math.PI/180,dO=(lo2-lo1)*Math.PI/180;
   const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dO/2)**2;
@@ -917,7 +850,6 @@ const geoPos = (timeout=12000) => new Promise((res,rej) =>
     : rej(new Error('gps_unavailable'))
 );
 
-// ── Rate limiter ──
 const _rl = {};
 function rateLimit(key,ms=2000) {
   const now=Date.now();
@@ -925,14 +857,12 @@ function rateLimit(key,ms=2000) {
   _rl[key]=now; return true;
 }
 
-// ── Toast ──
 let _toastT;
 function toast(msg,type='info') {
   const el=$('toast'); el.textContent=msg; el.className=`toast show ${type}`;
   clearTimeout(_toastT); _toastT=setTimeout(()=>el.classList.remove('show'),4000);
 }
 
-// ── Lang ──
 let lang = localStorage.getItem('wf_lang')||'it';
 const TR = {
   en:{dir:'ltr',appSub:'Plumbing Crew Management',signIn:'Sign In',signUp:'Sign Up',username:'Username',password:'Password',yourUser:'Your username',yourPass:'Your password',phoneNum:'Phone Number',phoneReq:'* required',phoneHint:'Must be added by your manager · password will be your phone digits',createAcc:'Create Account →',phoneNoAuth:'⛔ Phone not authorized. Contact your manager.',maxAcc:'This phone already has an account. Only 1 per phone allowed.',userTaken:'Username taken.',namePassReq:'Username required.',passLen:'Password min 4 characters.',accCreated:'Account created! Sign in — password is your phone number.',badLogin:'Invalid username or password.',deviceBlocked:'⛔ This account is registered to a different device.',gpsRequired:'📍 Location required. Enable GPS on your device.',gpsFarLogin:'⛔ You are too far from your work location to log in.',gpsLoginErr:'⛔ Could not get your location. Enable GPS and try again.',logout:'Logout',workTime:'🔧 On The Job',todayEarn:"Today's Earnings",waiting:'⚡ Ready to Deploy',wking:'Working',startWork:'▶ START WORK',endWork:'■ END SHIFT',shiftHist:'My Shift History',date:'Date',start:'Start',end:'End',worked:'Worked',earn:'Earnings',stat:'Status',noShifts:'No shifts yet.',already:'Shift already started today!',noActive:'No active shift.',noEnd:'No shift to end.',shiftStarted:'Shift started! Good work 💪',mgrDash:'⚙️ CREW CONTROL',expXlsx:'📊 Export',workers:'Workers',working:'Working',late:'Late',absent:'Absent',addWorker:'Add Worker',salDue:'Salary Due',live:'Live',shifts:'Shifts',salary:'Salary',settings:'Settings',alerts:'Alerts',noWorkers:'No workers yet.',hrsToday:'Hours Today',earnToday:'Earnings Today',startedAt:'Started',addManual:'➕ Add Worker',phonesInfo:'Workers register using their phone number. 1 account per phone. Password = phone digits (no leading zero).',phoneLbl:'Phone Number',workerLbl:'Worker Name (optional)',rateLbl:'💰 Hourly Rate (€)',rateHint:'Worker cannot change this',shiftLbl:'Shift Start',addBtn:'➕ Add Worker',uploadF:'📤 Upload File',uploadInfo:'Upload .csv or .txt — one phone per line.',clickDrop:'Click or drag file here',fileTypes:'.csv · .txt',approved:'📋 Approved Workers',clearAll:'Clear All',noPhonesYet:'No workers yet.',rateLabel:'RATE:',shiftLabel:'SHIFT:',accs:'accounts',slots:'slot(s) left',badPhone:'Enter a phone number.',badPhoneNum:'Invalid phone number.',badRate:'Set a valid rate.',dupPhone:'Phone already in list.',phoneAdded:'✓ Worker added!',phoneRemoved:'Removed.',rateUpdated:'Rate updated!',settSaved:'Settings saved!',workerUpdated:'Worker updated!',cleared:'Cleared.',editWorker:'EDIT WORKER',cancel:'Cancel',save:'Save',filterW:'Filter by worker...',clear:'Clear',today:'Today',week:'This Week',month:'This Month',all:'All Time',totalH:'Total Hrs',regPay:'Regular Pay',otH:'OT Hrs',otP:'OT Pay',deduct:'Deductions',total:'TOTAL',shiftsC:'Shifts',noW:'No workers.',edit:'Edit',shiftOver:'Shift & Overtime',defShift:'Default Shift Start',grace:'Grace Period (min)',stdH:'Std Hours/Day',otMult:'OT Multiplier',deductT:'Deductions',deductL:'Deduct/Late (€)',saveSett:'Save Settings',danger:'⚠ Danger Zone',dangerD:'Delete all shift records.',deleteAll:'Delete All Shifts',confirmDel:'Delete ALL shifts?',allDel:'All shifts deleted.',confirmClear:'Clear all workers?',phone:'Phone',name:'Name',rateC:'Rate',shiftC:'Shift',action:'Action',gpsOk:'✓ At work location',gpsFar:'⛔ Too far',gpsCheck:'Checking GPS…',gpsNoSet:'No location set',gpsErr:'GPS error. Enable location.',mapLink:'🗺 Map',newDevAlert:'⚠ Unauthorized Device Login',newDevDesc:'tried to log in from blocked device.',resolve:'Resolve',noAlerts:'No alerts ✓',changePwd:'🔑 Change Password',fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,lateMsg:n=>`⚠ ${n} min late!`},
@@ -944,42 +874,28 @@ function setLang(l){lang=l;T=TR[l];localStorage.setItem('wf_lang',l);document.do
 setLang(lang);
 window.switchLang=l=>{setLang(l);render();};
 
-// ════════════════════════ SLEEP DETECTION & AUTO-LOGOUT ════════════════════════
-// ── Auto-logout: 1 minute of sleep OR 1 minute of inactivity ──
-// Sleep  = tab hidden (phone locked / tab switched)
-// Inactive = tab open but no tap, click, or keypress for 1 minute
-const IDLE_MS = 60000; // 1 minute
-let _sleepTimer    = null;
-let _inactiveTimer = null;
+// ════════ SLEEP DETECTION & AUTO-LOGOUT ════════
+const IDLE_MS = 60000;
+let _sleepTimer=null, _inactiveTimer=null;
 
 function _resetInactiveTimer() {
   clearTimeout(_inactiveTimer);
-  // Only run when user is logged in and tab is visible
   if (!S.user || document.hidden) return;
-  _inactiveTimer = setTimeout(() => {
-    if (S.user) doLogout();
-  }, IDLE_MS);
+  _inactiveTimer = setTimeout(() => { if (S.user) doLogout(); }, IDLE_MS);
 }
 
-// Reset inactivity timer on any user interaction
 ['click','touchstart','keydown','scroll','mousemove'].forEach(ev =>
   document.addEventListener(ev, _resetInactiveTimer, {passive:true})
 );
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Tab hidden — start sleep logout countdown, pause inactivity timer
     clearTimeout(_inactiveTimer);
-    _sleepTimer = setTimeout(() => {
-      if (S.user) doLogout();
-    }, IDLE_MS);
+    _sleepTimer = setTimeout(() => { if (S.user) doLogout(); }, IDLE_MS);
   } else {
-    // Tab visible again — cancel sleep timer, restart inactivity timer
-    clearTimeout(_sleepTimer);
-    _sleepTimer = null;
+    clearTimeout(_sleepTimer); _sleepTimer=null;
     _resetInactiveTimer();
-    // Refresh summary when screen comes back (manager)
-    if (S.user && S.screen === 'manager') loadSummary();
+    if (S.user && S.screen==='manager') loadSummary();
   }
 });
 
@@ -998,28 +914,25 @@ function langBar(inline=false){
   </div>`;
 }
 
-// ════════════════════════ TIME SELECT HELPER ════════════════════════
-// Generates hour/half-hour options (07:00 – 23:30) for end time selects
 function buildTimeOptions(selected=''){
   const opts=['<option value="">— No auto-end (manual) —</option>'];
   for(let h=7;h<=23;h++){
     for(const m of [0,30]){
-      if(h===23&&m===30)continue; // skip 23:30
-      const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+      if(h===23&&m===30)continue;
+      const v=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
       const label=(h>12?h-12:h)+':'+(m===0?'00':'30')+' '+(h>=12?'PM':'AM');
-      opts.push(`<option value="${val}"${selected===val?' selected':''}>${label} (${val})</option>`);
+      opts.push(`<option value="${v}"${selected===v?' selected':''}>${label} (${v})</option>`);
     }
   }
   return opts.join('');
 }
 
-// ════════════════════════ BOOT ════════════════════════
+// ════════ BOOT ════════
 async function init() {
-  // Show login screen INSTANTLY — don't wait for DB setup
   S.screen='auth'; render();
   S.clockInt=setInterval(()=>{const el=$('clock');if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
   try {
-    await initDB(); // runs in background — UI already visible
+    await initDB();
   } catch(e) {
     $('root').innerHTML=`<div class="center"><div style="max-width:520px;text-align:center;padding:40px">
       <div style="font-size:36px;margin-bottom:16px">⚠</div>
@@ -1027,10 +940,9 @@ async function init() {
       <div style="font-family:monospace;font-size:12px;color:#aaa;line-height:2;margin-bottom:16px">${esc(e.message)}</div>
       <div style="background:#141414;border:1px solid #2a2a2a;border-radius:6px;padding:18px;text-align:left;font-family:monospace;font-size:12px;color:#888;line-height:2">
         <div style="color:#f0c040;font-weight:700;margin-bottom:8px">How to fix:</div>
-        1. Open <strong style="color:#ddd">workforce.html</strong> in Notepad<br>
-        2. Find: <code style="color:#e74c3c">PASTE_NEON_CONNECTION_STRING_HERE</code><br>
-        3. Replace with your <code style="color:#2ecc71">postgresql://...</code> URL from neon.tech<br>
-        4. Save &amp; re-upload to Netlify
+        1. Set NEON_DATABASE_URL environment variable in Vercel/Netlify<br>
+        2. Make sure /api/sql.js is deployed<br>
+        3. Check browser console for more details
       </div>
     </div></div>`;
   }
@@ -1051,14 +963,10 @@ function renderAuth(){
       <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="36" cy="36" r="34" stroke="#b87333" stroke-width="2" opacity="0.4"/>
         <circle cx="36" cy="36" r="26" stroke="#b87333" stroke-width="1" opacity="0.2"/>
-        <!-- pipe horizontal -->
         <rect x="8" y="31" width="56" height="10" rx="5" fill="#b87333" opacity="0.9"/>
-        <!-- pipe vertical -->
         <rect x="31" y="8" width="10" height="56" rx="5" fill="#b87333" opacity="0.9"/>
-        <!-- center joint -->
         <circle cx="36" cy="36" r="8" fill="#e8a020"/>
         <circle cx="36" cy="36" r="4" fill="#060f18"/>
-        <!-- bolts -->
         <circle cx="36" cy="19" r="3" fill="#d4894a"/>
         <circle cx="36" cy="53" r="3" fill="#d4894a"/>
         <circle cx="19" cy="36" r="3" fill="#d4894a"/>
@@ -1070,7 +978,6 @@ function renderAuth(){
     </div>
     <div class="auth-wrap">
       <div class="card-body" style="border-top:1px solid #2a2a2a;border-radius:4px">
-        <!-- Worker login -->
         <div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#f0c040;text-transform:uppercase;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #1a1a1a">🔧 ${T.signIn}</div>
         <div class="fg" id="wf">
           <div>
@@ -1097,9 +1004,7 @@ function renderAuth(){
 
 window.authTab=tab=>{S.authTab=tab;};
 
-// ════════════════════════ PHONE-DIRECT WORKER LOGIN ════════════════════════
-
-
+// ════════ PHONE-DIRECT WORKER LOGIN ════════
 window.doPhoneLogin=async()=>{
   if(!rateLimit('phone_login',1500))return;
   const ph=val('wph').trim();
@@ -1111,24 +1016,22 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    // Fetch phone auth + users list in parallel
     const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]);
     if(!match){showErr(T.phoneNoAuth);return;}
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
     if(!workerUser){
-      // Auto-create account — username = label or norm, password = norm
       const uname=(match.label||'').toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')||'w'+norm.slice(-6);
       const finalName=users.find(x=>x.username===uname)?uname+'_'+norm.slice(-4):uname;
       await dbSetUser(finalName,{
         password:norm,role:'worker',phone:ph,
         hourly_rate:match.rate||15,
-        device_id:DEVICE_ID
+        device_id:DEVICE_ID,
+        can_restart:false
       });
       await dbSetPhone(norm,{used:true});
       workerUser=await dbGetUser(finalName);
     }
 
-    // Device lock
     if(!workerUser.device_id){
       await dbSetUser(workerUser.username,{device_id:DEVICE_ID});
       workerUser.device_id=DEVICE_ID;
@@ -1137,7 +1040,6 @@ window.doPhoneLogin=async()=>{
       showErr(T.deviceBlocked);return;
     }
 
-    // GPS + Assignment check
     const locations=await dbListLocations();
     if(locations.length>0){
       if(!navigator.geolocation){showErr(T.gpsRequired);return;}
@@ -1145,37 +1047,23 @@ window.doPhoneLogin=async()=>{
       try {
         const pos=await geoPos(15000);
         const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
-
-        // Attach distance to every location
         const locsWithDist=locations.map(l=>({
           ...l,
           dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))
         }));
-
-        // Assignments are always keyed by phone norm
         const allAssignments=await dbListAssignments();
         const myAssignments=allAssignments.filter(a=>a.worker_username===norm);
         const anyAssignmentsExist=allAssignments.length>0;
-
-        // If assignment system is active and worker has no assignments → block immediately
         if(anyAssignmentsExist && myAssignments.length===0){
           showErr('⛔ You are not assigned to any site. Contact your manager.');return;
         }
-
-        // Determine the candidate locations:
-        // - If worker has assignments → only their assigned locations
-        // - If no assignment system yet → all locations
         const candidateLocs = myAssignments.length>0
           ? locsWithDist.filter(l=>myAssignments.some(a=>a.loc_id===l.id))
           : locsWithDist;
-
-        // Find the nearest candidate location the worker is physically close to
         const nearbyCandidate = candidateLocs
           .filter(l=>l.dist<=GPS_RADIUS)
           .sort((a,b)=>a.dist-b.dist)[0];
-
         if(!nearbyCandidate){
-          // Worker is not near any of their assigned sites
           const closestAssigned = candidateLocs.sort((a,b)=>a.dist-b.dist)[0];
           if(closestAssigned){
             showErr(`⛔ You are ${closestAssigned.dist}m from your nearest site (${closestAssigned.name}). Must be within ${GPS_RADIUS}m.`);
@@ -1184,17 +1072,13 @@ window.doPhoneLogin=async()=>{
           }
           return;
         }
-
-        // Check open/closed on the site they're at
         const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== 'false';
         if(!isOpen){
           showErr(`⛔ ${nearbyCandidate.name} is currently closed. Contact your manager.`);return;
         }
-
         S.gps='ok';
         S.gpsDist=nearbyCandidate.dist;
         S.nearestLocation=nearbyCandidate;
-
       } catch(gpsErr){
         const code=gpsErr.code;
         if(code===1)showErr('📍 Location permission denied. Please allow location access.');
@@ -1205,14 +1089,14 @@ window.doPhoneLogin=async()=>{
     }
 
     S.user=workerUser;
-    _resetInactiveTimer(); // start inactivity countdown
+    _resetInactiveTimer();
     renderWorkerScreen();
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
   }
 };
 
-// ════════════════════════ MANAGER LOGIN ════════════════════════
+// ════════ MANAGER LOGIN ════════
 window.doLogin=async()=>{
   if(!rateLimit('login',1500)) return;
   const u=val('lu').trim().toLowerCase(), p=val('lp');
@@ -1225,7 +1109,7 @@ window.doLogin=async()=>{
     const user=await dbGetUser(u);
     if(!user||user.password!==p||user.role!=='manager'){showErr(T.badLogin);return;}
     S.user=user;
-    _resetInactiveTimer(); // start inactivity countdown
+    _resetInactiveTimer();
     renderManagerScreen();
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
@@ -1239,10 +1123,9 @@ window.doLogout=()=>{
   render();
 };
 
-// ════════════════════════ WORKER SCREEN ════════════════════════
+// ════════ WORKER SCREEN ════════
 async function renderWorkerScreen(){
   const u=S.user;
-  // ── Parallel fetch: user + config + locations + shifts in one round-trip ──
   const [fresh,cfg,allLocs,allShifts]=await Promise.all([
     dbGetUser(u.username),
     dbGetConfig(),
@@ -1265,9 +1148,19 @@ async function renderWorkerScreen(){
   const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   const active=myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null;
   S.shift=active;
-  if(active) S._autoEndFired=false; // fresh shift, allow auto-end to fire
+  if(active) S._autoEndFired=false;
+
+  // Count today's completed shifts for display
+  const todayCompletedShifts=myShifts.filter(x=>x.date===todayStr()&&x.status==='completed');
+  const hasCompletedToday=todayCompletedShifts.length>0;
+  const canRestart=fresh?.can_restart===true||fresh?.can_restart==='true';
 
   const locName=active?.location_name||S.nearestLocation?.name||'—';
+
+  // Determine start button state
+  const startDisabled=!!active;
+  // Show "waiting for manager" hint if completed today but no restart permission
+  const showRestartHint=!active&&hasCompletedToday&&!canRestart;
 
   $('root').innerHTML=`
   <div class="topbar">
@@ -1283,9 +1176,12 @@ async function renderWorkerScreen(){
   <div class="body">
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
+      <div class="info-card"><div class="il">📋 Shifts Today</div><div class="iv" style="color:#f0c040">${todayCompletedShifts.length+(active?1:0)}</div></div>
       <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
+    ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ Shift completed. Ask your manager to unlock a new shift for today.</div>`:''}
+    ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px">🔓 Manager has unlocked a new shift for you — tap START WORK!</div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
       <div class="status-row">
         <div class="dot ${active?'working':''}" id="sdot"></div>
@@ -1299,7 +1195,7 @@ async function renderWorkerScreen(){
       </div>`:`<div style="margin-bottom:14px"></div>`}
       <div class="act-grid">
         <button class="act-btn" id="bst"
-          style="border:2px solid ${active?'#333':'#2ecc71'};color:${active?'#333':'#2ecc71'};opacity:${active?'0.3':'1'};cursor:${active?'not-allowed':'pointer'}"
+          style="border:2px solid ${startDisabled?'#333':'#2ecc71'};color:${startDisabled?'#333':'#2ecc71'};opacity:${startDisabled?'0.3':'1'};cursor:${startDisabled?'not-allowed':'pointer'}"
           onclick="wAct('start')">${T.startWork}</button>
         <button class="act-btn" id="ben"
           style="border:2px solid ${active?'#e74c3c':'#333'};color:${active?'#e74c3c':'#333'};opacity:${active?'1':'0.3'};cursor:${active?'pointer':'not-allowed'}"
@@ -1330,7 +1226,6 @@ function startTimer(){
   if(!S.shift) return;
   const startMs=Number(S.shift.start_time);
   if(!startMs) return;
-  // Timer only handles live countdown display. Auto-end is handled by cron-job.org server-side.
   S.timerInt=setInterval(()=>{
     const now=Date.now();
     const wMs=Math.max(0,now-startMs);
@@ -1339,16 +1234,8 @@ function startTimer(){
   },1000);
 }
 
-// ════════════════════════ SHIFT ACTIONS — HARDENED ════════════════════════
-// Security model:
-//  1. Always re-fetch state from DB — never trust client state
-//  2. Separate rate limits per action
-//  3. GPS validated fresh on every start (not cached from login)
-//  4. One shift per worker per day — enforced server-side via DB query
-//  5. Cannot end a shift that doesn't exist or isn't yours
-//  6. Buttons show state via style not disabled attr (avoids stale DOM)
-
-let _shiftLock=false; // in-flight guard to prevent double-tap race condition
+// ════════ SHIFT ACTIONS ════════
+let _shiftLock=false;
 
 window.wAct=async action=>{
   if(_shiftLock){toast('Please wait…','warning');return;}
@@ -1363,7 +1250,6 @@ window.wAct=async action=>{
     const now=Date.now();
     const username=S.user.username;
 
-    // ── Always re-fetch shifts from DB ──
     const allShifts=await dbListShifts();
     const todayShifts=allShifts.filter(x=>x.worker===username&&x.date===todayStr());
     const activeShift=todayShifts.find(x=>x.status==='working');
@@ -1372,8 +1258,20 @@ window.wAct=async action=>{
     if(action==='start'){
       // Guard: already working
       if(activeShift){toast('⚠ Shift already in progress!','warning');await renderWorkerScreen();return;}
-      // Guard: already completed today (one shift per day)
-      if(completedToday){toast('⚠ You already completed a shift today.','warning');await renderWorkerScreen();return;}
+
+      // ── PATCHED: already completed today — check can_restart flag ──
+      if(completedToday){
+        // Re-fetch fresh user data to check can_restart flag
+        const freshUser = await dbGetUser(username);
+        if(!freshUser?.can_restart){
+          toast('⚠ Shift completed. Ask your manager to allow a new shift.','warning');
+          await renderWorkerScreen();return;
+        }
+        // Clear the flag immediately — single use only
+        await dbSetUser(username,{can_restart:false});
+        S.user.can_restart=false;
+      }
+
       // Guard: cannot start before 07:00
       const nowD=new Date(now);
       if(nowD.getHours()<7){
@@ -1393,10 +1291,7 @@ window.wAct=async action=>{
         }
       }
 
-      // Use location already verified at login — no re-check at start
       const locationName = S.nearestLocation?.name || '—';
-
-      // Write shift to DB
       const id='s'+now+'_'+username.slice(0,6);
       await dbSetShift(id,{
         worker:username,
@@ -1411,7 +1306,6 @@ window.wAct=async action=>{
         status:'working'
       });
 
-      // Verify it was written (sanity check against DB manipulation)
       const verify=await dbListShifts();
       const written=verify.find(x=>x.id===id);
       if(!written){toast('⛔ Shift failed to save. Try again.','error');return;}
@@ -1421,21 +1315,15 @@ window.wAct=async action=>{
       await renderWorkerScreen();
 
     }else if(action==='end'){
-      // Guard: no active shift
       if(!activeShift){toast('⚠ No active shift to end.','warning');await renderWorkerScreen();return;}
-      // Guard: shift must belong to this user (already filtered, but double-check)
       if(activeShift.worker!==username){toast('⛔ Shift mismatch error.','error');return;}
-      // Guard: shift must have a valid start_time
       const startMs=Number(activeShift.start_time);
       if(!startMs||startMs<=0||startMs>now){toast('⛔ Invalid shift start time.','error');return;}
 
       const wMs=Math.max(0,now-startMs);
-      // Guard: minimum 1 minute to prevent accidental instant end
       if(wMs<60000){
         toast(`⚠ Shift is only ${Math.round(wMs/1000)}s old. End anyway? Tap again to confirm.`,'warning');
-        // Allow second tap within 5s
         _shiftLock=false;
-        const origLock=()=>{};
         let confirmed=false;
         const confirmEnd=async()=>{
           if(confirmed)return;confirmed=true;
@@ -1447,10 +1335,8 @@ window.wAct=async action=>{
           toast(`✅ Done! ${fmtDur(wMs2)} worked.`,'success');
           await renderWorkerScreen();
         };
-        const oldEnd=window.wAct;
         window._confirmEnd=confirmEnd;
         setTimeout(()=>{window._confirmEnd=null;},5000);
-        // Override end button temporarily
         const endBtn=$('ben');
         if(endBtn){
           endBtn.textContent='⚠ Tap again to confirm';
@@ -1476,7 +1362,7 @@ window.wAct=async action=>{
   }
 };
 
-// ════════════════════════ MANAGER SCREEN ════════════════════════
+// ════════ MANAGER SCREEN ════════
 async function renderManagerScreen(){
   $('root').innerHTML=`
   <div class="topbar">
@@ -1510,7 +1396,6 @@ async function renderManagerScreen(){
     <div id="mpanel"></div>
   </div>`;
   loadSummary();mTab('live');
-  // No auto-refresh interval — manager uses the ↺ Refresh button on the live tab
 }
 
 window.mTab=async tab=>{
@@ -1532,7 +1417,6 @@ window.mTab=async tab=>{
 let _summaryCache=null, _summaryCacheTs=0;
 async function loadSummary(force=false){
   const now=Date.now();
-  // Use cached result if less than 30s old and not forced
   if(!force && _summaryCache && now-_summaryCacheTs < 30000){
     const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
   }
@@ -1567,16 +1451,29 @@ function inP(s,per){
 async function buildLive(){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   if(!workers.length)return`<div class="empty">${T.noWorkers}</div>`;
-  const shifts=await dbListShifts();const ts=shifts.filter(s=>s.date===todayStr());const now=Date.now();
+  const shifts=await dbListShifts();
+  const ts=shifts.filter(s=>s.date===todayStr());
+  const now=Date.now();
   const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+  // Fetch can_restart flags for all workers
+  const allUsers=await dbListUsers();
+  const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
+
   return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">LAST UPDATED ${updatedAt}</span>
     <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="mTab('live')">↺ REFRESH</button>
   </div>
   <div class="worker-grid">${workers.map(w=>{
-    const active=ts.find(s=>s.worker===w.username&&s.status!=='completed');
+    const active=ts.find(s=>s.worker===w.username&&s.status==='working');
     const done=ts.find(s=>s.worker===w.username&&s.status==='completed');
     const st=active?'working':done?'ended':'absent';
+    const freshW=userMap[w.username]||w;
+    const alreadyUnlocked=freshW.can_restart===true||freshW.can_restart==='true';
+
+    // Count today's completed shifts
+    const todayCompleted=ts.filter(s=>s.worker===w.username&&s.status==='completed');
+
     let h=0,e=0;
     ts.filter(s=>s.worker===w.username).forEach(s=>{
       if(s.status==='completed'){h+=parseFloat(s.work_hours)||0;e+=parseFloat(s.earnings)||0;}
@@ -1585,7 +1482,13 @@ async function buildLive(){
     return`<div class="wcard ${st}">
       <div class="wname">${esc(w.label||w.username)}</div>
       <div class="wphone">${esc(w.phone||'—')}</div>
-      <div class="wbadges">${statusBadge(st)}<span class="badge by">€${w.hourly_rate||0}/hr</span>${active?.location_name?`<span class="badge bb">📍 ${esc(active.location_name)}</span>`:''}</div>
+      <div class="wbadges">
+        ${statusBadge(st)}
+        <span class="badge by">€${w.hourly_rate||0}/hr</span>
+        ${active?.location_name?`<span class="badge bb">📍 ${esc(active.location_name)}</span>`:''}
+        ${todayCompleted.length>0?`<span class="badge bb">${todayCompleted.length} shift${todayCompleted.length>1?'s':''} done</span>`:''}
+        ${alreadyUnlocked?`<span class="badge bg">🔓 restart pending</span>`:''}
+      </div>
       <div class="wstats">
         <div><div class="wsl">${T.hrsToday}</div><div class="wsv">${h.toFixed(2)}h</div></div>
         <div><div class="wsl">${T.earnToday}</div><div class="wsv">€${e.toFixed(2)}</div></div>
@@ -1593,9 +1496,32 @@ async function buildLive(){
         <div><div class="wsl">Site</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
       </div>
       ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">■ END SHIFT</button>`:''}
+      ${!active&&done&&!alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">🔓 ALLOW NEW SHIFT</button>`:''}
+      ${!active&&done&&alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">🔒 REVOKE RESTART</button>`:''}
     </div>`;
-  }).join('')}</div></div>`;
+  }).join('')}</div>`;
 }
+
+// ── Allow / Revoke Restart ──
+window.allowRestart=async(username, displayName)=>{
+  if(!confirm(`Allow ${displayName} to start a new shift today?`)) return;
+  try{
+    await dbSetUser(username,{can_restart:true});
+    toast(`✅ ${displayName} can now start a new shift`,'success');
+    _summaryCacheTs=0;
+    await mTab('live');
+  }catch(e){toast('Error: '+e.message,'error');}
+};
+
+window.revokeRestart=async(username, displayName)=>{
+  if(!confirm(`Revoke the restart permission for ${displayName}?`)) return;
+  try{
+    await dbSetUser(username,{can_restart:false});
+    toast(`🔒 Restart permission revoked for ${displayName}`,'warning');
+    _summaryCacheTs=0;
+    await mTab('live');
+  }catch(e){toast('Error: '+e.message,'error');}
+};
 
 window.mgrEndShift=async(shiftId, workerName)=>{
   if(!confirm(`End shift for ${workerName} now?`))return;
@@ -1609,7 +1535,7 @@ window.mgrEndShift=async(shiftId, workerName)=>{
     const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
     await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
     toast(`✅ Shift ended for ${workerName} — ${fmtDur(wMs)} worked`,'success');
-    _summaryCacheTs=0; // invalidate cache
+    _summaryCacheTs=0;
     await mTab('live');
     loadSummary(true);
   }catch(e){toast('Error: '+e.message,'error');}
@@ -1667,7 +1593,7 @@ async function buildAddWorker(){
   </div>`;
 }
 
-// ════════════════════════ LOCATIONS TAB ════════════════════════
+// ════════ LOCATIONS TAB ════════
 async function buildLocations(){
   const locs=await dbListLocations();
   const locList=!locs.length?`<div class="empty">No locations added yet. Add your first site above.</div>`:locs.map(l=>`
@@ -1687,7 +1613,7 @@ async function buildLocations(){
       <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">⏰ Auto-End Time</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}  </select>
+          <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}</select>
           <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 Save</button>
           <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ Clear</button>
           <span style="font-family:monospace;font-size:10px;color:#555">Leave blank for manual end</span>
@@ -1698,9 +1624,9 @@ async function buildLocations(){
   return`<div class="sg">
     <div class="sc" style="max-width:520px">
       <div class="st">➕ Add New Site Location</div>
-      <div class="info-box" style="margin-bottom:16px">Workers must be within <strong>${GPS_RADIUS}m</strong> of any listed location to start a shift. The nearest location is automatically recorded.</div>
+      <div class="info-box" style="margin-bottom:16px">Workers must be within <strong>${GPS_RADIUS}m</strong> of any listed location to start a shift.</div>
       <div class="sf"><label class="lbl">📛 Site Name</label><input id="loc-name" placeholder="e.g. Main Warehouse, Site A, Downtown Office"/></div>
-      <div class="sf"><label class="lbl">⏰ Auto-End Time <span style="color:#555">(optional)</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">Workers at this site will have their shift ended automatically. Hour or half-hour only.</div></div>
+      <div class="sf"><label class="lbl">⏰ Auto-End Time <span style="color:#555">(optional)</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">Workers at this site will have their shift ended automatically.</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">📍 Coordinates</label>
         <div style="margin-bottom:10px">
@@ -1771,13 +1697,12 @@ window.delLocation=async id=>{
 window.toggleLocEdit=id=>{
   const panel=document.getElementById('loc-edit-'+id);
   if(!panel)return;
-  const open=panel.style.display==='none';
-  panel.style.display=open?'block':'none';
+  panel.style.display=panel.style.display==='none'?'block':'none';
 };
 window.saveLocEndTime=async id=>{
   const input=document.getElementById('loc-et-'+id);
   const et=input?.value?.trim()||null;
-  if(et&&!/^([0-9]{2}):(00|30)$/.test(et)){toast('⛔ End time must be on the hour or half hour (e.g. 17:00 or 17:30)','error');return;}
+  if(et&&!/^([0-9]{2}):(00|30)$/.test(et)){toast('⛔ End time must be on the hour or half hour','error');return;}
   try{
     await sql('UPDATE wf_locations SET end_time=$2 WHERE id=$1',[id,et||null]);
     toast(et?`⏰ Auto-end set to ${et}`:'⏰ Auto-end cleared','success');
@@ -1792,23 +1717,16 @@ window.clearLocEndTime=async id=>{
   }catch(e){toast('Failed: '+e.message,'error');}
 };
 
-// ════════════════════════ ASSIGN TAB ════════════════════════
+// ════════ ASSIGN TAB ════════
 async function buildAssign(){
-  // Source workers from wf_phones — available immediately after manager adds them,
-  // no need for the worker to sign in first.
   const [phones, locs, assignments] = await Promise.all([
     dbListPhones(), dbListLocations(), dbListAssignments()
   ]);
-
-  // Use phone norm as the stable worker key for assignments
-  // Build assigned set: { norm: Set of loc_ids }
   const assignedMap = {};
   assignments.forEach(a=>{
     if(!assignedMap[a.worker_username]) assignedMap[a.worker_username]=new Set();
     assignedMap[a.worker_username].add(a.loc_id);
   });
-
-  // Unassigned = phones not in any location
   const unassigned = phones.filter(p=>!assignedMap[p.norm]||assignedMap[p.norm].size===0);
 
   function workerChip(p, locId){
@@ -1831,7 +1749,7 @@ async function buildAssign(){
     : `<div class="assign-empty-drop">All workers assigned</div>`;
 
   const locCols = !locs.length
-    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">No locations yet. Add locations first.</div>`
+    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">No locations yet.</div>`
     : locs.map(l=>{
         const isOpen = l.is_open !== false && l.is_open !== 'false';
         const assignedPhones = phones.filter(p=>assignedMap[p.norm]?.has(l.id));
@@ -1872,7 +1790,6 @@ async function buildAssign(){
 
 function initAssignBoard(){
   let dragWorker=null, dragFrom=null, dragEl=null;
-
   document.querySelectorAll('.assign-worker-chip').forEach(chip=>{
     chip.addEventListener('dragstart',e=>{
       dragWorker=chip.dataset.worker;
@@ -1885,7 +1802,6 @@ function initAssignBoard(){
       document.querySelectorAll('.assign-col-body').forEach(z=>z.classList.remove('drag-over'));
     });
   });
-
   document.querySelectorAll('.assign-col-body').forEach(zone=>{
     zone.addEventListener('dragover',e=>{
       e.preventDefault();
@@ -1898,16 +1814,12 @@ function initAssignBoard(){
       zone.classList.remove('drag-over');
       const toLocId=zone.dataset.locid;
       if(!dragWorker||toLocId===dragFrom) return;
-      // Do DB work
       if(toLocId==='__unassigned__'){
-        // Remove from the source location only (keep other assignments)
         if(dragFrom&&dragFrom!=='__unassigned__') await dbDelAssignment(dragWorker,dragFrom);
       } else {
-        // Add to this location (keep existing assignments — multi-location)
         await dbSetAssignment(dragWorker,toLocId);
       }
       dragWorker=null;dragFrom=null;dragEl=null;
-      // Refresh
       const panel=$('mpanel');
       if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
     });
@@ -1919,15 +1831,12 @@ window.removeAssignment=async(worker_username, loc_id)=>{
   const panel=$('mpanel');
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
 };
-
 window.toggleLocOpen=async(loc_id, is_open)=>{
   await dbSetLocationOpen(loc_id, is_open);
-  toast(is_open?'✅ Site is now OPEN — workers can sign in':'🔴 Site CLOSED — workers cannot sign in', is_open?'success':'warning');
+  toast(is_open?'✅ Site is now OPEN':'🔴 Site CLOSED', is_open?'success':'warning');
   const panel=$('mpanel');
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
 };
-
-// ── Worker management ──
 
 async function buildShifts(fw='',fd=''){
   let shifts=await dbListShifts();
@@ -1960,7 +1869,6 @@ async function buildSalary(per='month'){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   const allS=await dbListShifts();
   const locNames=[...new Set(allS.map(s=>s.location_name).filter(Boolean))].sort();
-
   return`<div style="margin-bottom:14px">
     <select class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="sp" onchange="reSalary()">
       <option value="today" ${per==='today'?'selected':''}>${T.today}</option>
@@ -1989,7 +1897,7 @@ async function buildSalary(per='month'){
         <td style="color:#f0c040;font-weight:700">€${workerRate}/hr</td>
         ${locCells}
         <td style="font-weight:700">${th.toFixed(2)}h</td>
-        <td style="color:#2ecc71;font-weight:700;font-size:14px">$${total.toFixed(2)}</td>
+        <td style="color:#2ecc71;font-weight:700;font-size:14px">€${total.toFixed(2)}</td>
         <td>${ws.length}</td>
       </tr>`;
     }).join('')}
@@ -2041,13 +1949,12 @@ async function buildSettings(){
     <div class="sc"><div class="st">⏰ Auto End Time</div>
       <div class="info-box" style="margin-bottom:14px">
         If set, all active shifts are automatically ended at this time every day.<br>
-        Workers do not need to tap End — it happens automatically on their screen.<br>
         Leave blank to require workers to end shifts manually.
       </div>
       <div class="sf">
         <label class="lbl">Daily Auto-End Time <span style="color:#555">(optional)</span></label>
         <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>
-        <div class="hint">Global fallback — applies to locations with no specific end time set. Hour or half-hour only.</div>
+        <div class="hint">Global fallback — applies to locations with no specific end time set.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()">💾 Save</button>
@@ -2065,7 +1972,7 @@ async function buildSettings(){
     <div class="sc"><div class="st">📅 Close Month</div>
       <div class="info-box" style="margin-bottom:14px">
         Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>
-        No data is deleted. All shifts are kept forever and visible in the Salary tab.
+        No data is deleted.
       </div>
       <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>
       <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">📅 Export &amp; Close Month</button>
@@ -2084,24 +1991,23 @@ window.saveAutoEnd=async()=>{
 };
 window.clearAutoEnd=async()=>{
   await dbSetConfig({auto_end_time:null});
-  toast('✅ Auto-end cleared — workers end manually','success');
+  toast('✅ Auto-end cleared','success');
   mTab('settings');
 };
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
 // ── Phone / worker management ──
-// -- Shared helper: create wf_users worker account from phone entry --
 async function ensureWorkerAccount(ph, norm, lb, rt) {
   const users = await dbListUsers();
   const existing = users.find(x => x.role === 'worker' && normPhone(x.phone || '') === norm);
   if (existing) return existing;
   const uname = (lb || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'w' + norm.slice(-6);
   const finalName = users.find(x => x.username === uname) ? uname + '_' + norm.slice(-4) : uname;
-  // Only write columns that exist in wf_users schema
   await dbSetUser(finalName, {
     password: norm, role: 'worker', phone: ph,
     hourly_rate: rt || 15,
-    device_id: null
+    device_id: null,
+    can_restart: false
   });
   return await dbGetUser(finalName);
 }
@@ -2119,16 +2025,13 @@ window.addPhone=async()=>{
   await mTab('addworker');
 };
 window.delPhone=async norm=>{
-  // Delete assignments keyed by norm
   await dbDelAllAssignmentsForWorker(norm);
-  // Delete the linked worker account (if it exists)
   const users=await dbListUsers();
   const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
   for(const u of linked){
     await dbDelUser(u.username);
-    await dbDelAllAssignmentsForWorker(u.username); // also clean any old username-keyed rows
+    await dbDelAllAssignmentsForWorker(u.username);
   }
-  // Delete the phone entry last
   await dbDelPhone(norm);
   toast(T.phoneRemoved,'warning');
   mTab('addworker');
@@ -2142,12 +2045,9 @@ window.updRate=async(norm,rate)=>{
 };
 window.clearPhones=async()=>{
   if(!confirm(T.confirmClear))return;
-  // Delete all approved phones
   const all=await dbListPhones();
   for(const p of all) await dbDelPhone(p.norm);
-  // Also delete all worker user accounts so the counter goes to 0
   await dbDelAllWorkers();
-  // Clear all assignments
   await sql('DELETE FROM wf_assignments');
   mTab('addworker');
   await loadSummary();
@@ -2183,7 +2083,6 @@ window.openEdit=async username=>{
   $('editModal').classList.add('show');
 };
 window.closeModal=()=>{$('editModal').classList.remove('show');S.editingWorker=null;};
-
 window.saveWorkerEdit=async()=>{
   const u=await dbGetUser(S.editingWorker);if(!u)return;
   const rt=parseFloat($('em-rate').value)||15;
@@ -2221,20 +2120,14 @@ window.closeMonth=async()=>{
   const users=await dbListUsers();
   const workers=users.filter(u=>u.role==='worker');
   const um={};workers.forEach(u=>um[u.username]=u);
-
-  // Filter to current month completed shifts only
   const monthShifts=shifts.filter(s=>{
     if(s.status!=='completed')return false;
     const d=new Date(Number(s.start_time));
     return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
   });
-
-  // Build summary
   const totalHours=monthShifts.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
   const totalEarnings=monthShifts.reduce((a,s)=>a+(parseFloat(s.earnings)||0),0);
   const activeWorkers=new Set(monthShifts.map(s=>s.worker)).size;
-
-  // Show summary card
   const sumEl=document.getElementById('close-month-summary');
   if(sumEl){
     sumEl.style.display='block';
@@ -2246,28 +2139,14 @@ window.closeMonth=async()=>{
       <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Salary</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
     </div>`;
   }
-
-  if(!monthShifts.length){
-    toast(`No completed shifts found for ${monthName}`,'warning');
-    return;
-  }
-
-  // Build Excel — month only
-  const fmtExcel=ts=>{
-    if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';
-    const pad=n=>String(n).padStart(2,'0');
-    return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
+  if(!monthShifts.length){toast(`No completed shifts found for ${monthName}`,'warning');return;}
+  const fmtExcel=ts=>{if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';const pad=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
   const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-
-  // Sheet 1: All shifts this month
   const s1=[['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status']];
   monthShifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).forEach(s=>{
     const u=um[s.worker];
     s1.push([u?.label||s.worker,u?.phone||'',parseFloat(u?.hourly_rate||s.hourly_rate||0),s.location_name||'—',s.date,fmtExcel(s.start_time),fmtExcel(s.end_time),parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),parseFloat((parseFloat(s.earnings)||0).toFixed(2)),s.status]);
   });
-
-  // Sheet 2: Per-worker salary summary
   const locNames=[...new Set(monthShifts.map(s=>s.location_name).filter(Boolean))].sort();
   const s2=[['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts','Month']];
   workers.forEach(w=>{
@@ -2278,7 +2157,6 @@ window.closeMonth=async()=>{
     const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
     s2.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws.length,monthLabel]);
   });
-
   const filename=`workforce_${monthLabel}.xlsx`;
   const script=document.createElement('script');
   script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
@@ -2300,68 +2178,35 @@ window.closeMonth=async()=>{
   document.head.appendChild(script);
 };
 
-// ── Export (Excel — one sheet per month + All Shifts) ──
+// ── Export (Excel) ──
 window.doExport=async()=>{
   toast('⏳ Preparing export…','info');
   const shifts=await dbListShifts();
   const users=await dbListUsers();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
   const workers=users.filter(u=>u.role==='worker');
-
-  const fmtExcel=ts=>{
-    if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';
-    const pad=n=>String(n).padStart(2,'0');
-    return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
+  const fmtExcel=ts=>{if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';const pad=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
   const SHIFT_COLS=[14,14,10,16,10,18,18,12,12,10];
   const SHIFT_HDR=['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status'];
-
   const makeShiftRow=s=>{
     const u=um[s.worker];
-    return[
-      u?.label||s.worker, u?.phone||'',
-      parseFloat(u?.hourly_rate||s.hourly_rate||0),
-      s.location_name||'—', s.date,
-      fmtExcel(s.start_time), fmtExcel(s.end_time),
-      parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),
-      parseFloat((parseFloat(s.earnings)||0).toFixed(2)),
-      s.status
-    ];
+    return[u?.label||s.worker,u?.phone||'',parseFloat(u?.hourly_rate||s.hourly_rate||0),s.location_name||'—',s.date,fmtExcel(s.start_time),fmtExcel(s.end_time),parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),parseFloat((parseFloat(s.earnings)||0).toFixed(2)),s.status];
   };
-
-  // Group shifts by YYYY-MM
   const byMonth={};
-  shifts.forEach(s=>{
-    const d=s.date||'';
-    const key=d.slice(0,7)||'Unknown';
-    if(!byMonth[key])byMonth[key]=[];
-    byMonth[key].push(s);
-  });
-
-  // Sort months oldest → newest
+  shifts.forEach(s=>{const key=(s.date||'').slice(0,7)||'Unknown';if(!byMonth[key])byMonth[key]=[];byMonth[key].push(s);});
   const monthKeys=Object.keys(byMonth).sort();
-
   const script=document.createElement('script');
   script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   script.onload=()=>{
     const wb=XLSX.utils.book_new();
-
-    // ── Sheet per month: Shifts ──
     monthKeys.forEach(key=>{
       const mShifts=byMonth[key].sort((a,b)=>Number(b.start_time)-Number(a.start_time));
       const data=[SHIFT_HDR,...mShifts.map(makeShiftRow)];
-      const ws=XLSX.utils.aoa_to_sheet(data);
-      ws['!cols']=SHIFT_COLS.map(w=>({wch:w}));
-      // Sheet name: "Feb 2026" style
+      const ws=XLSX.utils.aoa_to_sheet(data);ws['!cols']=SHIFT_COLS.map(w=>({wch:w}));
       const [yr,mo]=key.split('-');
-      const sheetName=mo&&yr
-        ?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'})
-        :key;
-      XLSX.utils.book_append_sheet(wb,ws,sheetName.slice(0,31));
+      const sn=mo&&yr?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'}):key;
+      XLSX.utils.book_append_sheet(wb,ws,sn.slice(0,31));
     });
-
-    // ── Sheet per month: Salary Summary ──
     monthKeys.forEach(key=>{
       const mShifts=byMonth[key].filter(s=>s.status==='completed');
       if(!mShifts.length)return;
@@ -2369,28 +2214,20 @@ window.doExport=async()=>{
       const hdr=['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts'];
       const rows=[hdr];
       workers.forEach(w=>{
-        const ws2=mShifts.filter(s=>s.worker===w.username);
-        if(!ws2.length)return;
+        const ws2=mShifts.filter(s=>s.worker===w.username);if(!ws2.length)return;
         const th=ws2.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
         const total=th*(parseFloat(w.hourly_rate)||0);
         const locHrs=locNames.map(ln=>parseFloat(ws2.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
         rows.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws2.length]);
       });
-      const ws=XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols']=[14,14,10,...locNames.map(()=>14),12,14,8].map(w=>({wch:w}));
+      const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[14,14,10,...locNames.map(()=>14),12,14,8].map(w=>({wch:w}));
       const [yr,mo]=key.split('-');
-      const label=mo&&yr
-        ?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'})
-        :key;
+      const label=mo&&yr?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'}):key;
       XLSX.utils.book_append_sheet(wb,ws,`Salary ${label}`.slice(0,31));
     });
-
-    // ── Final sheet: All Shifts (all time) ──
     const allData=[SHIFT_HDR,...shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).map(makeShiftRow)];
-    const wsAll=XLSX.utils.aoa_to_sheet(allData);
-    wsAll['!cols']=SHIFT_COLS.map(w=>({wch:w}));
+    const wsAll=XLSX.utils.aoa_to_sheet(allData);wsAll['!cols']=SHIFT_COLS.map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,wsAll,'All Shifts');
-
     XLSX.writeFile(wb,`workforce_${todayStr()}.xlsx`);
     toast(`✅ Exported ${monthKeys.length} month${monthKeys.length===1?'':'s'} + All Shifts`,'success');
   };
