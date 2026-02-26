@@ -1605,6 +1605,14 @@ async function buildSettings(){
         <div class="hint">Workers must be within this distance of any registered site to clock in.</div>
       </div>
     </div>
+    <div class="sc"><div class="st">📅 Close Month</div>
+      <div class="info-box" style="margin-bottom:14px">
+        Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>
+        No data is deleted. All shifts are kept forever and visible in the Salary tab.
+      </div>
+      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>
+      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">📅 Export &amp; Close Month</button>
+    </div>
     <div class="sc"><div class="st">⚠ ${T.danger}</div>
       <p style="font-family:monospace;font-size:11px;color:#555;margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
       <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>
@@ -1746,6 +1754,93 @@ window.doSetDefaultPwd=async()=>{
   await dbSetUser(S.user.username,{password:MGR_DEFAULT_PASS});
   S.user.password=MGR_DEFAULT_PASS;
   toast('✓ Password reset to default','success');closePwdModal();
+};
+
+// ── Close Month ──
+window.closeMonth=async()=>{
+  const now=new Date();
+  const monthName=now.toLocaleString('default',{month:'long',year:'numeric'});
+  const shifts=await dbListShifts();
+  const users=await dbListUsers();
+  const workers=users.filter(u=>u.role==='worker');
+  const um={};workers.forEach(u=>um[u.username]=u);
+
+  // Filter to current month completed shifts only
+  const monthShifts=shifts.filter(s=>{
+    if(s.status!=='completed')return false;
+    const d=new Date(Number(s.start_time));
+    return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+  });
+
+  // Build summary
+  const totalHours=monthShifts.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
+  const totalEarnings=monthShifts.reduce((a,s)=>a+(parseFloat(s.earnings)||0),0);
+  const activeWorkers=new Set(monthShifts.map(s=>s.worker)).size;
+
+  // Show summary card
+  const sumEl=document.getElementById('close-month-summary');
+  if(sumEl){
+    sumEl.style.display='block';
+    sumEl.innerHTML=`<div style="background:#141414;border:1px solid #2a2a2a;border-radius:4px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Month</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">${monthName}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Shifts</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0f0f0">${monthShifts.length}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Workers</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#3498db">${activeWorkers}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Hours</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#2ecc71">${totalHours.toFixed(1)}h</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Salary</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
+    </div>`;
+  }
+
+  if(!monthShifts.length){
+    toast(`No completed shifts found for ${monthName}`,'warning');
+    return;
+  }
+
+  // Build Excel — month only
+  const fmtExcel=ts=>{
+    if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';
+    const pad=n=>String(n).padStart(2,'0');
+    return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  // Sheet 1: All shifts this month
+  const s1=[['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status']];
+  monthShifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).forEach(s=>{
+    const u=um[s.worker];
+    s1.push([u?.label||s.worker,u?.phone||'',parseFloat(u?.hourly_rate||s.hourly_rate||0),s.location_name||'—',s.date,fmtExcel(s.start_time),fmtExcel(s.end_time),parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),parseFloat((parseFloat(s.earnings)||0).toFixed(2)),s.status]);
+  });
+
+  // Sheet 2: Per-worker salary summary
+  const locNames=[...new Set(monthShifts.map(s=>s.location_name).filter(Boolean))].sort();
+  const s2=[['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts','Month']];
+  workers.forEach(w=>{
+    const ws=monthShifts.filter(s=>s.worker===w.username);
+    if(!ws.length)return;
+    const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
+    const total=th*(parseFloat(w.hourly_rate)||0);
+    const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
+    s2.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws.length,monthLabel]);
+  });
+
+  const filename=`workforce_${monthLabel}.xlsx`;
+  const script=document.createElement('script');
+  script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  script.onload=()=>{
+    const wb=XLSX.utils.book_new();
+    const ws1=XLSX.utils.aoa_to_sheet(s1),ws2=XLSX.utils.aoa_to_sheet(s2);
+    ws1['!cols']=[14,14,10,16,10,18,18,12,12,10].map(w=>({wch:w}));
+    ws2['!cols']=[14,14,10,...locNames.map(()=>14),12,14,8,10].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws1,'Shifts');
+    XLSX.utils.book_append_sheet(wb,ws2,'Salary Summary');
+    XLSX.writeFile(wb,filename);
+    toast(`✅ ${monthName} exported as ${filename}`,'success');
+  };
+  script.onerror=()=>{
+    const csv=s1.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download=filename.replace('.xlsx','.csv');a.click();
+    toast('Exported as CSV','warning');
+  };
+  document.head.appendChild(script);
 };
 
 // ── Export (Excel with 2 sheets) ──
