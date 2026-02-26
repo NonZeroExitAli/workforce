@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>FlowForce — Plumbing Crew</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230d1b2a'/%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%23b87333' stroke-width='3'/%3E%3Crect x='28' y='10' width='8' height='44' rx='4' fill='%23b87333'/%3E%3Crect x='10' y='28' width='44' height='8' rx='4' fill='%23b87333'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23e8a020'/%3E%3C/svg%3E"/>
-<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin/>
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500&family=Share+Tech+Mono&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
-<noscript><link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/></noscript>
+
 <style>
 :root{
   --bg:#060f18;
@@ -35,7 +33,7 @@
 body{
   background:var(--bg);
   color:var(--text);
-  font-family:'Barlow','Segoe UI',Arial,sans-serif;
+  font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;
   min-height:100vh;
   position:relative;
 }
@@ -71,7 +69,7 @@ body::after{
 
 /* ── Brand ── */
 .brand-title{
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:clamp(52px,14vw,96px);
   font-weight:900;
   color:var(--text);
@@ -82,7 +80,7 @@ body::after{
 }
 .brand-title span{color:var(--copper2)}
 .brand-sub{
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:10px;
   color:var(--muted);
   letter-spacing:4px;
@@ -109,7 +107,7 @@ body::after{
   color:var(--muted);
   font-size:11px;cursor:pointer;
   border-radius:2px;
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   letter-spacing:1px;
   transition:all .2s;
 }
@@ -117,7 +115,7 @@ body::after{
 .lang-btn:hover:not(.active){border-color:var(--copper);color:var(--copper)}
 
 .tabs{display:flex;border:1px solid var(--border2);border-radius:4px 4px 0 0;overflow:hidden}
-.tab{flex:1;padding:12px;background:var(--bg2);color:var(--muted);border:none;font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;font-weight:700}
+.tab{flex:1;padding:12px;background:var(--bg2);color:var(--muted);border:none;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;font-weight:700}
 .tab.active{background:var(--copper);color:#000;font-weight:800}
 
 .card-body{
@@ -153,7 +151,7 @@ body::after{
 
 label.lbl{
   display:block;
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:9px;letter-spacing:3px;
   color:var(--muted);text-transform:uppercase;margin-bottom:6px;
 }
@@ -164,7 +162,7 @@ input,select{
   border:1px solid var(--border2);
   border-radius:3px;
   color:var(--text);
-  font-family:'Barlow','Segoe UI',Arial,sans-serif;
+  font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;
   font-size:13px;outline:none;
   transition:border-color .2s;
 }
@@ -175,7 +173,7 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .btn{
   width:100%;padding:13px;border:none;
   border-radius:3px;
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:15px;letter-spacing:2px;
   cursor:pointer;font-weight:800;
   text-transform:uppercase;
@@ -193,12 +191,12 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .btn-blue{background:#1a6fa0;color:#fff}
 .btn-dark{background:var(--bg2);color:var(--muted);border:1px solid var(--border2)}
 .btn-dark:hover{border-color:var(--copper);color:var(--copper)}
-.btn-sm{padding:7px 14px;border:none;border-radius:3px;font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-size:12px;letter-spacing:1px;cursor:pointer;font-weight:700;text-transform:uppercase}
+.btn-sm{padding:7px 14px;border:none;border-radius:3px;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:12px;letter-spacing:1px;cursor:pointer;font-weight:700;text-transform:uppercase}
 
 /* ── Alerts/info boxes ── */
-.err-box{color:#ff6b6b;font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.25);border-radius:3px;line-height:1.6;border-left:3px solid var(--red)}
-.info-box{color:var(--steel2);font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(127,168,200,.07);border:1px solid rgba(127,168,200,.2);border-radius:3px;line-height:1.7}
-.warn-box{color:#ffb347;font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:3px;line-height:1.7;border-left:3px solid var(--orange)}
+.err-box{color:#ff6b6b;font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.25);border-radius:3px;line-height:1.6;border-left:3px solid var(--red)}
+.info-box{color:var(--steel2);font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(127,168,200,.07);border:1px solid rgba(127,168,200,.2);border-radius:3px;line-height:1.7}
+.warn-box{color:#ffb347;font-family:'Consolas','Courier New',monospace;font-size:11px;padding:10px 14px;background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);border-radius:3px;line-height:1.7;border-left:3px solid var(--orange)}
 
 /* ── Topbar ── */
 .topbar{
@@ -217,7 +215,7 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 }
 
 .top-brand{
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-weight:900;font-size:22px;
   color:var(--text);letter-spacing:3px;
   text-transform:uppercase;
@@ -230,8 +228,8 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
   box-shadow:0 0 8px var(--copper);
 }
 
-.top-right{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;color:var(--muted);flex-wrap:wrap}
-.role-pill{padding:3px 10px;border-radius:2px;font-size:9px;font-weight:700;font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase}
+.top-right{display:flex;align-items:center;gap:8px;font-family:'Consolas','Courier New',monospace;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.role-pill{padding:3px 10px;border-radius:2px;font-size:9px;font-weight:700;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase}
 .pill-mgr{background:var(--copper);color:#000}
 .pill-wkr{background:rgba(0,208,132,.15);color:var(--green);border:1px solid rgba(0,208,132,.3)}
 .logout-btn{
@@ -239,19 +237,19 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
   background:transparent;
   border:1px solid var(--border2);
   color:var(--muted);
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:10px;cursor:pointer;
   border-radius:2px;
   letter-spacing:1px;
   transition:all .2s;
 }
 .logout-btn:hover{border-color:var(--red);color:var(--red)}
-.clock{font-family:'Share Tech Mono','Courier New',monospace;font-size:14px;color:var(--copper2);letter-spacing:2px}
+.clock{font-family:'Consolas','Courier New',monospace;font-size:14px;color:var(--copper2);letter-spacing:2px}
 
 /* ── Body layout ── */
 .body{padding:24px;max-width:1200px;margin:0 auto}
 .sec-title{
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-weight:900;font-size:32px;
   letter-spacing:4px;color:var(--text);
   text-transform:uppercase;margin-bottom:20px;
@@ -272,8 +270,8 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .info-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--border2)}
 .info-card:hover{border-color:var(--copper)}
 .info-card:hover::before{background:var(--copper)}
-.info-card .il{font-family:'Share Tech Mono','Courier New',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
-.info-card .iv{font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:1px}
+.info-card .il{font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.info-card .iv{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:1px}
 
 /* ── Nav tabs ── */
 .nav-tabs{
@@ -287,7 +285,7 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
   background:none;border:none;
   border-bottom:3px solid transparent;
   color:var(--muted);
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:12px;letter-spacing:2px;
   text-transform:uppercase;cursor:pointer;
   white-space:nowrap;margin-bottom:-2px;
@@ -321,11 +319,11 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
 @keyframes pulse-dot{0%,100%{box-shadow:0 0 10px var(--green),0 0 20px rgba(0,208,132,.3)}50%{box-shadow:0 0 16px var(--green),0 0 32px rgba(0,208,132,.4)}}
 
 .status-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.status-lbl{font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
+.status-lbl{font-family:'Consolas','Courier New',monospace;font-size:11px;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
 
 /* ── GIANT timer ── */
 .timer-big{
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:clamp(42px,10vw,72px);
   font-weight:400;
   color:var(--copper2);
@@ -344,7 +342,7 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
   padding:26px 10px;
   border-radius:4px;
   background:var(--bg);
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:13px;letter-spacing:3px;
   cursor:pointer;font-weight:800;
   text-transform:uppercase;
@@ -364,14 +362,14 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
 .table-head{
   padding:12px 18px;
   border-bottom:1px solid var(--border2);
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:12px;letter-spacing:3px;
   color:var(--copper);text-transform:uppercase;font-weight:700;
 }
-table{width:100%;border-collapse:collapse;font-family:'Barlow','Segoe UI',Arial,sans-serif;font-size:13px;min-width:400px}
+table{width:100%;border-collapse:collapse;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;font-size:13px;min-width:400px}
 th{
   padding:10px 14px;text-align:left;
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:9px;letter-spacing:2px;
   color:var(--muted);text-transform:uppercase;
   border-bottom:1px solid var(--border2);
@@ -382,7 +380,7 @@ td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text)}
 tr:hover td{background:rgba(184,115,51,.03)}
 
 /* ── Badges ── */
-.badge{padding:3px 8px;border-radius:2px;font-size:9px;font-family:'Share Tech Mono','Courier New',monospace;font-weight:700;display:inline-block;letter-spacing:1px}
+.badge{padding:3px 8px;border-radius:2px;font-size:9px;font-family:'Consolas','Courier New',monospace;font-weight:700;display:inline-block;letter-spacing:1px}
 .bg{background:rgba(0,208,132,.1);color:var(--green);border:1px solid rgba(0,208,132,.25)}
 .br{background:rgba(255,68,68,.1);color:var(--red);border:1px solid rgba(255,68,68,.25)}
 .by{background:rgba(255,140,0,.1);color:var(--orange);border:1px solid rgba(255,140,0,.25)}
@@ -403,19 +401,19 @@ tr:hover td{background:rgba(184,115,51,.03)}
 .wcard.ended{border-left-color:var(--steel)}
 body.rtl .wcard{border-left:none;border-right:3px solid var(--border2)}
 body.rtl .wcard.working{border-right-color:var(--green)}
-.wname{font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:800;font-size:18px;letter-spacing:1px;margin-bottom:2px;color:var(--text);text-transform:uppercase}
-.wphone{font-family:'Share Tech Mono','Courier New',monospace;font-size:10px;color:var(--muted);margin-bottom:10px}
+.wname{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-weight:800;font-size:18px;letter-spacing:1px;margin-bottom:2px;color:var(--text);text-transform:uppercase}
+.wphone{font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--muted);margin-bottom:10px}
 .wbadges{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}
 .wstats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.wsl{font-family:'Share Tech Mono','Courier New',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
-.wsv{font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-size:16px;font-weight:800;letter-spacing:1px}
+.wsl{font-family:'Consolas','Courier New',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.wsv{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:16px;font-weight:800;letter-spacing:1px}
 
 /* ── Settings ── */
 .sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 .sc{background:var(--bg1);border:1px solid var(--border2);border-radius:4px;padding:22px;position:relative;overflow:hidden}
 .sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--copper),transparent)}
 .st{
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-size:11px;letter-spacing:3px;
   color:var(--copper);text-transform:uppercase;
   margin-bottom:18px;padding-bottom:10px;
@@ -423,7 +421,7 @@ body.rtl .wcard.working{border-right-color:var(--green)}
   font-weight:800;
 }
 .sf{margin-bottom:14px}
-.empty{text-align:center;padding:40px;color:var(--muted);font-family:'Share Tech Mono','Courier New',monospace;font-size:12px;line-height:2}
+.empty{text-align:center;padding:40px;color:var(--muted);font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:2}
 
 /* ── Phone/worker rows ── */
 .phone-row{display:flex;align-items:flex-start;gap:10px;padding:14px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:8px;transition:border-color .2s}
@@ -434,17 +432,17 @@ body.rtl .wcard.working{border-right-color:var(--green)}
   border:2px dashed var(--border2);
   border-radius:4px;padding:28px;
   text-align:center;cursor:pointer;
-  font-family:'Share Tech Mono','Courier New',monospace;
+  font-family:'Consolas','Courier New',monospace;
   font-size:11px;color:var(--muted);line-height:2;
   transition:all .2s;
 }
 .drop-zone:hover{border-color:var(--copper);color:var(--copper);background:rgba(184,115,51,.04)}
 .rh{background:rgba(184,115,51,.05);border:1px solid rgba(184,115,51,.2);border-radius:4px;padding:14px}
 .gh{background:rgba(0,208,132,.05);border:1px solid rgba(0,208,132,.2);border-radius:4px;padding:14px}
-.hint{font-family:'Share Tech Mono','Courier New',monospace;font-size:10px;color:var(--muted);margin-top:5px}
+.hint{font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--muted);margin-top:5px}
 
 /* ── GPS bar ── */
-.gps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:1px}
+.gps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:1px}
 .gps-bar.ok{background:rgba(0,208,132,.07);border:1px solid rgba(0,208,132,.2);color:var(--green)}
 .gps-bar.far{background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.2);color:var(--red)}
 .gps-bar.checking{background:rgba(255,140,0,.07);border:1px solid rgba(255,140,0,.2);color:var(--orange)}
@@ -462,7 +460,7 @@ body.rtl .alert-row{border-left:none;border-right:3px solid var(--orange)}
   background:var(--bg1);
   border:1px solid var(--border2);
   padding:12px 18px;border-radius:4px;
-  font-family:'Barlow','Segoe UI',Arial,sans-serif;font-size:13px;
+  font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;font-size:13px;
   color:var(--text);max-width:320px;
   box-shadow:0 8px 32px rgba(0,0,0,.6);
   line-height:1.5;display:none;
@@ -480,7 +478,7 @@ body.rtl .toast{right:auto;left:24px}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 .modal-bg.show{display:flex}
 .modal-title{
-  font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
   font-weight:900;font-size:22px;
   color:var(--copper2);letter-spacing:3px;
   margin-bottom:20px;text-transform:uppercase;
@@ -496,23 +494,23 @@ body.rtl .toast{right:auto;left:24px}
 .assign-col{flex:0 0 220px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;min-height:160px;display:flex;flex-direction:column;transition:border-color .2s}
 .assign-col.unassigned{border-color:var(--border);flex:0 0 200px}
 .assign-col-head{padding:12px 14px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.assign-col-title{font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:1px}
+.assign-col-title{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:1px}
 .assign-col.unassigned .assign-col-title{color:var(--muted)}
 .assign-col-body{padding:10px;flex:1;min-height:80px;transition:background .15s}
 .assign-col-body.drag-over{background:rgba(184,115,51,.07);border-radius:0 0 6px 6px}
 .assign-worker-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:6px;cursor:grab;user-select:none;transition:border-color .15s,opacity .15s}
 .assign-worker-chip:hover{border-color:var(--copper)}
 .assign-worker-chip.dragging{opacity:.3;cursor:grabbing}
-.assign-worker-chip .chip-name{flex:1;font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:800;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px}
-.assign-worker-chip .chip-phone{font-family:'Share Tech Mono','Courier New',monospace;font-size:10px;color:var(--muted)}
+.assign-worker-chip .chip-name{flex:1;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-weight:800;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px}
+.assign-worker-chip .chip-phone{font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--muted)}
 .assign-worker-chip .chip-remove{width:18px;height:18px;border-radius:50%;background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.25);color:var(--red);font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
 .assign-worker-chip .chip-remove:hover{background:rgba(255,68,68,.3)}
-.loc-toggle{display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono','Courier New',monospace;font-size:9px;cursor:pointer;padding:4px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);transition:all .2s;white-space:nowrap;letter-spacing:1px}
+.loc-toggle{display:flex;align-items:center;gap:6px;font-family:'Consolas','Courier New',monospace;font-size:9px;cursor:pointer;padding:4px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);transition:all .2s;white-space:nowrap;letter-spacing:1px}
 .loc-toggle.open{background:rgba(0,208,132,.1);border-color:rgba(0,208,132,.3);color:var(--green)}
 .loc-toggle.closed{background:rgba(255,68,68,.1);border-color:rgba(255,68,68,.3);color:var(--red)}
 .assign-col.loc-closed{border-color:rgba(255,68,68,.2);opacity:.7}
-.assign-empty-drop{border:2px dashed var(--border);border-radius:4px;padding:20px 10px;text-align:center;font-family:'Share Tech Mono','Courier New',monospace;font-size:10px;color:var(--border2);pointer-events:none}
-.assign-info-bar{background:rgba(127,168,200,.06);border:1px solid rgba(127,168,200,.15);border-radius:4px;padding:11px 16px;font-family:'Share Tech Mono','Courier New',monospace;font-size:11px;color:var(--steel);margin-bottom:16px;line-height:1.8}
+.assign-empty-drop{border:2px dashed var(--border);border-radius:4px;padding:20px 10px;text-align:center;font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--border2);pointer-events:none}
+.assign-info-bar{background:rgba(127,168,200,.06);border:1px solid rgba(127,168,200,.15);border-radius:4px;padding:11px 16px;font-family:'Consolas','Courier New',monospace;font-size:11px;color:var(--steel);margin-bottom:16px;line-height:1.8}
 
 /* ── Pipe decorations on headings ── */
 .pipe-heading{display:flex;align-items:center;gap:12px;margin-bottom:18px}
@@ -775,73 +773,76 @@ async function dbSetLocationOpen(id, is_open) {
 
 // ── Create tables + seed default manager ──
 async function initDB() {
-  await sql(`CREATE TABLE IF NOT EXISTS wf_users(
-    username TEXT PRIMARY KEY, password TEXT, role TEXT,
-    phone TEXT, hourly_rate NUMERIC,
-    device_id TEXT
-  )`);
-  await sql(`CREATE TABLE IF NOT EXISTS wf_phones(
-    norm TEXT PRIMARY KEY, phone TEXT, label TEXT,
-    rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
-  )`);
-  await sql(`CREATE TABLE IF NOT EXISTS wf_shifts(
-    id TEXT PRIMARY KEY, worker TEXT, date TEXT,
-    start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
-    earnings NUMERIC, hourly_rate NUMERIC,
-    location_name TEXT,
-    status TEXT
-  )`);
-  await sql(`CREATE TABLE IF NOT EXISTS wf_config(
-    id INTEGER PRIMARY KEY DEFAULT 1,
-    std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5, auto_end_time TEXT DEFAULT NULL
-  )`);
-  await sql(`CREATE TABLE IF NOT EXISTS wf_locations(
-    id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
-    map_link TEXT, added_at BIGINT
-  )`);
-  await sql(`CREATE TABLE IF NOT EXISTS wf_alerts(
-    id TEXT PRIMARY KEY, type TEXT, worker TEXT,
-    phone TEXT, blocked_device TEXT, ts BIGINT, resolved BOOLEAN DEFAULT false
-  )`);
-  // Migrations — add columns that may be missing in older DBs
-  try { await sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"); } catch(e){}
-  try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"); } catch(e){}
-  try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"); } catch(e){}
-  // Assignments table
-  await sql(`CREATE TABLE IF NOT EXISTS wf_assignments(
-    worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
-    PRIMARY KEY(worker_username, loc_id)
-  )`);
-  // Location open/closed column
-  try { await sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"); } catch(e){}
-  try { await sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"); } catch(e){}
-  try { await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"); } catch(e){}
-  // Worker label column
-  try { await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"); } catch(e){}
-  // Migrate assignments: convert any old username-based keys to phone-norm keys
-  try {
-    const oldAssigns = await sql('SELECT * FROM wf_assignments');
-    for(const a of oldAssigns){
-      const key = a.worker_username;
-      // If key looks like a username (not all digits), find the phone norm and re-key it
-      if(!/^\d+$/.test(key)){
-        const urows = await sql('SELECT phone FROM wf_users WHERE username=$1 LIMIT 1',[key]);
-        if(urows[0]?.phone){
-          const newNorm = urows[0].phone.replace(/\D/g,'').replace(/^0+/,'');
-          if(newNorm && newNorm !== key){
-            await sql('INSERT INTO wf_assignments(worker_username,loc_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[newNorm,a.loc_id]);
-            await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2',[key,a.loc_id]);
-          }
-        }
-      }
-    }
-  } catch(e){}
-  const mgr = await dbGetUser('mohamed');
-  if (!mgr) await sql(
+  // ── Single batched call for all table creation (17 queries → 1) ──
+  await sql(`
+    CREATE TABLE IF NOT EXISTS wf_users(
+      username TEXT PRIMARY KEY, password TEXT, role TEXT,
+      phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT
+    );
+    CREATE TABLE IF NOT EXISTS wf_phones(
+      norm TEXT PRIMARY KEY, phone TEXT, label TEXT,
+      rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
+    );
+    CREATE TABLE IF NOT EXISTS wf_shifts(
+      id TEXT PRIMARY KEY, worker TEXT, date TEXT,
+      start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
+      earnings NUMERIC, hourly_rate NUMERIC,
+      location_name TEXT, location_id TEXT, status TEXT
+    );
+    CREATE TABLE IF NOT EXISTS wf_config(
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,
+      auto_end_time TEXT DEFAULT NULL
+    );
+    CREATE TABLE IF NOT EXISTS wf_locations(
+      id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
+      map_link TEXT, added_at BIGINT,
+      is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL
+    );
+    CREATE TABLE IF NOT EXISTS wf_alerts(
+      id TEXT PRIMARY KEY, type TEXT, worker TEXT,
+      phone TEXT, blocked_device TEXT, ts BIGINT, resolved BOOLEAN DEFAULT false
+    );
+    CREATE TABLE IF NOT EXISTS wf_assignments(
+      worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
+      PRIMARY KEY(worker_username, loc_id)
+    );
+  `);
+  // ── Migrations in parallel (fire-and-forget) ──
+  Promise.allSettled([
+    sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
+    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
+    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"),
+    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
+    sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
+    sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
+    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
+  ]);
+  // ── Manager account ──
+  await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
      ON CONFLICT(username) DO NOTHING`,
     [MGR_DEFAULT_PASS]
   );
+  // ── Assignment migration (background, non-blocking) ──
+  (async()=>{
+    try {
+      const oldAssigns = await sql('SELECT * FROM wf_assignments');
+      for(const a of oldAssigns){
+        const key = a.worker_username;
+        if(!/^\d+$/.test(key)){
+          const urows = await sql('SELECT phone FROM wf_users WHERE username=$1 LIMIT 1',[key]);
+          if(urows[0]?.phone){
+            const newNorm = urows[0].phone.replace(/\D/g,'').replace(/^0+/,'');
+            if(newNorm && newNorm !== key){
+              await sql('INSERT INTO wf_assignments(worker_username,loc_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[newNorm,a.loc_id]);
+              await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2',[key,a.loc_id]);
+            }
+          }
+        }
+      }
+    } catch(e){}
+  })();
 }
 
 // ── Core helpers ──
@@ -1014,10 +1015,11 @@ function buildTimeOptions(selected=''){
 
 // ════════════════════════ BOOT ════════════════════════
 async function init() {
+  // Show login screen INSTANTLY — don't wait for DB setup
+  S.screen='auth'; render();
+  S.clockInt=setInterval(()=>{const el=$('clock');if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
   try {
-    await initDB();
-    S.screen='auth'; render();
-    S.clockInt=setInterval(()=>{const el=$('clock');if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
+    await initDB(); // runs in background — UI already visible
   } catch(e) {
     $('root').innerHTML=`<div class="center"><div style="max-width:520px;text-align:center;padding:40px">
       <div style="font-size:36px;margin-bottom:16px">⚠</div>
@@ -1064,7 +1066,7 @@ function renderAuth(){
       </svg>
     </div>
     <h1 class="brand-title">FLOW<span>FORCE</span></h1>
-      <p class="brand-sub" style="font-family:'Share Tech Mono','Courier New',monospace;font-size:9px;letter-spacing:5px;color:#3a6080">${T.appSub}</p>
+      <p class="brand-sub" style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:5px;color:#3a6080">${T.appSub}</p>
     </div>
     <div class="auth-wrap">
       <div class="card-body" style="border-top:1px solid #2a2a2a;border-radius:4px">
@@ -1109,11 +1111,9 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    const match=await dbGetPhone(norm);
+    // Fetch phone auth + users list in parallel
+    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]);
     if(!match){showErr(T.phoneNoAuth);return;}
-
-    // Find or auto-create worker account
-    const users=await dbListUsers();
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
     if(!workerUser){
       // Auto-create account — username = label or norm, password = norm
@@ -1242,28 +1242,26 @@ window.doLogout=()=>{
 // ════════════════════════ WORKER SCREEN ════════════════════════
 async function renderWorkerScreen(){
   const u=S.user;
-  const fresh=await dbGetUser(u.username);
+  // ── Parallel fetch: user + config + locations + shifts in one round-trip ──
+  const [fresh,cfg,allLocs,allShifts]=await Promise.all([
+    dbGetUser(u.username),
+    dbGetConfig(),
+    dbListLocations(),
+    dbListShifts()
+  ]);
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
 
-  // Load config for global auto-end time
-  const cfg=await dbGetConfig();
   const globalAutoEnd=cfg.auto_end_time||null;
-  // Load per-location end_time for the worker's current location
   let locAutoEnd=null;
-  const allLocs=await dbListLocations();
-  // Try location_id on shift first, then nearestLocation id, then name fallback
   const locId=S.shift?.location_id||S.nearestLocation?.id;
   const locName2=S.shift?.location_name||S.nearestLocation?.name;
   const curLoc=allLocs.find(l=>l.id===locId)||allLocs.find(l=>l.name===locName2);
   if(curLoc?.end_time) locAutoEnd=curLoc.end_time;
-  // Per-location end_time takes priority over global config; either will fire if set
   const autoEnd=locAutoEnd||globalAutoEnd;
-  // Only reset the fired flag when screen re-renders after a completed shift
   if(!S.shift||S.shift.status==='completed') S._autoEndFired=false;
-  S.autoEndTime=autoEnd; // shared with startTimer
+  S.autoEndTime=autoEnd;
   S.autoEndSource=locAutoEnd?'location':'global';
 
-  const allShifts=await dbListShifts();
   const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   const active=myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null;
   S.shift=active;
@@ -1295,7 +1293,7 @@ async function renderWorkerScreen(){
         ${active?`<span style="font-family:monospace;font-size:10px;color:#3498db;margin-left:auto">📍 ${esc(active.location_name||'—')}</span>`:''}
       </div>
       <div class="timer-big" id="tbig">00:00:00</div>
-      <div style="font-family:'Share Tech Mono','Courier New',monospace;font-size:9px;letter-spacing:3px;color:#3a6080;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>
+      <div style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:3px;color:#3a6080;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>
       ${autoEnd?`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:14px">
         ⏰ Shift ends automatically at <strong>${esc(autoEnd)}</strong>${S.autoEndSource==='location'?' (site schedule)':' (global schedule)'}
       </div>`:`<div style="margin-bottom:14px"></div>`}
@@ -1538,11 +1536,10 @@ async function loadSummary(force=false){
   if(!force && _summaryCache && now-_summaryCacheTs < 30000){
     const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
   }
-  const users=(await dbListUsers()).filter(u=>u.role==='worker');
-  const shifts=await dbListShifts();
+  const [allUsers,shifts,locations,allAlerts]=await Promise.all([dbListUsers(),dbListShifts(),dbListLocations(),dbListAlerts()]);
+  const users=allUsers.filter(u=>u.role==='worker');
   const ts=shifts.filter(s=>s.date===todayStr());
-  const locations=await dbListLocations();
-  const alerts=(await dbListAlerts()).filter(a=>!a.resolved).length;
+  const alerts=allAlerts.filter(a=>!a.resolved).length;
   const sal=shifts.filter(s=>inP(s,'month')).reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
   const el=$('scards');if(!el)return;
   _summaryCache=[
