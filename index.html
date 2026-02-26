@@ -1843,76 +1843,105 @@ window.closeMonth=async()=>{
   document.head.appendChild(script);
 };
 
-// ── Export (Excel with 2 sheets) ──
+// ── Export (Excel — one sheet per month + All Shifts) ──
 window.doExport=async()=>{
-  const shifts=await dbListShifts();const users=await dbListUsers();
+  toast('⏳ Preparing export…','info');
+  const shifts=await dbListShifts();
+  const users=await dbListUsers();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
   const workers=users.filter(u=>u.role==='worker');
+
   const fmtExcel=ts=>{
     if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';
     const pad=n=>String(n).padStart(2,'0');
     return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
-  // Sheet 1: All Shifts
-  const s1=[['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status']];
-  shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).forEach(s=>{
+  const SHIFT_COLS=[14,14,10,16,10,18,18,12,12,10];
+  const SHIFT_HDR=['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status'];
+
+  const makeShiftRow=s=>{
     const u=um[s.worker];
-    s1.push([
-      u?.label||s.worker,
-      u?.phone||'',
+    return[
+      u?.label||s.worker, u?.phone||'',
       parseFloat(u?.hourly_rate||s.hourly_rate||0),
-      s.location_name||'—',
-      s.date,
-      fmtExcel(s.start_time),
-      fmtExcel(s.end_time),
+      s.location_name||'—', s.date,
+      fmtExcel(s.start_time), fmtExcel(s.end_time),
       parseFloat((parseFloat(s.work_hours)||0).toFixed(4)),
       parseFloat((parseFloat(s.earnings)||0).toFixed(2)),
       s.status
-    ]);
+    ];
+  };
+
+  // Group shifts by YYYY-MM
+  const byMonth={};
+  shifts.forEach(s=>{
+    const d=s.date||'';
+    const key=d.slice(0,7)||'Unknown';
+    if(!byMonth[key])byMonth[key]=[];
+    byMonth[key].push(s);
   });
 
-  // Sheet 2: Monthly Salary with per-location breakdown
-  const now=new Date();
-  const monthLabel=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const locNames=[...new Set(shifts.map(s=>s.location_name).filter(Boolean))].sort();
-  const s2Header=['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts','Month'];
-  const s2=[s2Header];
-  workers.forEach(w=>{
-    const ws=shifts.filter(s=>s.worker===w.username&&s.status==='completed').filter(s=>{
-      const ts=Number(s.start_time);if(!ts)return false;
-      const d=new Date(ts);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-    });
-    const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-    const workerRate=parseFloat(w.hourly_rate)||0;
-    const total=th*workerRate;
-    const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
-    s2.push([
-      w.label||w.username, w.phone||'', workerRate,
-      ...locHrs,
-      parseFloat(th.toFixed(4)),
-      parseFloat(total.toFixed(2)),
-      ws.length,
-      monthLabel
-    ]);
-  });
+  // Sort months oldest → newest
+  const monthKeys=Object.keys(byMonth).sort();
 
   const script=document.createElement('script');
   script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   script.onload=()=>{
     const wb=XLSX.utils.book_new();
-    const ws1=XLSX.utils.aoa_to_sheet(s1),ws2=XLSX.utils.aoa_to_sheet(s2);
-    ws1['!cols']=[14,14,10,16,10,18,18,12,12,10].map(w=>({wch:w}));
-    ws2['!cols']=[14,14,10,...locNames.map(()=>14),12,12,10,13,10,14,7,10].map(w=>({wch:w}));
-    XLSX.utils.book_append_sheet(wb,ws1,'Shifts');
-    XLSX.utils.book_append_sheet(wb,ws2,'Monthly Salary');
+
+    // ── Sheet per month: Shifts ──
+    monthKeys.forEach(key=>{
+      const mShifts=byMonth[key].sort((a,b)=>Number(b.start_time)-Number(a.start_time));
+      const data=[SHIFT_HDR,...mShifts.map(makeShiftRow)];
+      const ws=XLSX.utils.aoa_to_sheet(data);
+      ws['!cols']=SHIFT_COLS.map(w=>({wch:w}));
+      // Sheet name: "Feb 2026" style
+      const [yr,mo]=key.split('-');
+      const sheetName=mo&&yr
+        ?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'})
+        :key;
+      XLSX.utils.book_append_sheet(wb,ws,sheetName.slice(0,31));
+    });
+
+    // ── Sheet per month: Salary Summary ──
+    monthKeys.forEach(key=>{
+      const mShifts=byMonth[key].filter(s=>s.status==='completed');
+      if(!mShifts.length)return;
+      const locNames=[...new Set(mShifts.map(s=>s.location_name).filter(Boolean))].sort();
+      const hdr=['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts'];
+      const rows=[hdr];
+      workers.forEach(w=>{
+        const ws2=mShifts.filter(s=>s.worker===w.username);
+        if(!ws2.length)return;
+        const th=ws2.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
+        const total=th*(parseFloat(w.hourly_rate)||0);
+        const locHrs=locNames.map(ln=>parseFloat(ws2.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
+        rows.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws2.length]);
+      });
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols']=[14,14,10,...locNames.map(()=>14),12,14,8].map(w=>({wch:w}));
+      const [yr,mo]=key.split('-');
+      const label=mo&&yr
+        ?new Date(Number(yr),Number(mo)-1,1).toLocaleString('default',{month:'short',year:'numeric'})
+        :key;
+      XLSX.utils.book_append_sheet(wb,ws,`Salary ${label}`.slice(0,31));
+    });
+
+    // ── Final sheet: All Shifts (all time) ──
+    const allData=[SHIFT_HDR,...shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).map(makeShiftRow)];
+    const wsAll=XLSX.utils.aoa_to_sheet(allData);
+    wsAll['!cols']=SHIFT_COLS.map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,wsAll,'All Shifts');
+
     XLSX.writeFile(wb,`workforce_${todayStr()}.xlsx`);
-    toast('✓ Excel exported (2 sheets)','success');
+    toast(`✅ Exported ${monthKeys.length} month${monthKeys.length===1?'':'s'} + All Shifts`,'success');
   };
   script.onerror=()=>{
-    const csv=s1.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const allData=[SHIFT_HDR,...shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time)).map(makeShiftRow)];
+    const csv=allData.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download=`workforce_${todayStr()}.csv`;a.click();
-    toast('Exported as CSV','warning');
+    toast('Exported as CSV (XLSX unavailable)','warning');
   };
   document.head.appendChild(script);
 };
