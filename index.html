@@ -552,16 +552,16 @@ input:focus{
 <!-- Edit Worker Modal -->
 <div class="modal-bg" id="editModal">
   <div class="card" style="max-width:420px">
-    <div class="modal-title">✏️ EDIT WORKER</div>
-    <div class="sf"><label class="lbl">Name</label><input id="em-name" disabled/></div>
-    <div class="sf"><label class="lbl">Phone</label><input id="em-phone" disabled/></div>
+    <div class="modal-title" id="em-title">✏️ EDIT WORKER</div>
+    <div class="sf"><label class="lbl" id="em-lbl-name">Name</label><input id="em-name" disabled/></div>
+    <div class="sf"><label class="lbl" id="em-lbl-phone">Phone</label><input id="em-phone" disabled/></div>
     <div class="sf rh">
-      <label class="lbl" style="color:#f0c040">💰 Hourly Rate (€)</label>
+      <label class="lbl" style="color:#f0c040" id="em-lbl-rate">💰 Hourly Rate (€)</label>
       <input type="number" id="em-rate" min="1" step="0.5"/>
     </div>
     <div class="modal-btns">
-      <button class="btn btn-dark" style="flex:1" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-gold" style="flex:1" onclick="saveWorkerEdit()">Save</button>
+      <button class="btn btn-dark" style="flex:1" id="em-btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold" style="flex:1" id="em-btn-save" onclick="saveWorkerEdit()">Save</button>
     </div>
   </div>
 </div>
@@ -569,15 +569,15 @@ input:focus{
 <!-- Change Password Modal (Manager) -->
 <div class="modal-bg" id="pwdModal">
   <div class="card" style="max-width:400px">
-    <div class="modal-title">&#128274; Change Password</div>
-    <div class="sf"><label class="lbl">Current Password</label><input type="password" id="pw-current"/></div>
-    <div class="sf"><label class="lbl">New Password (min 6 chars)</label><input type="password" id="pw-new"/></div>
-    <div class="sf"><label class="lbl">Confirm New Password</label><input type="password" id="pw-confirm"/></div>
+    <div class="modal-title">&#128274; <span id="pwd-title">Change Password</span></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-cur">Current Password</label><input type="password" id="pw-current"/></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-new">New Password (min 6 chars)</label><input type="password" id="pw-new"/></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-cfm">Confirm New Password</label><input type="password" id="pw-confirm"/></div>
     <div class="err-box" id="pw-err" style="display:none;margin-bottom:12px"></div>
     <div class="modal-btns" style="flex-direction:column;gap:8px">
-      <button class="btn btn-gold" onclick="doChangePwd()">Save New Password</button>
+      <button class="btn btn-gold" id="pwd-btn-save" onclick="doChangePwd()">Save New Password</button>
       <button class="btn btn-dark" onclick="doSetDefaultPwd()" style="background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.3);color:#e74c3c">&#128257; Set Default (mohamed123321)</button>
-      <button class="btn btn-dark" onclick="closePwdModal()">Cancel</button>
+      <button class="btn btn-dark" id="pwd-btn-cancel" onclick="closePwdModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -747,7 +747,6 @@ async function initDB() {
       PRIMARY KEY(worker_username, loc_id)
     );
   `);
-  // ── Migrations (fire-and-forget) ──
   Promise.allSettled([
     sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
     sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
@@ -756,16 +755,13 @@ async function initDB() {
     sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
     sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
     sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
-    // ── NEW: can_restart flag for multi-shift per day ──
     sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
   ]);
-  // ── Manager account ──
   await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
      ON CONFLICT(username) DO NOTHING`,
     [MGR_DEFAULT_PASS]
   );
-  // ── Assignment migration (background) ──
   (async()=>{
     try {
       const oldAssigns = await sql('SELECT * FROM wf_assignments');
@@ -865,14 +861,479 @@ function toast(msg,type='info') {
 
 let lang = localStorage.getItem('wf_lang')||'it';
 const TR = {
-  en:{dir:'ltr',appSub:'Plumbing Crew Management',signIn:'Sign In',signUp:'Sign Up',username:'Username',password:'Password',yourUser:'Your username',yourPass:'Your password',phoneNum:'Phone Number',phoneReq:'* required',phoneHint:'Must be added by your manager · password will be your phone digits',createAcc:'Create Account →',phoneNoAuth:'⛔ Phone not authorized. Contact your manager.',maxAcc:'This phone already has an account. Only 1 per phone allowed.',userTaken:'Username taken.',namePassReq:'Username required.',passLen:'Password min 4 characters.',accCreated:'Account created! Sign in — password is your phone number.',badLogin:'Invalid username or password.',deviceBlocked:'⛔ This account is registered to a different device.',gpsRequired:'📍 Location required. Enable GPS on your device.',gpsFarLogin:'⛔ You are too far from your work location to log in.',gpsLoginErr:'⛔ Could not get your location. Enable GPS and try again.',logout:'Logout',workTime:'🔧 On The Job',todayEarn:"Today's Earnings",waiting:'⚡ Ready to Deploy',wking:'Working',startWork:'▶ START WORK',endWork:'■ END SHIFT',shiftHist:'My Shift History',date:'Date',start:'Start',end:'End',worked:'Worked',earn:'Earnings',stat:'Status',noShifts:'No shifts yet.',already:'Shift already started today!',noActive:'No active shift.',noEnd:'No shift to end.',shiftStarted:'Shift started! Good work 💪',mgrDash:'⚙️ CREW CONTROL',expXlsx:'📊 Export',workers:'Workers',working:'Working',late:'Late',absent:'Absent',addWorker:'Add Worker',salDue:'Salary Due',live:'Live',shifts:'Shifts',salary:'Salary',settings:'Settings',alerts:'Alerts',noWorkers:'No workers yet.',hrsToday:'Hours Today',earnToday:'Earnings Today',startedAt:'Started',addManual:'➕ Add Worker',phonesInfo:'Workers register using their phone number. 1 account per phone. Password = phone digits (no leading zero).',phoneLbl:'Phone Number',workerLbl:'Worker Name (optional)',rateLbl:'💰 Hourly Rate (€)',rateHint:'Worker cannot change this',shiftLbl:'Shift Start',addBtn:'➕ Add Worker',uploadF:'📤 Upload File',uploadInfo:'Upload .csv or .txt — one phone per line.',clickDrop:'Click or drag file here',fileTypes:'.csv · .txt',approved:'📋 Approved Workers',clearAll:'Clear All',noPhonesYet:'No workers yet.',rateLabel:'RATE:',shiftLabel:'SHIFT:',accs:'accounts',slots:'slot(s) left',badPhone:'Enter a phone number.',badPhoneNum:'Invalid phone number.',badRate:'Set a valid rate.',dupPhone:'Phone already in list.',phoneAdded:'✓ Worker added!',phoneRemoved:'Removed.',rateUpdated:'Rate updated!',settSaved:'Settings saved!',workerUpdated:'Worker updated!',cleared:'Cleared.',editWorker:'EDIT WORKER',cancel:'Cancel',save:'Save',filterW:'Filter by worker...',clear:'Clear',today:'Today',week:'This Week',month:'This Month',all:'All Time',totalH:'Total Hrs',regPay:'Regular Pay',otH:'OT Hrs',otP:'OT Pay',deduct:'Deductions',total:'TOTAL',shiftsC:'Shifts',noW:'No workers.',edit:'Edit',shiftOver:'Shift & Overtime',defShift:'Default Shift Start',grace:'Grace Period (min)',stdH:'Std Hours/Day',otMult:'OT Multiplier',deductT:'Deductions',deductL:'Deduct/Late (€)',saveSett:'Save Settings',danger:'⚠ Danger Zone',dangerD:'Delete all shift records.',deleteAll:'Delete All Shifts',confirmDel:'Delete ALL shifts?',allDel:'All shifts deleted.',confirmClear:'Clear all workers?',phone:'Phone',name:'Name',rateC:'Rate',shiftC:'Shift',action:'Action',gpsOk:'✓ At work location',gpsFar:'⛔ Too far',gpsCheck:'Checking GPS…',gpsNoSet:'No location set',gpsErr:'GPS error. Enable location.',mapLink:'🗺 Map',newDevAlert:'⚠ Unauthorized Device Login',newDevDesc:'tried to log in from blocked device.',resolve:'Resolve',noAlerts:'No alerts ✓',changePwd:'🔑 Change Password',fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,lateMsg:n=>`⚠ ${n} min late!`},
-  it:{dir:'ltr',appSub:'Gestione Squadra Idraulici',signIn:'Accedi',signUp:'Registrati',username:'Nome utente',password:'Password',yourUser:'Il tuo nome utente',yourPass:'La tua password',phoneNum:'Numero di Telefono',phoneReq:'* obbligatorio',phoneHint:'Deve essere aggiunto dal manager · la password sarà le cifre del numero',createAcc:'Crea Account →',phoneNoAuth:'⛔ Telefono non autorizzato.',maxAcc:'Numero già registrato. Solo 1 account per telefono.',userTaken:'Nome già in uso.',namePassReq:'Nome utente obbligatorio.',passLen:'Password min 4 caratteri.',accCreated:'Account creato! Password = cifre del tuo numero.',badLogin:'Credenziali errate.',deviceBlocked:'⛔ Account su altro dispositivo.',gpsRequired:'📍 Abilita il GPS.',gpsFarLogin:'⛔ Sei troppo lontano dalla sede.',gpsLoginErr:'⛔ GPS non disponibile.',logout:'Esci',workTime:'🔧 Sul Lavoro',todayEarn:'Guadagni Oggi',waiting:'⚡ Pronto al Lavoro',wking:'In Lavoro',startWork:'▶ INIZIA',endWork:'■ FINE TURNO',shiftHist:'Storico Turni',date:'Data',start:'Inizio',end:'Fine',worked:'Lavorato',earn:'Guadagni',stat:'Stato',noShifts:'Nessun turno.',already:'Turno già iniziato!',noActive:'Nessun turno attivo.',noEnd:'Nessun turno.',shiftStarted:'Turno iniziato! 💪',mgrDash:'⚙️ CONTROLLO SQUADRA',expXlsx:'📊 Export',workers:'Lavoratori',working:'Lavoro',late:'Ritardo',absent:'Assenti',addWorker:'Aggiungi',salDue:'Stipendio',live:'Live',shifts:'Turni',salary:'Stipendi',settings:'Impostazioni',alerts:'Avvisi',noWorkers:'Nessun lavoratore.',hrsToday:'Ore Oggi',earnToday:'Guadagni',startedAt:'Iniziato',addManual:'➕ Aggiungi Lavoratore',phonesInfo:'I lavoratori si registrano solo con un numero presente qui.',phoneLbl:'Numero',workerLbl:'Nome (opzionale)',rateLbl:'💰 Tariffa (€)',rateHint:'Il lavoratore non può cambiarla',shiftLbl:'Inizio Turno',addBtn:'➕ Aggiungi',uploadF:'📤 Carica',uploadInfo:'File .csv o .txt.',clickDrop:'Clicca o trascina',fileTypes:'.csv · .txt',approved:'📋 Approvati',clearAll:'Cancella',noPhonesYet:'Nessuno.',rateLabel:'TARIFFA:',shiftLabel:'TURNO:',accs:'account',slots:'posto/i',badPhone:'Inserisci numero.',badPhoneNum:'Numero non valido.',badRate:'Tariffa non valida.',dupPhone:'Numero già presente.',phoneAdded:'✓ Aggiunto!',phoneRemoved:'Rimosso.',rateUpdated:'Aggiornato!',settSaved:'Salvato!',workerUpdated:'Aggiornato!',cleared:'Cancellato.',editWorker:'MODIFICA',cancel:'Annulla',save:'Salva',filterW:'Filtra…',clear:'Cancella',today:'Oggi',week:'Settimana',month:'Mese',all:'Tutto',totalH:'Ore Tot.',regPay:'Base',otH:'Str.',otP:'P.Str.',deduct:'Detrazioni',total:'TOTALE',shiftsC:'Turni',noW:'Nessuno.',edit:'Modifica',shiftOver:'Turno e Straordinari',defShift:'Inizio Turno',grace:'Tolleranza (min)',stdH:'Ore/Giorno',otMult:'Moltiplicatore',deductT:'Detrazioni',deductL:'Detrazione Ritardo (€)',saveSett:'Salva',danger:'⚠ Zona Pericolosa',dangerD:'Elimina tutti i turni.',deleteAll:'Elimina Tutti',confirmDel:'Eliminare tutto?',allDel:'Eliminati.',confirmClear:'Cancellare tutti?',phone:'Telefono',name:'Nome',rateC:'Tariffa',shiftC:'Turno',action:'Azione',gpsOk:'✓ In sede',gpsFar:'⛔ Lontano',gpsCheck:'GPS…',gpsNoSet:'Posizione non impostata',gpsErr:'GPS non disponibile.',mapLink:'🗺 Mappa',newDevAlert:'⚠ Dispositivo non autorizzato',newDevDesc:'tentativo da dispositivo bloccato.',resolve:'Risolto',noAlerts:'Nessun avviso ✓',changePwd:'🔑 Cambia Password',fileAdded:(a,s)=>`✓ ${a} aggiunti. ${s} saltati.`,endMsg:(d,e)=>`Fatto! ${d} · €${e}.`,lateMsg:n=>`⚠ ${n} min ritardo!`},
-  ar:{dir:'rtl',appSub:'إدارة فريق السباكة',signIn:'تسجيل الدخول',signUp:'إنشاء حساب',username:'اسم المستخدم',password:'كلمة المرور',yourUser:'اسم المستخدم',yourPass:'كلمة المرور',phoneNum:'رقم الهاتف',phoneReq:'* مطلوب',phoneHint:'يجب أن يضيفه المدير · كلمة المرور ستكون أرقام هاتفك',createAcc:'إنشاء الحساب',phoneNoAuth:'⛔ الهاتف غير مصرح.',maxAcc:'هذا الرقم لديه حساب. حساب واحد فقط لكل رقم.',userTaken:'اسم مستخدم مستخدم.',namePassReq:'اسم المستخدم مطلوب.',passLen:'كلمة المرور 4 أحرف على الأقل.',accCreated:'تم إنشاء الحساب! كلمة المرور = أرقام هاتفك.',badLogin:'بيانات خاطئة.',deviceBlocked:'⛔ الحساب مرتبط بجهاز آخر.',gpsRequired:'📍 يرجى تفعيل GPS.',gpsFarLogin:'⛔ أنت بعيد عن موقع العمل.',gpsLoginErr:'⛔ تعذر الحصول على موقعك.',logout:'خروج',workTime:'🔧 وقت العمل',todayEarn:'أرباح اليوم',waiting:'⚡ جاهز للعمل',wking:'يعمل',startWork:'▶ بدء العمل',endWork:'■ إنهاء الوردية',shiftHist:'سجل الورديات',date:'التاريخ',start:'البداية',end:'النهاية',worked:'المدة',earn:'الأرباح',stat:'الحالة',noShifts:'لا توجد ورديات.',already:'الوردية بدأت!',noActive:'لا توجد وردية.',noEnd:'لا توجد وردية.',shiftStarted:'بدأت الوردية! 💪',mgrDash:'⚙️ مركز التحكم',expXlsx:'📊 Export',workers:'الموظفون',working:'يعملون',late:'متأخرون',absent:'غائبون',addWorker:'إضافة',salDue:'الرواتب',live:'مباشر',shifts:'الورديات',salary:'الرواتب',settings:'الإعدادات',alerts:'التنبيهات',noWorkers:'لا يوجد موظفون.',hrsToday:'ساعات',earnToday:'أرباح',startedAt:'بدأ',addManual:'➕ إضافة موظف',phonesInfo:'الموظفون يسجلون فقط إذا كان رقمهم هنا.',phoneLbl:'رقم الهاتف',workerLbl:'الاسم (اختياري)',rateLbl:'💰 الأجر (€)',rateHint:'لا يمكن للموظف تغييره',shiftLbl:'بداية الوردية',addBtn:'➕ إضافة',uploadF:'📤 رفع',uploadInfo:'ملف .csv أو .txt.',clickDrop:'انقر أو اسحب',fileTypes:'.csv · .txt',approved:'📋 المعتمدون',clearAll:'مسح الكل',noPhonesYet:'لا يوجد.',rateLabel:'الأجر:',shiftLabel:'الوردية:',accs:'حسابات',slots:'مكان',badPhone:'أدخل رقم.',badPhoneNum:'رقم غير صالح.',badRate:'أجر غير صالح.',dupPhone:'الرقم موجود.',phoneAdded:'✓ تمت الإضافة!',phoneRemoved:'تمت الإزالة.',rateUpdated:'تم التحديث!',settSaved:'تم الحفظ!',workerUpdated:'تم التحديث!',cleared:'تم المسح.',editWorker:'تعديل',cancel:'إلغاء',save:'حفظ',filterW:'بحث…',clear:'مسح',today:'اليوم',week:'الأسبوع',month:'الشهر',all:'الكل',totalH:'إجمالي الساعات',regPay:'الأجر الأساسي',otH:'إضافي',otP:'أجر إضافي',deduct:'خصومات',total:'الإجمالي',shiftsC:'ورديات',noW:'لا يوجد.',edit:'تعديل',shiftOver:'الورديات',defShift:'بداية الوردية',grace:'فترة السماح',stdH:'ساعات/يوم',otMult:'مضاعف',deductT:'خصومات',deductL:'خصم التأخير (€)',saveSett:'حفظ',danger:'⚠ خطر',dangerD:'حذف جميع الورديات.',deleteAll:'حذف الكل',confirmDel:'حذف كل الورديات؟',allDel:'تم الحذف.',confirmClear:'مسح الكل؟',phone:'الهاتف',name:'الاسم',rateC:'الأجر',shiftC:'الوردية',action:'إجراء',gpsOk:'✓ في موقع العمل',gpsFar:'⛔ بعيد',gpsCheck:'جارٍ التحقق…',gpsNoSet:'موقع غير محدد',gpsErr:'GPS غير متاح.',mapLink:'🗺 خريطة',newDevAlert:'⚠ جهاز غير مصرح',newDevDesc:'محاولة دخول من جهاز محظور.',resolve:'تم الحل',noAlerts:'لا توجد تنبيهات ✓',changePwd:'🔑 تغيير كلمة المرور',fileAdded:(a,s)=>`✓ ${a} مضافون. ${s} متخطون.`,endMsg:(d,e)=>`انتهت! ${d} · €${e}.`,lateMsg:n=>`⚠ متأخر ${n} دقيقة!`}
+  en:{
+    dir:'ltr',
+    appSub:'Plumbing Crew Management',
+    signIn:'Sign In',signUp:'Sign Up',
+    username:'Username',password:'Password',
+    yourUser:'Your username',yourPass:'Your password',
+    phoneNum:'Phone Number',phoneReq:'* required',
+    phoneHint:'Must be added by your manager · password will be your phone digits',
+    createAcc:'Create Account →',
+    phoneNoAuth:'⛔ Phone not authorized. Contact your manager.',
+    maxAcc:'This phone already has an account. Only 1 per phone allowed.',
+    userTaken:'Username taken.',namePassReq:'Username required.',
+    passLen:'Password min 4 characters.',
+    accCreated:'Account created! Sign in — password is your phone number.',
+    badLogin:'Invalid username or password.',
+    deviceBlocked:'⛔ This account is registered to a different device.',
+    gpsRequired:'📍 Location required. Enable GPS on your device.',
+    gpsFarLogin:'⛔ You are too far from your work location to log in.',
+    gpsLoginErr:'⛔ Could not get your location. Enable GPS and try again.',
+    logout:'Logout',
+    workTime:'🔧 On The Job',todayEarn:"Today's Earnings",
+    waiting:'⚡ Ready to Deploy',wking:'Working',
+    startWork:'▶ START WORK',endWork:'■ END SHIFT',
+    shiftHist:'My Shift History',
+    date:'Date',start:'Start',end:'End',worked:'Worked',earn:'Earnings',stat:'Status',
+    noShifts:'No shifts yet.',
+    already:'Shift already started today!',noActive:'No active shift.',noEnd:'No shift to end.',
+    shiftStarted:'Shift started! Good work 💪',
+    mgrDash:'⚙️ CREW CONTROL',expXlsx:'📊 Export',
+    workers:'Workers',working:'Working',late:'Late',absent:'Absent',
+    addWorker:'Add Worker',salDue:'Salary Due',
+    live:'Live',shifts:'Shifts',salary:'Salary',settings:'Settings',alerts:'Alerts',
+    locations:'Locations',assign:'Assign',
+    noWorkers:'No workers yet.',
+    hrsToday:'Hours Today',earnToday:'Earnings Today',startedAt:'Started',site:'Site',
+    addManual:'➕ Add Worker',
+    phonesInfo:'Workers register using their phone number. 1 account per phone. Password = phone digits (no leading zero).',
+    phoneLbl:'Phone Number',workerLbl:'Worker Name (optional)',
+    rateLbl:'💰 Hourly Rate (€)',rateHint:'Worker cannot change this',
+    shiftLbl:'Shift Start',addBtn:'➕ Add Worker',
+    uploadF:'📤 Upload File',uploadInfo:'Upload .csv or .txt — one phone per line.',
+    clickDrop:'Click or drag file here',fileTypes:'.csv · .txt',
+    approved:'📋 Approved Workers',clearAll:'Clear All',noPhonesYet:'No workers yet.',
+    rateLabel:'RATE:',shiftLabel:'SHIFT:',accs:'accounts',slots:'slot(s) left',
+    noAccount:'No account yet',registered:'✓ Registered',
+    badPhone:'Enter a phone number.',badPhoneNum:'Invalid phone number.',badRate:'Set a valid rate.',
+    dupPhone:'Phone already in list.',phoneAdded:'✓ Worker added!',phoneRemoved:'Removed.',
+    rateUpdated:'Rate updated!',settSaved:'Settings saved!',workerUpdated:'Worker updated!',cleared:'Cleared.',
+    editWorker:'EDIT WORKER',cancel:'Cancel',save:'Save',
+    filterW:'Filter by worker...',clear:'Clear',
+    today:'Today',week:'This Week',month:'This Month',all:'All Time',
+    totalH:'Total Hrs',regPay:'Regular Pay',otH:'OT Hrs',otP:'OT Pay',
+    deduct:'Deductions',total:'TOTAL',shiftsC:'Shifts',noW:'No workers.',edit:'Edit',
+    shiftOver:'Shift & Overtime',defShift:'Default Shift Start',grace:'Grace Period (min)',
+    stdH:'Std Hours/Day',otMult:'OT Multiplier',deductT:'Deductions',deductL:'Deduct/Late (€)',
+    saveSett:'Save Settings',danger:'⚠ Danger Zone',dangerD:'Delete all shift records.',
+    deleteAll:'Delete All Shifts',confirmDel:'Delete ALL shifts?',allDel:'All shifts deleted.',
+    confirmClear:'Clear all workers?',
+    phone:'Phone',name:'Name',rateC:'Rate',shiftC:'Shift',action:'Action',
+    gpsOk:'✓ At work location',gpsFar:'⛔ Too far',gpsCheck:'Checking GPS…',
+    gpsNoSet:'No location set',gpsErr:'GPS error. Enable location.',mapLink:'🗺 Map',
+    newDevAlert:'⚠ Unauthorized Device Login',newDevDesc:'tried to log in from blocked device.',
+    resolve:'Resolve',noAlerts:'No alerts ✓',changePwd:'🔑 Change Password',
+    // Live tab
+    lastUpdated:'LAST UPDATED',refresh:'↺ REFRESH',
+    shiftsDone:'shift(s) done',restartPending:'🔓 restart pending',
+    endShiftBtn:'■ END SHIFT',allowNewShift:'🔓 ALLOW NEW SHIFT',revokeRestart:'🔒 REVOKE RESTART',
+    confirmEndShift:name=>`End shift for ${name} now?`,
+    confirmAllow:name=>`Allow ${name} to start a new shift today?`,
+    confirmRevoke:name=>`Revoke the restart permission for ${name}?`,
+    shiftEndedFor:(name,dur)=>`✅ Shift ended for ${name} — ${dur} worked`,
+    canNowStart:name=>`✅ ${name} can now start a new shift`,
+    restartRevoked:name=>`🔒 Restart permission revoked for ${name}`,
+    shiftNotFound:'⚠ Shift already ended or not found',
+    // Add worker tab
+    workerLoginInfo:'Workers log in directly with their phone number — no signup needed.',
+    displayNameHint:'(used as display name)',
+    // Locations tab
+    addNewSite:'➕ Add New Site Location',
+    locGpsInfo:r=>`Workers must be within <strong>${r}m</strong> of any listed location to start a shift.`,
+    siteName:'📛 Site Name',siteNamePh:'e.g. Main Warehouse, Site A, Downtown Office',
+    autoEndTime:'⏰ Auto-End Time',autoEndOptional:'(optional)',
+    autoEndHint:'Workers at this site will have their shift ended automatically.',
+    coordinates:'📍 Coordinates',pasteMapLink:'Paste Google Maps link',
+    getCoords:'📌 Get Coords',orManual:'OR ENTER MANUALLY',latitude:'Latitude',longitude:'Longitude',
+    useMyLoc:'📍 Use My Current Location',addSiteBtn:'➕ Add Site Location',
+    registeredSites:n=>`📍 Registered Sites (${n})`,
+    autoEndsAt:t=>`⏰ Auto-ends at ${t}`,noAutoEnd:'⏰ No auto-end (manual)',
+    viewOnMap:'🗺 View on Map',autoEndTimeLabel:'⏰ Auto-End Time',
+    leaveBlank:'Leave blank for manual end',
+    removeLoc:'Remove this location?',locRemoved:'Location removed',
+    locAdded:(name,t)=>`✓ ${name} added!${t?' Auto-ends at '+t:''}`,
+    linkReady:'✓ Link ready — click Get Coords',
+    shortUrl:'⚠ Short URL — open it and copy the full address',
+    pasteGmap:'⚠ Paste a Google Maps link',
+    coordsExtracted:'✓ Coordinates extracted',
+    noCoordsInLink:'No coordinates found in link',
+    locCaptured:'✓ Location captured',
+    couldNotGetLoc:'Could not get location',
+    enterSiteName:'Enter a site name',enterValidCoords:'Enter valid coordinates',
+    autoEndSetTo:t=>`⏰ Auto-end set to ${t}`,autoEndCleared:'⏰ Auto-end cleared',
+    failedToSave:e=>`Failed to save: ${e}`,failed:e=>`Failed: ${e}`,
+    noLocationsYet:'No locations added yet. Add your first site above.',
+    // Assign tab
+    assignInfoBar:'🗂 <strong>Drag workers</strong> from the pool into location columns to assign them. Workers can be in <strong>multiple locations</strong>. Toggle <strong>OPEN/CLOSED</strong> on each site — workers assigned to a <em>closed</em> site cannot sign in.',
+    unassigned:'👷 Unassigned',
+    workerCount:(n)=>`${n} worker${n===1?'':'s'}`,
+    allAssigned:'All workers assigned',dropHere:'Drop workers here',
+    noLocations:'No locations yet.',
+    siteOpen:'🟢 OPEN',siteClosed:'🔴 CLOSED',
+    siteNowOpen:'✅ Site is now OPEN',siteNowClosed:'🔴 Site CLOSED',
+    // Salary tab
+    workerCol:'Worker',phoneCol:'Phone',rateCol:'Rate',
+    totalHrsCol:'Total Hrs',totalSalaryCol:'TOTAL SALARY',shiftsCol:'Shifts',
+    // Workers tab
+    lastSite:'Last Site',deviceCol:'Device',actionsCol:'Actions',
+    lockedDevice:'🔒 Locked to device',anyDevice:'🔓 Any device',
+    resetDevice:'📱 Reset Device',noDeviceYet:'No device yet',
+    resetDeviceConfirm:(name)=>`Reset device lock for ${name}?\n\nThey will be able to sign in from any device. The new device will become their new locked device on next login.`,
+    deviceResetFor:name=>`✅ Device reset for ${name} — they can now sign in from a new device`,
+    deviceResetInfo:'📱 <strong>Reset Device</strong> — tap this if a worker\'s phone died, was lost, or replaced. It unlocks their account so they can sign in from a new device.',
+    // Settings tab
+    autoEndSetting:'⏰ Auto End Time',
+    autoEndSettingInfo:'If set, all active shifts are automatically ended at this time every day.<br>Leave blank to require workers to end shifts manually.',
+    dailyAutoEnd:'Daily Auto-End Time',
+    globalFallback:'Global fallback — applies to locations with no specific end time set.',
+    clearManual:'✕ Clear (manual end)',autoEndActive:t=>`⏰ Auto-end is active: shifts end at <strong>${t}</strong> daily`,
+    gpsSetting:'📍 GPS Settings',gpsFenceRadius:'GPS Fence Radius',
+    gpsFenceHint:'Workers must be within this distance of any registered site to clock in.',
+    closeMonth:'📅 Close Month',
+    closeMonthInfo:'Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>No data is deleted.',
+    exportCloseMonth:'📅 Export & Close Month',
+    autoEndSaved:t=>t?`✅ Auto-end set to ${t}`:'✅ Auto-end cleared',
+    // Loading
+    loading:'Loading…',
+    // Password modal
+    pwdTitle:'Change Password',pwdCurrent:'Current Password',
+    pwdNew:'New Password (min 6 chars)',pwdConfirm:'Confirm New Password',
+    pwdSave:'Save New Password',pwdWrong:'Current password is wrong.',
+    pwdTooShort:'New password must be at least 6 characters.',pwdNoMatch:'Passwords do not match.',
+    pwdChanged:'✓ Password changed!',pwdReset:'✓ Password reset to default',
+    // Edit worker modal
+    editWorkerTitle:'✏️ EDIT WORKER',editName:'Name',editPhone:'Phone',editRate:'💰 Hourly Rate (€)',
+    fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,
+    endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,
+    lateMsg:n=>`⚠ ${n} min late!`
+  },
+
+  it:{
+    dir:'ltr',
+    appSub:'Gestione Squadra Idraulici',
+    signIn:'Accedi',signUp:'Registrati',
+    username:'Nome utente',password:'Password',
+    yourUser:'Il tuo nome utente',yourPass:'La tua password',
+    phoneNum:'Numero di Telefono',phoneReq:'* obbligatorio',
+    phoneHint:'Deve essere aggiunto dal manager · la password sarà le cifre del numero',
+    createAcc:'Crea Account →',
+    phoneNoAuth:'⛔ Telefono non autorizzato. Contatta il tuo manager.',
+    maxAcc:'Numero già registrato. Solo 1 account per telefono.',
+    userTaken:'Nome utente già in uso.',namePassReq:'Nome utente obbligatorio.',
+    passLen:'Password min 4 caratteri.',
+    accCreated:'Account creato! Password = cifre del tuo numero.',
+    badLogin:'Credenziali errate.',
+    deviceBlocked:'⛔ Account registrato su altro dispositivo.',
+    gpsRequired:'📍 Abilita il GPS sul tuo dispositivo.',
+    gpsFarLogin:'⛔ Sei troppo lontano dalla sede di lavoro.',
+    gpsLoginErr:'⛔ Impossibile ottenere la posizione. Abilita il GPS e riprova.',
+    logout:'Esci',
+    workTime:'🔧 Sul Lavoro',todayEarn:'Guadagni Oggi',
+    waiting:'⚡ Pronto al Lavoro',wking:'In Lavoro',
+    startWork:'▶ INIZIA',endWork:'■ FINE TURNO',
+    shiftHist:'Storico Turni',
+    date:'Data',start:'Inizio',end:'Fine',worked:'Lavorato',earn:'Guadagni',stat:'Stato',
+    noShifts:'Nessun turno ancora.',
+    already:'Turno già iniziato oggi!',noActive:'Nessun turno attivo.',noEnd:'Nessun turno da terminare.',
+    shiftStarted:'Turno iniziato! 💪',
+    mgrDash:'⚙️ CONTROLLO SQUADRA',expXlsx:'📊 Esporta',
+    workers:'Lavoratori',working:'Al Lavoro',late:'Ritardo',absent:'Assenti',
+    addWorker:'Aggiungi Lavoratore',salDue:'Stipendi',
+    live:'Live',shifts:'Turni',salary:'Stipendi',settings:'Impostazioni',alerts:'Avvisi',
+    locations:'Sedi',assign:'Assegna',
+    noWorkers:'Nessun lavoratore ancora.',
+    hrsToday:'Ore Oggi',earnToday:'Guadagni Oggi',startedAt:'Iniziato',site:'Sede',
+    addManual:'➕ Aggiungi Lavoratore',
+    phonesInfo:'I lavoratori accedono direttamente con il numero di telefono. 1 account per numero. Password = cifre del numero (senza zero iniziale).',
+    phoneLbl:'Numero di Telefono',workerLbl:'Nome Lavoratore (opzionale)',
+    rateLbl:'💰 Tariffa Oraria (€)',rateHint:'Il lavoratore non può modificarla',
+    shiftLbl:'Inizio Turno',addBtn:'➕ Aggiungi',
+    uploadF:'📤 Carica File',uploadInfo:'Carica .csv o .txt — un numero per riga.',
+    clickDrop:'Clicca o trascina il file qui',fileTypes:'.csv · .txt',
+    approved:'📋 Lavoratori Approvati',clearAll:'Cancella Tutti',noPhonesYet:'Nessun lavoratore ancora.',
+    rateLabel:'TARIFFA:',shiftLabel:'TURNO:',accs:'account',slots:'posto/i',
+    noAccount:'Nessun account ancora',registered:'✓ Registrato',
+    badPhone:'Inserisci un numero di telefono.',badPhoneNum:'Numero di telefono non valido.',badRate:'Imposta una tariffa valida.',
+    dupPhone:'Numero già in lista.',phoneAdded:'✓ Lavoratore aggiunto!',phoneRemoved:'Rimosso.',
+    rateUpdated:'Tariffa aggiornata!',settSaved:'Impostazioni salvate!',workerUpdated:'Lavoratore aggiornato!',cleared:'Cancellato.',
+    editWorker:'MODIFICA LAVORATORE',cancel:'Annulla',save:'Salva',
+    filterW:'Filtra per lavoratore…',clear:'Cancella',
+    today:'Oggi',week:'Questa Settimana',month:'Questo Mese',all:'Tutto',
+    totalH:'Ore Totali',regPay:'Paga Base',otH:'Ore Str.',otP:'Paga Str.',
+    deduct:'Detrazioni',total:'TOTALE',shiftsC:'Turni',noW:'Nessun lavoratore.',edit:'Modifica',
+    shiftOver:'Turno e Straordinari',defShift:'Inizio Turno Predefinito',grace:'Tolleranza (min)',
+    stdH:'Ore Standard/Giorno',otMult:'Moltiplicatore Str.',deductT:'Detrazioni',deductL:'Detrazione Ritardo (€)',
+    saveSett:'Salva Impostazioni',danger:'⚠ Zona Pericolosa',dangerD:'Elimina tutti i record dei turni.',
+    deleteAll:'Elimina Tutti i Turni',confirmDel:'Eliminare TUTTI i turni?',allDel:'Tutti i turni eliminati.',
+    confirmClear:'Cancellare tutti i lavoratori?',
+    phone:'Telefono',name:'Nome',rateC:'Tariffa',shiftC:'Turno',action:'Azione',
+    gpsOk:'✓ Nella sede di lavoro',gpsFar:'⛔ Troppo lontano',gpsCheck:'Verifica GPS…',
+    gpsNoSet:'Nessuna posizione impostata',gpsErr:'Errore GPS. Abilita la posizione.',mapLink:'🗺 Mappa',
+    newDevAlert:'⚠ Accesso da Dispositivo Non Autorizzato',newDevDesc:'ha tentato di accedere da un dispositivo bloccato.',
+    resolve:'Risolto',noAlerts:'Nessun avviso ✓',changePwd:'🔑 Cambia Password',
+    // Live tab
+    lastUpdated:'ULTIMO AGGIORNAMENTO',refresh:'↺ AGGIORNA',
+    shiftsDone:'turno/i completato/i',restartPending:'🔓 riavvio in attesa',
+    endShiftBtn:'■ FINE TURNO',allowNewShift:'🔓 CONSENTI NUOVO TURNO',revokeRestart:'🔒 REVOCA RIAVVIO',
+    confirmEndShift:name=>`Terminare il turno di ${name} adesso?`,
+    confirmAllow:name=>`Consentire a ${name} di iniziare un nuovo turno oggi?`,
+    confirmRevoke:name=>`Revocare il permesso di riavvio per ${name}?`,
+    shiftEndedFor:(name,dur)=>`✅ Turno terminato per ${name} — ${dur} lavorato`,
+    canNowStart:name=>`✅ ${name} può ora iniziare un nuovo turno`,
+    restartRevoked:name=>`🔒 Permesso di riavvio revocato per ${name}`,
+    shiftNotFound:'⚠ Turno già terminato o non trovato',
+    // Add worker tab
+    workerLoginInfo:'I lavoratori accedono direttamente con il numero di telefono — nessuna registrazione necessaria.',
+    displayNameHint:'(usato come nome visualizzato)',
+    // Locations tab
+    addNewSite:'➕ Aggiungi Nuova Sede',
+    locGpsInfo:r=>`I lavoratori devono essere entro <strong>${r}m</strong> da una sede per iniziare un turno.`,
+    siteName:'📛 Nome Sede',siteNamePh:'es. Magazzino Principale, Cantiere A, Ufficio Centro',
+    autoEndTime:'⏰ Orario Fine Automatico',autoEndOptional:'(opzionale)',
+    autoEndHint:'I lavoratori in questa sede avranno il turno terminato automaticamente.',
+    coordinates:'📍 Coordinate',pasteMapLink:'Incolla link Google Maps',
+    getCoords:'📌 Ottieni Coordinate',orManual:'OPPURE INSERISCI MANUALMENTE',latitude:'Latitudine',longitude:'Longitudine',
+    useMyLoc:'📍 Usa La Mia Posizione Attuale',addSiteBtn:'➕ Aggiungi Sede',
+    registeredSites:n=>`📍 Sedi Registrate (${n})`,
+    autoEndsAt:t=>`⏰ Fine automatica alle ${t}`,noAutoEnd:'⏰ Nessuna fine automatica (manuale)',
+    viewOnMap:'🗺 Visualizza sulla Mappa',autoEndTimeLabel:'⏰ Orario Fine Automatico',
+    leaveBlank:'Lascia vuoto per fine manuale',
+    removeLoc:'Rimuovere questa sede?',locRemoved:'Sede rimossa',
+    locAdded:(name,t)=>`✓ ${name} aggiunta!${t?' Fine automatica alle '+t:''}`,
+    linkReady:'✓ Link pronto — clicca Ottieni Coordinate',
+    shortUrl:'⚠ URL abbreviato — aprilo e copia l\'indirizzo completo',
+    pasteGmap:'⚠ Incolla un link Google Maps',
+    coordsExtracted:'✓ Coordinate estratte',
+    noCoordsInLink:'Nessuna coordinata trovata nel link',
+    locCaptured:'✓ Posizione acquisita',
+    couldNotGetLoc:'Impossibile ottenere la posizione',
+    enterSiteName:'Inserisci il nome della sede',enterValidCoords:'Inserisci coordinate valide',
+    autoEndSetTo:t=>`⏰ Fine automatica impostata alle ${t}`,autoEndCleared:'⏰ Fine automatica rimossa',
+    failedToSave:e=>`Salvataggio fallito: ${e}`,failed:e=>`Errore: ${e}`,
+    noLocationsYet:'Nessuna sede aggiunta. Aggiungi la prima sede sopra.',
+    // Assign tab
+    assignInfoBar:'🗂 <strong>Trascina i lavoratori</strong> dal pool nelle colonne delle sedi per assegnarli. I lavoratori possono essere in <strong>più sedi</strong>. Attiva/disattiva <strong>APERTA/CHIUSA</strong> per ogni sede — i lavoratori assegnati a una sede <em>chiusa</em> non possono accedere.',
+    unassigned:'👷 Non Assegnati',
+    workerCount:(n)=>`${n} lavoratore${n===1?'':'i'}`,
+    allAssigned:'Tutti i lavoratori assegnati',dropHere:'Trascina i lavoratori qui',
+    noLocations:'Nessuna sede ancora.',
+    siteOpen:'🟢 APERTA',siteClosed:'🔴 CHIUSA',
+    siteNowOpen:'✅ Sede ora APERTA',siteNowClosed:'🔴 Sede CHIUSA',
+    // Salary tab
+    workerCol:'Lavoratore',phoneCol:'Telefono',rateCol:'Tariffa',
+    totalHrsCol:'Ore Totali',totalSalaryCol:'STIPENDIO TOTALE',shiftsCol:'Turni',
+    // Workers tab
+    lastSite:'Ultima Sede',deviceCol:'Dispositivo',actionsCol:'Azioni',
+    lockedDevice:'🔒 Bloccato al dispositivo',anyDevice:'🔓 Qualsiasi dispositivo',
+    resetDevice:'📱 Reset Dispositivo',noDeviceYet:'Nessun dispositivo ancora',
+    resetDeviceConfirm:(name)=>`Resettare il blocco dispositivo per ${name}?\n\nPotrà accedere da qualsiasi dispositivo. Il nuovo dispositivo diventerà il dispositivo bloccato al prossimo accesso.`,
+    deviceResetFor:name=>`✅ Dispositivo resettato per ${name} — può ora accedere da un nuovo dispositivo`,
+    deviceResetInfo:'📱 <strong>Reset Dispositivo</strong> — tocca se il telefono del lavoratore si è guastato, è stato perso o sostituito. Sblocca l\'account per consentire l\'accesso da un nuovo dispositivo.',
+    // Settings tab
+    autoEndSetting:'⏰ Orario Fine Automatico',
+    autoEndSettingInfo:'Se impostato, tutti i turni attivi vengono terminati automaticamente a quest\'ora ogni giorno.<br>Lascia vuoto per richiedere ai lavoratori di terminare i turni manualmente.',
+    dailyAutoEnd:'Orario Fine Automatico Giornaliero',
+    globalFallback:'Impostazione globale — si applica alle sedi senza orario specifico.',
+    clearManual:'✕ Rimuovi (fine manuale)',autoEndActive:t=>`⏰ Fine automatica attiva: i turni terminano alle <strong>${t}</strong> ogni giorno`,
+    gpsSetting:'📍 Impostazioni GPS',gpsFenceRadius:'Raggio GPS',
+    gpsFenceHint:'I lavoratori devono essere entro questa distanza da una sede registrata per timbrare.',
+    closeMonth:'📅 Chiudi Mese',
+    closeMonthInfo:'Esporta un file Excel solo per il <strong>mese corrente</strong> — tutti i lavoratori, ore e guadagni.<br>Nessun dato viene eliminato.',
+    exportCloseMonth:'📅 Esporta e Chiudi Mese',
+    autoEndSaved:t=>t?`✅ Fine automatica impostata alle ${t}`:'✅ Fine automatica rimossa',
+    // Loading
+    loading:'Caricamento…',
+    // Password modal
+    pwdTitle:'Cambia Password',pwdCurrent:'Password Attuale',
+    pwdNew:'Nuova Password (min 6 caratteri)',pwdConfirm:'Conferma Nuova Password',
+    pwdSave:'Salva Nuova Password',pwdWrong:'Password attuale errata.',
+    pwdTooShort:'La nuova password deve avere almeno 6 caratteri.',pwdNoMatch:'Le password non coincidono.',
+    pwdChanged:'✓ Password cambiata!',pwdReset:'✓ Password reimpostata al default',
+    // Edit worker modal
+    editWorkerTitle:'✏️ MODIFICA LAVORATORE',editName:'Nome',editPhone:'Telefono',editRate:'💰 Tariffa Oraria (€)',
+    fileAdded:(a,s)=>`✓ ${a} aggiunti. ${s} saltati.`,
+    endMsg:(d,e)=>`Fatto! ${d} lavorato · €${e} guadagnati.`,
+    lateMsg:n=>`⚠ ${n} min di ritardo!`
+  },
+
+  ar:{
+    dir:'rtl',
+    appSub:'إدارة فريق السباكة',
+    signIn:'تسجيل الدخول',signUp:'إنشاء حساب',
+    username:'اسم المستخدم',password:'كلمة المرور',
+    yourUser:'اسم المستخدم الخاص بك',yourPass:'كلمة المرور الخاصة بك',
+    phoneNum:'رقم الهاتف',phoneReq:'* مطلوب',
+    phoneHint:'يجب أن يضيفه المدير · كلمة المرور ستكون أرقام هاتفك',
+    createAcc:'إنشاء الحساب',
+    phoneNoAuth:'⛔ الهاتف غير مصرح. تواصل مع المدير.',
+    maxAcc:'هذا الرقم لديه حساب. حساب واحد فقط لكل رقم.',
+    userTaken:'اسم المستخدم محجوز.',namePassReq:'اسم المستخدم مطلوب.',
+    passLen:'كلمة المرور 4 أحرف على الأقل.',
+    accCreated:'تم إنشاء الحساب! كلمة المرور = أرقام هاتفك.',
+    badLogin:'بيانات خاطئة.',
+    deviceBlocked:'⛔ الحساب مرتبط بجهاز آخر.',
+    gpsRequired:'📍 يرجى تفعيل GPS على جهازك.',
+    gpsFarLogin:'⛔ أنت بعيد عن موقع العمل.',
+    gpsLoginErr:'⛔ تعذر الحصول على موقعك. فعّل GPS وأعد المحاولة.',
+    logout:'خروج',
+    workTime:'🔧 وقت العمل',todayEarn:'أرباح اليوم',
+    waiting:'⚡ جاهز للعمل',wking:'يعمل',
+    startWork:'▶ بدء العمل',endWork:'■ إنهاء الوردية',
+    shiftHist:'سجل الورديات',
+    date:'التاريخ',start:'البداية',end:'النهاية',worked:'المدة',earn:'الأرباح',stat:'الحالة',
+    noShifts:'لا توجد ورديات بعد.',
+    already:'الوردية بدأت بالفعل اليوم!',noActive:'لا توجد وردية نشطة.',noEnd:'لا توجد وردية لإنهائها.',
+    shiftStarted:'بدأت الوردية! 💪',
+    mgrDash:'⚙️ مركز التحكم',expXlsx:'📊 تصدير',
+    workers:'الموظفون',working:'يعملون',late:'متأخرون',absent:'غائبون',
+    addWorker:'إضافة موظف',salDue:'الرواتب',
+    live:'مباشر',shifts:'الورديات',salary:'الرواتب',settings:'الإعدادات',alerts:'التنبيهات',
+    locations:'المواقع',assign:'التعيين',
+    noWorkers:'لا يوجد موظفون بعد.',
+    hrsToday:'ساعات اليوم',earnToday:'أرباح اليوم',startedAt:'بدأ',site:'الموقع',
+    addManual:'➕ إضافة موظف',
+    phonesInfo:'يسجل الموظفون مباشرة برقم الهاتف. حساب واحد لكل رقم. كلمة المرور = أرقام الهاتف (بدون الصفر الأول).',
+    phoneLbl:'رقم الهاتف',workerLbl:'اسم الموظف (اختياري)',
+    rateLbl:'💰 الأجر الساعي (€)',rateHint:'لا يمكن للموظف تغييره',
+    shiftLbl:'بداية الوردية',addBtn:'➕ إضافة',
+    uploadF:'📤 رفع ملف',uploadInfo:'ارفع .csv أو .txt — رقم واحد في كل سطر.',
+    clickDrop:'انقر أو اسحب الملف هنا',fileTypes:'.csv · .txt',
+    approved:'📋 الموظفون المعتمدون',clearAll:'مسح الكل',noPhonesYet:'لا يوجد موظفون بعد.',
+    rateLabel:'الأجر:',shiftLabel:'الوردية:',accs:'حسابات',slots:'مكان',
+    noAccount:'لا يوجد حساب بعد',registered:'✓ مسجّل',
+    badPhone:'أدخل رقم هاتف.',badPhoneNum:'رقم هاتف غير صالح.',badRate:'حدد أجراً صالحاً.',
+    dupPhone:'الرقم موجود بالفعل.',phoneAdded:'✓ تمت إضافة الموظف!',phoneRemoved:'تمت الإزالة.',
+    rateUpdated:'تم تحديث الأجر!',settSaved:'تم حفظ الإعدادات!',workerUpdated:'تم تحديث الموظف!',cleared:'تم المسح.',
+    editWorker:'تعديل الموظف',cancel:'إلغاء',save:'حفظ',
+    filterW:'البحث عن موظف…',clear:'مسح',
+    today:'اليوم',week:'هذا الأسبوع',month:'هذا الشهر',all:'كل الوقت',
+    totalH:'إجمالي الساعات',regPay:'الأجر الأساسي',otH:'ساعات إضافية',otP:'أجر إضافي',
+    deduct:'خصومات',total:'الإجمالي',shiftsC:'ورديات',noW:'لا يوجد موظفون.',edit:'تعديل',
+    shiftOver:'الورديات والعمل الإضافي',defShift:'بداية الوردية الافتراضية',grace:'فترة السماح (دقيقة)',
+    stdH:'ساعات العمل/يوم',otMult:'مضاعف الإضافي',deductT:'خصومات',deductL:'خصم التأخير (€)',
+    saveSett:'حفظ الإعدادات',danger:'⚠ منطقة الخطر',dangerD:'حذف جميع سجلات الورديات.',
+    deleteAll:'حذف كل الورديات',confirmDel:'حذف كل الورديات؟',allDel:'تم حذف كل الورديات.',
+    confirmClear:'مسح كل الموظفين؟',
+    phone:'الهاتف',name:'الاسم',rateC:'الأجر',shiftC:'الوردية',action:'إجراء',
+    gpsOk:'✓ في موقع العمل',gpsFar:'⛔ بعيد جداً',gpsCheck:'جارٍ التحقق من GPS…',
+    gpsNoSet:'لم يتم تحديد الموقع',gpsErr:'خطأ في GPS. فعّل الموقع.',mapLink:'🗺 خريطة',
+    newDevAlert:'⚠ دخول من جهاز غير مصرح',newDevDesc:'حاول الدخول من جهاز محظور.',
+    resolve:'تم الحل',noAlerts:'لا توجد تنبيهات ✓',changePwd:'🔑 تغيير كلمة المرور',
+    // Live tab
+    lastUpdated:'آخر تحديث',refresh:'↺ تحديث',
+    shiftsDone:'وردية(ات) منجزة',restartPending:'🔓 في انتظار البدء من جديد',
+    endShiftBtn:'■ إنهاء الوردية',allowNewShift:'🔓 السماح بوردية جديدة',revokeRestart:'🔒 إلغاء إذن البدء',
+    confirmEndShift:name=>`إنهاء وردية ${name} الآن؟`,
+    confirmAllow:name=>`السماح لـ ${name} ببدء وردية جديدة اليوم؟`,
+    confirmRevoke:name=>`إلغاء إذن إعادة البدء لـ ${name}؟`,
+    shiftEndedFor:(name,dur)=>`✅ تم إنهاء وردية ${name} — ${dur} عمل`,
+    canNowStart:name=>`✅ يمكن لـ ${name} الآن بدء وردية جديدة`,
+    restartRevoked:name=>`🔒 تم إلغاء إذن إعادة البدء لـ ${name}`,
+    shiftNotFound:'⚠ الوردية انتهت بالفعل أو غير موجودة',
+    // Add worker tab
+    workerLoginInfo:'يسجل الموظفون دخولهم مباشرة برقم الهاتف — لا حاجة للتسجيل.',
+    displayNameHint:'(يُستخدم كاسم العرض)',
+    // Locations tab
+    addNewSite:'➕ إضافة موقع عمل جديد',
+    locGpsInfo:r=>`يجب أن يكون الموظفون على بُعد أقل من <strong>${r}م</strong> من أي موقع لبدء الوردية.`,
+    siteName:'📛 اسم الموقع',siteNamePh:'مثال: المستودع الرئيسي، الموقع أ، مكتب المركز',
+    autoEndTime:'⏰ وقت الإنهاء التلقائي',autoEndOptional:'(اختياري)',
+    autoEndHint:'سيتم إنهاء ورديات الموظفين في هذا الموقع تلقائياً.',
+    coordinates:'📍 الإحداثيات',pasteMapLink:'الصق رابط Google Maps',
+    getCoords:'📌 احصل على الإحداثيات',orManual:'أو أدخل يدوياً',latitude:'خط العرض',longitude:'خط الطول',
+    useMyLoc:'📍 استخدم موقعي الحالي',addSiteBtn:'➕ إضافة موقع',
+    registeredSites:n=>`📍 المواقع المسجّلة (${n})`,
+    autoEndsAt:t=>`⏰ ينتهي تلقائياً في ${t}`,noAutoEnd:'⏰ لا إنهاء تلقائي (يدوي)',
+    viewOnMap:'🗺 عرض على الخريطة',autoEndTimeLabel:'⏰ وقت الإنهاء التلقائي',
+    leaveBlank:'اتركه فارغاً للإنهاء اليدوي',
+    removeLoc:'إزالة هذا الموقع؟',locRemoved:'تمت إزالة الموقع',
+    locAdded:(name,t)=>`✓ تمت إضافة ${name}!${t?' ينتهي تلقائياً في '+t:''}`,
+    linkReady:'✓ الرابط جاهز — انقر على احصل على الإحداثيات',
+    shortUrl:'⚠ رابط مختصر — افتحه وانسخ العنوان الكامل',
+    pasteGmap:'⚠ الصق رابط Google Maps',
+    coordsExtracted:'✓ تم استخراج الإحداثيات',
+    noCoordsInLink:'لم يتم العثور على إحداثيات في الرابط',
+    locCaptured:'✓ تم التقاط الموقع',
+    couldNotGetLoc:'تعذر الحصول على الموقع',
+    enterSiteName:'أدخل اسم الموقع',enterValidCoords:'أدخل إحداثيات صحيحة',
+    autoEndSetTo:t=>`⏰ تم تعيين الإنهاء التلقائي في ${t}`,autoEndCleared:'⏰ تم مسح الإنهاء التلقائي',
+    failedToSave:e=>`فشل الحفظ: ${e}`,failed:e=>`فشل: ${e}`,
+    noLocationsYet:'لم تُضف أي مواقع بعد. أضف أول موقع أعلاه.',
+    // Assign tab
+    assignInfoBar:'🗂 <strong>اسحب الموظفين</strong> من المجموعة إلى أعمدة المواقع لتعيينهم. يمكن للموظفين أن يكونوا في <strong>مواقع متعددة</strong>. بدّل بين <strong>مفتوح/مغلق</strong> لكل موقع — لا يمكن للموظفين المعيّنين لموقع <em>مغلق</em> تسجيل الدخول.',
+    unassigned:'👷 غير معيّنون',
+    workerCount:(n)=>`${n} موظف`,
+    allAssigned:'جميع الموظفين معيّنون',dropHere:'اسحب الموظفين هنا',
+    noLocations:'لا توجد مواقع بعد.',
+    siteOpen:'🟢 مفتوح',siteClosed:'🔴 مغلق',
+    siteNowOpen:'✅ الموقع مفتوح الآن',siteNowClosed:'🔴 الموقع مغلق',
+    // Salary tab
+    workerCol:'الموظف',phoneCol:'الهاتف',rateCol:'الأجر',
+    totalHrsCol:'إجمالي الساعات',totalSalaryCol:'إجمالي الراتب',shiftsCol:'ورديات',
+    // Workers tab
+    lastSite:'آخر موقع',deviceCol:'الجهاز',actionsCol:'الإجراءات',
+    lockedDevice:'🔒 مرتبط بجهاز',anyDevice:'🔓 أي جهاز',
+    resetDevice:'📱 إعادة تعيين الجهاز',noDeviceYet:'لا يوجد جهاز بعد',
+    resetDeviceConfirm:(name)=>`إعادة تعيين قفل الجهاز لـ ${name}؟\n\nسيتمكن من الدخول من أي جهاز. سيصبح الجهاز الجديد جهازه المرتبط عند الدخول التالي.`,
+    deviceResetFor:name=>`✅ تمت إعادة تعيين جهاز ${name} — يمكنه الآن الدخول من جهاز جديد`,
+    deviceResetInfo:'📱 <strong>إعادة تعيين الجهاز</strong> — اضغط هنا إذا فُقد هاتف الموظف أو تعطّل أو تم استبداله. يُلغي قفل الحساب للسماح بالدخول من جهاز جديد.',
+    // Settings tab
+    autoEndSetting:'⏰ وقت الإنهاء التلقائي',
+    autoEndSettingInfo:'إذا تم التعيين، تنتهي جميع الورديات النشطة تلقائياً في هذا الوقت كل يوم.<br>اتركه فارغاً لإلزام الموظفين بإنهاء الورديات يدوياً.',
+    dailyAutoEnd:'وقت الإنهاء التلقائي اليومي',
+    globalFallback:'إعداد عام — يُطبق على المواقع التي ليس لها وقت محدد.',
+    clearManual:'✕ مسح (إنهاء يدوي)',autoEndActive:t=>`⏰ الإنهاء التلقائي نشط: تنتهي الورديات في <strong>${t}</strong> يومياً`,
+    gpsSetting:'📍 إعدادات GPS',gpsFenceRadius:'نطاق GPS',
+    gpsFenceHint:'يجب أن يكون الموظفون ضمن هذه المسافة من أي موقع مسجّل للتسجيل.',
+    closeMonth:'📅 إغلاق الشهر',
+    closeMonthInfo:'يُصدّر ملف Excel للـ <strong>الشهر الحالي فقط</strong> — جميع الموظفين والساعات والأرباح.<br>لا يتم حذف أي بيانات.',
+    exportCloseMonth:'📅 تصدير وإغلاق الشهر',
+    autoEndSaved:t=>t?`✅ تم تعيين الإنهاء التلقائي في ${t}`:'✅ تم مسح الإنهاء التلقائي',
+    // Loading
+    loading:'جارٍ التحميل…',
+    // Password modal
+    pwdTitle:'تغيير كلمة المرور',pwdCurrent:'كلمة المرور الحالية',
+    pwdNew:'كلمة المرور الجديدة (6 أحرف على الأقل)',pwdConfirm:'تأكيد كلمة المرور الجديدة',
+    pwdSave:'حفظ كلمة المرور الجديدة',pwdWrong:'كلمة المرور الحالية خاطئة.',
+    pwdTooShort:'يجب أن تكون كلمة المرور الجديدة 6 أحرف على الأقل.',pwdNoMatch:'كلمتا المرور غير متطابقتين.',
+    pwdChanged:'✓ تم تغيير كلمة المرور!',pwdReset:'✓ تمت إعادة تعيين كلمة المرور للافتراضي',
+    // Edit worker modal
+    editWorkerTitle:'✏️ تعديل الموظف',editName:'الاسم',editPhone:'الهاتف',editRate:'💰 الأجر الساعي (€)',
+    fileAdded:(a,s)=>`✓ تمت إضافة ${a}. تم تخطي ${s}.`,
+    endMsg:(d,e)=>`انتهت! ${d} عمل · €${e} أرباح.`,
+    lateMsg:n=>`⚠ متأخر ${n} دقيقة!`
+  }
 };
+
 let T = TR[lang];
-function setLang(l){lang=l;T=TR[l];localStorage.setItem('wf_lang',l);document.documentElement.lang=l;document.documentElement.dir=T.dir;document.body.classList.toggle('rtl',T.dir==='rtl');}
+
+function setLang(l){
+  lang=l;T=TR[l];
+  localStorage.setItem('wf_lang',l);
+  document.documentElement.lang=l;
+  document.documentElement.dir=T.dir;
+  document.body.classList.toggle('rtl',T.dir==='rtl');
+  // Update modals that are already in the DOM
+  updateModalLang();
+}
 setLang(lang);
 window.switchLang=l=>{setLang(l);render();};
+
+function updateModalLang(){
+  const em=$('em-title');if(em)em.textContent=T.editWorkerTitle;
+  const en=$('em-lbl-name');if(en)en.textContent=T.editName;
+  const ep=$('em-lbl-phone');if(ep)ep.textContent=T.editPhone;
+  const er=$('em-lbl-rate');if(er)er.textContent='💰 '+T.editRate;
+  const ec=$('em-btn-cancel');if(ec)ec.textContent=T.cancel;
+  const es=$('em-btn-save');if(es)es.textContent=T.save;
+  const pt=$('pwd-title');if(pt)pt.textContent=T.pwdTitle;
+  const pc=$('pwd-lbl-cur');if(pc)pc.textContent=T.pwdCurrent;
+  const pn=$('pwd-lbl-new');if(pn)pn.textContent=T.pwdNew;
+  const pf=$('pwd-lbl-cfm');if(pf)pf.textContent=T.pwdConfirm;
+  const ps=$('pwd-btn-save');if(ps)ps.textContent=T.pwdSave;
+  const pca=$('pwd-btn-cancel');if(pca)pca.textContent=T.cancel;
+}
 
 // ════════ SLEEP DETECTION & AUTO-LOGOUT ════════
 const IDLE_MS = 60000;
@@ -915,7 +1376,7 @@ function langBar(inline=false){
 }
 
 function buildTimeOptions(selected=''){
-  const opts=['<option value="">— No auto-end (manual) —</option>'];
+  const opts=[`<option value="">— ${T.noAutoEnd||'No auto-end (manual)'} —</option>`];
   for(let h=7;h<=23;h++){
     for(const m of [0,30]){
       if(h===23&&m===30)continue;
@@ -1011,7 +1472,7 @@ window.doPhoneLogin=async()=>{
   const errEl=$('wph-err'); errEl.style.display='none';
   const showErr=msg=>{errEl.textContent=msg;errEl.style.display='block';};
   const btn=$('wph-btn');
-  if(btn){btn.disabled=true;btn.textContent='Checking…';}
+  if(btn){btn.disabled=true;btn.textContent=T.loading||'Checking…';}
   try {
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
@@ -1043,7 +1504,7 @@ window.doPhoneLogin=async()=>{
     const locations=await dbListLocations();
     if(locations.length>0){
       if(!navigator.geolocation){showErr(T.gpsRequired);return;}
-      if(btn)btn.textContent='📍 Getting location…';
+      if(btn)btn.textContent='📍 '+(T.gpsCheck||'Getting location…');
       try {
         const pos=await geoPos(15000);
         const uLat=pos.coords.latitude, uLng=pos.coords.longitude;
@@ -1104,7 +1565,7 @@ window.doLogin=async()=>{
   errEl.style.display='none';
   const showErr=msg=>{errEl.textContent=msg;errEl.style.display='block';};
   const btn=document.querySelector('#lf .btn-dark');
-  if(btn){btn.disabled=true;btn.textContent='Checking…';}
+  if(btn){btn.disabled=true;btn.textContent=T.loading||'Checking…';}
   try {
     const user=await dbGetUser(u);
     if(!user||user.password!==p||user.role!=='manager'){showErr(T.badLogin);return;}
@@ -1150,16 +1611,12 @@ async function renderWorkerScreen(){
   S.shift=active;
   if(active) S._autoEndFired=false;
 
-  // Count today's completed shifts for display
   const todayCompletedShifts=myShifts.filter(x=>x.date===todayStr()&&x.status==='completed');
   const hasCompletedToday=todayCompletedShifts.length>0;
   const canRestart=fresh?.can_restart===true||fresh?.can_restart==='true';
 
   const locName=active?.location_name||S.nearestLocation?.name||'—';
-
-  // Determine start button state
   const startDisabled=!!active;
-  // Show "waiting for manager" hint if completed today but no restart permission
   const showRestartHint=!active&&hasCompletedToday&&!canRestart;
 
   $('root').innerHTML=`
@@ -1176,12 +1633,12 @@ async function renderWorkerScreen(){
   <div class="body">
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
-      <div class="info-card"><div class="il">📋 Shifts (Month)</div><div class="iv" style="color:#f0c040">${myShifts.filter(x=>{const d=new Date(Number(x.start_time));const n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).length}</div></div>
-      <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
+      <div class="info-card"><div class="il">📋 ${T.shiftsC} (${T.month})</div><div class="iv" style="color:#f0c040">${myShifts.filter(x=>{const d=new Date(Number(x.start_time));const n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).length}</div></div>
+      <div class="info-card"><div class="il">📍 ${T.site}</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
-    ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ Shift completed. Ask your manager to unlock a new shift for today.</div>`:''}
-    ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px">🔓 Manager has unlocked a new shift for you — tap START WORK!</div>`:''}
+    ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ ${T.noEnd} ${T.revokeRestart||'Ask your manager to unlock a new shift for today.'}</div>`:''}
+    ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px">🔓 ${T.allowNewShift}</div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
       <div class="status-row">
         <div class="dot ${active?'working':''}" id="sdot"></div>
@@ -1191,7 +1648,7 @@ async function renderWorkerScreen(){
       <div class="timer-big" id="tbig">00:00:00</div>
       <div style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:3px;color:#3a6080;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>
       ${autoEnd?`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:14px">
-        ⏰ Shift ends automatically at <strong>${esc(autoEnd)}</strong>${S.autoEndSource==='location'?' (site schedule)':' (global schedule)'}
+        ⏰ ${T.autoEndsAt?T.autoEndsAt(autoEnd):'Shift ends automatically at '+esc(autoEnd)}${S.autoEndSource==='location'?' ('+T.site+')':' (global)'}
       </div>`:`<div style="margin-bottom:14px"></div>`}
       <div class="act-grid">
         <button class="act-btn" id="bst"
@@ -1204,7 +1661,7 @@ async function renderWorkerScreen(){
     </div>
     <div class="table-wrap">
       <div class="table-head">${T.shiftHist}</div>
-      <table><thead><tr>${[T.date,'📍 Site',T.start,T.end,T.worked,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <table><thead><tr>${[T.date,'📍 '+T.site,T.start,T.end,T.worked,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${!myShifts.length
         ?`<tr><td colspan="6"><div class="empty">${T.noShifts}</div></td></tr>`
         :myShifts.map(sh=>`<tr>
@@ -1238,7 +1695,7 @@ function startTimer(){
 let _shiftLock=false;
 
 window.wAct=async action=>{
-  if(_shiftLock){toast('Please wait…','warning');return;}
+  if(_shiftLock){toast(T.loading||'Please wait…','warning');return;}
   if(!rateLimit('shift_'+action,1200))return;
   if(!S.user){toast('Not logged in','error');return;}
 
@@ -1256,23 +1713,18 @@ window.wAct=async action=>{
     const completedToday=todayShifts.find(x=>x.status==='completed');
 
     if(action==='start'){
-      // Guard: already working
-      if(activeShift){toast('⚠ Shift already in progress!','warning');await renderWorkerScreen();return;}
+      if(activeShift){toast('⚠ '+T.already,'warning');await renderWorkerScreen();return;}
 
-      // ── PATCHED: already completed today — check can_restart flag ──
       if(completedToday){
-        // Re-fetch fresh user data to check can_restart flag
         const freshUser = await dbGetUser(username);
         if(!freshUser?.can_restart){
-          toast('⚠ Shift completed. Ask your manager to allow a new shift.','warning');
+          toast('⚠ '+T.noEnd,'warning');
           await renderWorkerScreen();return;
         }
-        // Clear the flag immediately — single use only
         await dbSetUser(username,{can_restart:false});
         S.user.can_restart=false;
       }
 
-      // Guard: cannot start before 07:00
       const nowD=new Date(now);
       if(nowD.getHours()<7){
         const minsUntil=(7*60)-(nowD.getHours()*60+nowD.getMinutes());
@@ -1280,7 +1732,6 @@ window.wAct=async action=>{
         await renderWorkerScreen();return;
       }
 
-      // Guard: cannot start after auto-end time
       if(S.autoEndTime){
         const [eh,em]=S.autoEndTime.split(':').map(Number);
         const nowMins=nowD.getHours()*60+nowD.getMinutes();
@@ -1311,11 +1762,11 @@ window.wAct=async action=>{
       if(!written){toast('⛔ Shift failed to save. Try again.','error');return;}
 
       S.shift=written;
-      toast(`✅ Shift started at ${locationName}`,'success');
+      toast(`✅ ${T.shiftStarted}`,'success');
       await renderWorkerScreen();
 
     }else if(action==='end'){
-      if(!activeShift){toast('⚠ No active shift to end.','warning');await renderWorkerScreen();return;}
+      if(!activeShift){toast('⚠ '+T.noActive,'warning');await renderWorkerScreen();return;}
       if(activeShift.worker!==username){toast('⛔ Shift mismatch error.','error');return;}
       const startMs=Number(activeShift.start_time);
       if(!startMs||startMs<=0||startMs>now){toast('⛔ Invalid shift start time.','error');return;}
@@ -1332,7 +1783,7 @@ window.wAct=async action=>{
           const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
           await dbSetShift(activeShift.id,{end_time:Date.now(),work_hours:workHours,earnings,status:'completed'});
           S.shift=null;clearInterval(S.timerInt);
-          toast(`✅ Done! ${fmtDur(wMs2)} worked.`,'success');
+          toast(`✅ ${T.endMsg?T.endMsg(fmtDur(wMs2),earnings.toFixed(2)):'Done!'}`, 'success');
           await renderWorkerScreen();
         };
         window._confirmEnd=confirmEnd;
@@ -1350,7 +1801,7 @@ window.wAct=async action=>{
       const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
       await dbSetShift(activeShift.id,{end_time:now,work_hours:workHours,earnings,status:'completed'});
       S.shift=null;clearInterval(S.timerInt);
-      toast(`✅ Done! ${fmtDur(wMs)} worked.`,'success');
+      toast(`✅ ${T.endMsg?T.endMsg(fmtDur(wMs),earnings.toFixed(2)):'Done!'}`, 'success');
       await renderWorkerScreen();
     }
   }catch(err){
@@ -1385,8 +1836,8 @@ async function renderManagerScreen(){
     <div class="nav-tabs">
       <button class="nav-tab active" data-tab="live"      onclick="mTab('live')">🔴 ${T.live}</button>
       <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
-      <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 Locations</button>
-      <button class="nav-tab" data-tab="assign"     onclick="mTab('assign')">🗂 Assign</button>
+      <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 ${T.locations}</button>
+      <button class="nav-tab" data-tab="assign"     onclick="mTab('assign')">🗂 ${T.assign}</button>
       <button class="nav-tab" data-tab="shifts"     onclick="mTab('shifts')">📋 ${T.shifts}</button>
       <button class="nav-tab" data-tab="salary"     onclick="mTab('salary')">💶 ${T.salary}</button>
       <button class="nav-tab" data-tab="workers"    onclick="mTab('workers')">👷 ${T.workers}</button>
@@ -1402,7 +1853,7 @@ window.mTab=async tab=>{
   S.mgrTab=tab;
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   const panel=$('mpanel');if(!panel)return;
-  panel.innerHTML=`<div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto 10px"></div>Loading…</div>`;
+  panel.innerHTML=`<div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto 10px"></div>${T.loading}</div>`;
   if(tab==='live')      panel.innerHTML=await buildLive();
   if(tab==='addworker') panel.innerHTML=await buildAddWorker();
   if(tab==='locations') panel.innerHTML=await buildLocations();
@@ -1429,7 +1880,8 @@ async function loadSummary(force=false){
   _summaryCache=[
     [T.workers,users.length,'#f0c040'],
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
-    ['📍 Sites',locations.length,'#3498db'],
+    [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
+    ['📍 '+T.locations,locations.length,'#3498db'],
     [T.salDue,'€'+sal,'#f0c040'],
     [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
@@ -1454,14 +1906,12 @@ async function buildLive(){
   const ts=shifts.filter(s=>s.date===todayStr());
   const now=Date.now();
   const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-
-  // Fetch can_restart flags for all workers
   const allUsers=await dbListUsers();
   const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
 
   return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">LAST UPDATED ${updatedAt}</span>
-    <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="mTab('live')">↺ REFRESH</button>
+    <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">${T.lastUpdated} ${updatedAt}</span>
+    <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="mTab('live')">${T.refresh}</button>
   </div>
   <div class="worker-grid">${workers.map(w=>{
     const active=ts.find(s=>s.worker===w.username&&s.status==='working');
@@ -1469,10 +1919,7 @@ async function buildLive(){
     const st=active?'working':done?'ended':'absent';
     const freshW=userMap[w.username]||w;
     const alreadyUnlocked=freshW.can_restart===true||freshW.can_restart==='true';
-
-    // Count today's completed shifts
     const todayCompleted=ts.filter(s=>s.worker===w.username&&s.status==='completed');
-
     let h=0,e=0;
     ts.filter(s=>s.worker===w.username).forEach(s=>{
       if(s.status==='completed'){h+=parseFloat(s.work_hours)||0;e+=parseFloat(s.earnings)||0;}
@@ -1485,55 +1932,55 @@ async function buildLive(){
         ${statusBadge(st)}
         <span class="badge by">€${w.hourly_rate||0}/hr</span>
         ${active?.location_name?`<span class="badge bb">📍 ${esc(active.location_name)}</span>`:''}
-        ${todayCompleted.length>0?`<span class="badge bb">${todayCompleted.length} shift${todayCompleted.length>1?'s':''} done</span>`:''}
-        ${alreadyUnlocked?`<span class="badge bg">🔓 restart pending</span>`:''}
+        ${todayCompleted.length>0?`<span class="badge bb">${todayCompleted.length} ${T.shiftsDone}</span>`:''}
+        ${alreadyUnlocked?`<span class="badge bg">${T.restartPending}</span>`:''}
       </div>
       <div class="wstats">
         <div><div class="wsl">${T.hrsToday}</div><div class="wsv">${h.toFixed(2)}h</div></div>
         <div><div class="wsl">${T.earnToday}</div><div class="wsv">€${e.toFixed(2)}</div></div>
         <div><div class="wsl">${T.startedAt}</div><div class="wsv">${active?fmtTime(active.start_time):'—'}</div></div>
-        <div><div class="wsl">Site</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
+        <div><div class="wsl">${T.site}</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
       </div>
-      ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">■ END SHIFT</button>`:''}
-      ${!active&&done&&!alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">🔓 ALLOW NEW SHIFT</button>`:''}
-      ${!active&&done&&alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">🔒 REVOKE RESTART</button>`:''}
+      ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">${T.endShiftBtn}</button>`:''}
+      ${!active&&done&&!alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.allowNewShift}</button>`:''}
+      ${!active&&done&&alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.revokeRestart}</button>`:''}
     </div>`;
   }).join('')}</div>`;
 }
 
 // ── Allow / Revoke Restart ──
 window.allowRestart=async(username, displayName)=>{
-  if(!confirm(`Allow ${displayName} to start a new shift today?`)) return;
+  if(!confirm(T.confirmAllow(displayName))) return;
   try{
     await dbSetUser(username,{can_restart:true});
-    toast(`✅ ${displayName} can now start a new shift`,'success');
+    toast(T.canNowStart(displayName),'success');
     _summaryCacheTs=0;
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
 };
 
 window.revokeRestart=async(username, displayName)=>{
-  if(!confirm(`Revoke the restart permission for ${displayName}?`)) return;
+  if(!confirm(T.confirmRevoke(displayName))) return;
   try{
     await dbSetUser(username,{can_restart:false});
-    toast(`🔒 Restart permission revoked for ${displayName}`,'warning');
+    toast(T.restartRevoked(displayName),'warning');
     _summaryCacheTs=0;
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
 };
 
 window.mgrEndShift=async(shiftId, workerName)=>{
-  if(!confirm(`End shift for ${workerName} now?`))return;
+  if(!confirm(T.confirmEndShift(workerName)))return;
   try{
     const allShifts=await dbListShifts();
     const shift=allShifts.find(s=>s.id===shiftId&&s.status==='working');
-    if(!shift){toast('⚠ Shift already ended or not found','warning');await mTab('live');return;}
+    if(!shift){toast(T.shiftNotFound,'warning');await mTab('live');return;}
     const now=Date.now();
     const wMs=Math.max(0,now-Number(shift.start_time));
     const workHours=wMs/3600000;
     const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
     await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
-    toast(`✅ Shift ended for ${workerName} — ${fmtDur(wMs)} worked`,'success');
+    toast(T.shiftEndedFor(workerName,fmtDur(wMs)),'success');
     _summaryCacheTs=0;
     await mTab('live');
     loadSummary(true);
@@ -1556,7 +2003,7 @@ async function buildAddWorker(){
           <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
         </div>
         <div class="pmbadges">
-          <span class="badge ${linked.length>=1?'bg':'br'}">${linked.length===0?'No account yet':'✓ Registered'}</span>
+          <span class="badge ${linked.length>=1?'bg':'br'}">${linked.length===0?T.noAccount:T.registered}</span>
           ${linked.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
         </div>
       </div>
@@ -1566,9 +2013,9 @@ async function buildAddWorker(){
   return`<div class="sg">
     <div class="sc">
       <div class="st">${T.addManual}</div>
-      <div class="info-box" style="margin-bottom:14px">Workers log in directly with their phone number — no signup needed.</div>
+      <div class="info-box" style="margin-bottom:14px">${T.workerLoginInfo}</div>
       <div class="sf"><label class="lbl">${T.phoneLbl}</label><input id="np" placeholder="e.g. 0501234567" type="tel"/></div>
-      <div class="sf"><label class="lbl">${T.workerLbl} <span style="color:#555">(used as display name)</span></label><input id="nl" placeholder="e.g. Ahmed"/></div>
+      <div class="sf"><label class="lbl">${T.workerLbl} <span style="color:#555">${T.displayNameHint}</span></label><input id="nl" placeholder="e.g. Ahmed"/></div>
       <div class="sf rh"><label class="lbl" style="color:#f0c040">${T.rateLbl}</label><input id="nr" type="number" value="15" min="1" step="0.5"/><div class="hint">${T.rateHint}</div></div>
       <button class="btn btn-gold" onclick="addPhone()">${T.addBtn}</button>
     </div>
@@ -1595,61 +2042,61 @@ async function buildAddWorker(){
 // ════════ LOCATIONS TAB ════════
 async function buildLocations(){
   const locs=await dbListLocations();
-  const locList=!locs.length?`<div class="empty">No locations added yet. Add your first site above.</div>`:locs.map(l=>`
+  const locList=!locs.length?`<div class="empty">${T.noLocationsYet}</div>`:locs.map(l=>`
     <div class="phone-row" style="flex-direction:column;gap:0">
       <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
         <div style="flex:1">
           <div style="font-weight:700;font-family:Georgia,serif;font-size:16px;color:#f0f0f0;margin-bottom:4px">📍 ${esc(l.name)}</div>
           <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
-          ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">⏰ Auto-ends at <strong>${esc(l.end_time)}</strong></div>`:'<div style="font-family:monospace;font-size:10px;color:#444;margin-bottom:4px">⏰ No auto-end (manual)</div>'}
-          ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">🗺 View on Map</a>`:''}
+          ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:#444;margin-bottom:4px">${T.noAutoEnd}</div>`}
+          ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">${T.viewOnMap}</a>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f39c12;padding:6px 10px;font-size:12px" onclick="toggleLocEdit('${esc(l.id)}')" title="Edit end time">✏</button>
+          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f39c12;padding:6px 10px;font-size:12px" onclick="toggleLocEdit('${esc(l.id)}')" title="${T.autoEndTime}">✏</button>
           <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="padding:6px 10px;font-size:14px">✕</button>
         </div>
       </div>
       <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
-        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">⏰ Auto-End Time</label>
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}</select>
-          <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 Save</button>
-          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ Clear</button>
-          <span style="font-family:monospace;font-size:10px;color:#555">Leave blank for manual end</span>
+          <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 ${T.save}</button>
+          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ ${T.clear}</button>
+          <span style="font-family:monospace;font-size:10px;color:#555">${T.leaveBlank}</span>
         </div>
       </div>
     </div>`).join('');
 
   return`<div class="sg">
     <div class="sc" style="max-width:520px">
-      <div class="st">➕ Add New Site Location</div>
-      <div class="info-box" style="margin-bottom:16px">Workers must be within <strong>${GPS_RADIUS}m</strong> of any listed location to start a shift.</div>
-      <div class="sf"><label class="lbl">📛 Site Name</label><input id="loc-name" placeholder="e.g. Main Warehouse, Site A, Downtown Office"/></div>
-      <div class="sf"><label class="lbl">⏰ Auto-End Time <span style="color:#555">(optional)</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">Workers at this site will have their shift ended automatically.</div></div>
+      <div class="st">${T.addNewSite}</div>
+      <div class="info-box" style="margin-bottom:16px">${T.locGpsInfo(GPS_RADIUS)}</div>
+      <div class="sf"><label class="lbl">${T.siteName}</label><input id="loc-name" placeholder="${T.siteNamePh}"/></div>
+      <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:#555">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
       <div class="sf gh">
-        <label class="lbl" style="color:#2ecc71">📍 Coordinates</label>
+        <label class="lbl" style="color:#2ecc71">${T.coordinates}</label>
         <div style="margin-bottom:10px">
-          <label class="lbl" style="color:#aaa">Paste Google Maps link</label>
+          <label class="lbl" style="color:#aaa">${T.pasteMapLink}</label>
           <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">
             <input id="loc-ml" placeholder="https://maps.google.com/maps?q=24.688,46.722" style="flex:1" oninput="onLocLinkChange()"/>
-            <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71" onclick="extractLocCoords()">📌 Get Coords</button>
+            <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71" onclick="extractLocCoords()">${T.getCoords}</button>
           </div>
           <div id="loc-ml-status" class="hint" style="margin-top:5px"></div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
-          <div style="flex:1;height:1px;background:#2a2a2a"></div><span style="font-family:monospace;font-size:10px;color:#444">OR ENTER MANUALLY</span><div style="flex:1;height:1px;background:#2a2a2a"></div>
+          <div style="flex:1;height:1px;background:#2a2a2a"></div><span style="font-family:monospace;font-size:10px;color:#444">${T.orManual}</span><div style="flex:1;height:1px;background:#2a2a2a"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label class="lbl" style="color:#aaa">Latitude</label><input type="number" id="loc-lat" step="0.000001" placeholder="24.6881"/></div>
-          <div><label class="lbl" style="color:#aaa">Longitude</label><input type="number" id="loc-lng" step="0.000001" placeholder="46.7227"/></div>
+          <div><label class="lbl" style="color:#aaa">${T.latitude}</label><input type="number" id="loc-lat" step="0.000001" placeholder="24.6881"/></div>
+          <div><label class="lbl" style="color:#aaa">${T.longitude}</label><input type="number" id="loc-lng" step="0.000001" placeholder="46.7227"/></div>
         </div>
-        <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;margin-top:10px" onclick="useMyLocForSite()">📍 Use My Current Location</button>
+        <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;margin-top:10px" onclick="useMyLocForSite()">${T.useMyLoc}</button>
       </div>
-      <button class="btn btn-gold" onclick="addLocation()">➕ Add Site Location</button>
+      <button class="btn btn-gold" onclick="addLocation()">${T.addSiteBtn}</button>
     </div>
     <div class="sc" style="min-width:280px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #2a2a2a">
-        <div class="st" style="margin-bottom:0">📍 Registered Sites (${locs.length})</div>
+        <div class="st" style="margin-bottom:0">${T.registeredSites(locs.length)}</div>
       </div>
       <div>${locList}</div>
     </div>
@@ -1660,19 +2107,19 @@ window.onLocLinkChange=()=>{
   const url=val('loc-ml').trim(); const st=$('loc-ml-status'); if(!st)return;
   if(!url){st.textContent='';return;}
   const c=extractCoordsFromMapsLink(url);
-  if(c){st.textContent='✓ Link ready — click Get Coords';st.style.color='#2ecc71';}
-  else if(/goo\.gl|maps\.app/.test(url)){st.innerHTML='⚠ Short URL — open it and copy the full address';st.style.color='#f0c040';}
-  else{st.textContent='⚠ Paste a Google Maps link';st.style.color='#e74c3c';}
+  if(c){st.textContent=T.linkReady;st.style.color='#2ecc71';}
+  else if(/goo\.gl|maps\.app/.test(url)){st.innerHTML=T.shortUrl;st.style.color='#f0c040';}
+  else{st.textContent=T.pasteGmap;st.style.color='#e74c3c';}
 };
 window.extractLocCoords=()=>{
   const url=val('loc-ml').trim();
   const c=extractCoordsFromMapsLink(url);
-  if(c){$('loc-lat').value=c.lat.toFixed(6);$('loc-lng').value=c.lng.toFixed(6);const st=$('loc-ml-status');if(st){st.textContent=`✓ ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;st.style.color='#2ecc71';}toast('✓ Coordinates extracted','success');}
-  else toast('No coordinates found in link','error');
+  if(c){$('loc-lat').value=c.lat.toFixed(6);$('loc-lng').value=c.lng.toFixed(6);const st=$('loc-ml-status');if(st){st.textContent=`✓ ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;st.style.color='#2ecc71';}toast(T.coordsExtracted,'success');}
+  else toast(T.noCoordsInLink,'error');
 };
 window.useMyLocForSite=async()=>{
-  try{const pos=await geoPos();$('loc-lat').value=pos.coords.latitude.toFixed(6);$('loc-lng').value=pos.coords.longitude.toFixed(6);toast('✓ Location captured','success');}
-  catch{toast('Could not get location','error');}
+  try{const pos=await geoPos();$('loc-lat').value=pos.coords.latitude.toFixed(6);$('loc-lng').value=pos.coords.longitude.toFixed(6);toast(T.locCaptured,'success');}
+  catch{toast(T.couldNotGetLoc,'error');}
 };
 window.addLocation=async()=>{
   const name=val('loc-name').trim();
@@ -1680,17 +2127,17 @@ window.addLocation=async()=>{
   const lng=parseFloat($('loc-lng')?.value);
   const ml=val('loc-ml').trim();
   const et=val('loc-end').trim();
-  if(!name){toast('Enter a site name','error');return;}
-  if(isNaN(lat)||isNaN(lng)){toast('Enter valid coordinates','error');return;}
+  if(!name){toast(T.enterSiteName,'error');return;}
+  if(isNaN(lat)||isNaN(lng)){toast(T.enterValidCoords,'error');return;}
   const id='loc_'+Date.now();
   await dbSetLocation(id,{name,lat,lng,map_link:ml||null,end_time:et||null,added_at:Date.now()});
-  toast(`✓ ${name} added!${et?' Auto-ends at '+et:''}`,'success');
+  toast(T.locAdded(name,et),'success');
   mTab('locations');
 };
 window.delLocation=async id=>{
-  if(!confirm('Remove this location?'))return;
+  if(!confirm(T.removeLoc))return;
   await dbDelLocation(id);
-  toast('Location removed','warning');
+  toast(T.locRemoved,'warning');
   mTab('locations');loadSummary();
 };
 window.toggleLocEdit=id=>{
@@ -1704,16 +2151,16 @@ window.saveLocEndTime=async id=>{
   if(et&&!/^([0-9]{2}):(00|30)$/.test(et)){toast('⛔ End time must be on the hour or half hour','error');return;}
   try{
     await sql('UPDATE wf_locations SET end_time=$2 WHERE id=$1',[id,et||null]);
-    toast(et?`⏰ Auto-end set to ${et}`:'⏰ Auto-end cleared','success');
+    toast(et?T.autoEndSetTo(et):T.autoEndCleared,'success');
     mTab('locations');
-  }catch(e){toast('Failed to save: '+e.message,'error');}
+  }catch(e){toast(T.failedToSave(e.message),'error');}
 };
 window.clearLocEndTime=async id=>{
   try{
     await sql('UPDATE wf_locations SET end_time=NULL WHERE id=$1',[id]);
-    toast('⏰ Auto-end cleared','success');
+    toast(T.autoEndCleared,'success');
     mTab('locations');
-  }catch(e){toast('Failed: '+e.message,'error');}
+  }catch(e){toast(T.failed(e.message),'error');}
 };
 
 // ════════ ASSIGN TAB ════════
@@ -1730,7 +2177,7 @@ async function buildAssign(){
 
   function workerChip(p, locId){
     const removeBtn = locId
-      ? `<span class="chip-remove" title="Remove" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">✕</span>`
+      ? `<span class="chip-remove" title="${T.cancel}" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">✕</span>`
       : '';
     return `<div class="assign-worker-chip" draggable="true"
       data-worker="${esc(p.norm)}"
@@ -1745,40 +2192,37 @@ async function buildAssign(){
 
   const unassignedChips = unassigned.length
     ? unassigned.map(p=>workerChip(p,null)).join('')
-    : `<div class="assign-empty-drop">All workers assigned</div>`;
+    : `<div class="assign-empty-drop">${T.allAssigned}</div>`;
 
   const locCols = !locs.length
-    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">No locations yet.</div>`
+    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">${T.noLocations}</div>`
     : locs.map(l=>{
         const isOpen = l.is_open !== false && l.is_open !== 'false';
         const assignedPhones = phones.filter(p=>assignedMap[p.norm]?.has(l.id));
         const chips = assignedPhones.length
           ? assignedPhones.map(p=>workerChip(p,l.id)).join('')
-          : `<div class="assign-empty-drop">Drop workers here</div>`;
+          : `<div class="assign-empty-drop">${T.dropHere}</div>`;
         return `<div class="assign-col ${isOpen?'':'loc-closed'}" data-locid="${esc(l.id)}">
           <div class="assign-col-head">
             <div>
               <div class="assign-col-title">📍 ${esc(l.name)}</div>
-              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${assignedPhones.length} worker${assignedPhones.length===1?'':'s'}</div>
+              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${T.workerCount(assignedPhones.length)}</div>
             </div>
             <button class="loc-toggle ${isOpen?'open':'closed'}" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
-              ${isOpen?'🟢 OPEN':'🔴 CLOSED'}
+              ${isOpen?T.siteOpen:T.siteClosed}
             </button>
           </div>
           <div class="assign-col-body" data-locid="${esc(l.id)}">${chips}</div>
         </div>`;
       }).join('');
 
-  return `<div class="assign-info-bar">
-    🗂 <strong>Drag workers</strong> from the pool into location columns to assign them. Workers can be in <strong>multiple locations</strong>.
-    Toggle <strong>OPEN/CLOSED</strong> on each site — workers assigned to a <em>closed</em> site cannot sign in.
-  </div>
+  return `<div class="assign-info-bar">${T.assignInfoBar}</div>
   <div class="assign-board">
     <div class="assign-col unassigned" data-locid="__unassigned__">
       <div class="assign-col-head">
         <div>
-          <div class="assign-col-title" style="color:#888">👷 Unassigned</div>
-          <div style="font-family:monospace;font-size:10px;color:#444;margin-top:2px">${unassigned.length} worker${unassigned.length===1?'':'s'}</div>
+          <div class="assign-col-title" style="color:#888">${T.unassigned}</div>
+          <div style="font-family:monospace;font-size:10px;color:#444;margin-top:2px">${T.workerCount(unassigned.length)}</div>
         </div>
       </div>
       <div class="assign-col-body" data-locid="__unassigned__">${unassignedChips}</div>
@@ -1832,7 +2276,7 @@ window.removeAssignment=async(worker_username, loc_id)=>{
 };
 window.toggleLocOpen=async(loc_id, is_open)=>{
   await dbSetLocationOpen(loc_id, is_open);
-  toast(is_open?'✅ Site is now OPEN':'🔴 Site CLOSED', is_open?'success':'warning');
+  toast(is_open?T.siteNowOpen:T.siteNowClosed, is_open?'success':'warning');
   const panel=$('mpanel');
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
 };
@@ -1848,7 +2292,7 @@ async function buildShifts(fw='',fd=''){
     <button class="btn-sm btn-dark" onclick="$('fw').value='';$('fd').value='';reShifts()">${T.clear}</button>
   </div>
   <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,'📍 Site',T.date,T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}
+    ${[T.name,T.phone,T.rateC,'📍 '+T.site,T.date,T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}
   </tr></thead><tbody>
     ${!shifts.length?`<tr><td colspan="10"><div class="empty">${T.noW}</div></td></tr>`:shifts.map(s=>`<tr>
       <td><strong>${esc(s.worker)}</strong></td>
@@ -1877,9 +2321,9 @@ async function buildSalary(per='month'){
     </select>
   </div>
   <div class="table-wrap"><table><thead><tr>
-    <th>Worker</th><th>Phone</th><th>Rate</th>
+    <th>${T.workerCol}</th><th>${T.phoneCol}</th><th>${T.rateCol}</th>
     ${locNames.map(l=>`<th style="color:#3498db">📍 ${esc(l)}</th>`).join('')}
-    <th>Total Hrs</th><th style="color:#2ecc71">TOTAL SALARY</th><th>Shifts</th>
+    <th>${T.totalHrsCol}</th><th style="color:#2ecc71">${T.totalSalaryCol}</th><th>${T.shiftsCol}</th>
   </tr></thead><tbody>
     ${!workers.length?`<tr><td colspan="${4+locNames.length}"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
       const ws=allS.filter(s=>s.worker===w.username&&s.status==='completed'&&inP(s,per));
@@ -1907,11 +2351,9 @@ window.reSalary=async()=>{const p=val('sp')||'month';const panel=$('mpanel');if(
 async function buildWorkers(){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   const allS=await dbListShifts();
-  return`<div class="info-box" style="margin-bottom:14px">
-    📱 <strong>Reset Device</strong> — tap this if a worker's phone died, was lost, or replaced. It unlocks their account so they can sign in from a new device.
-  </div>
+  return`<div class="info-box" style="margin-bottom:14px">${T.deviceResetInfo}</div>
   <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,'Last Site',T.shiftsC,'Device','Actions'].map(h=>`<th>${h}</th>`).join('')}
+    ${[T.name,T.phone,T.rateC,T.lastSite,T.shiftsC,T.deviceCol,T.actionsCol].map(h=>`<th>${h}</th>`).join('')}
   </tr></thead><tbody>
     ${!workers.length?`<tr><td colspan="7"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
       const wShifts=allS.filter(s=>s.worker===w.username&&s.status==='completed').sort((a,b)=>Number(b.start_time)-Number(a.start_time));
@@ -1926,15 +2368,15 @@ async function buildWorkers(){
         <td>${tot}</td>
         <td>
           ${hasDevice
-            ? `<span class="badge bg" style="font-size:9px">🔒 Locked to device</span>`
-            : `<span class="badge bgr" style="font-size:9px">🔓 Any device</span>`
+            ? `<span class="badge bg" style="font-size:9px">${T.lockedDevice}</span>`
+            : `<span class="badge bgr" style="font-size:9px">${T.anyDevice}</span>`
           }
         </td>
         <td style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px">
           <button class="btn-sm btn-dark" onclick="openEdit('${esc(w.username)}')">${T.edit}</button>
           ${hasDevice
-            ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db" onclick="resetDevice('${esc(w.username)}','${esc(w.label||w.username)}')">📱 Reset Device</button>`
-            : `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">No device yet</span>`
+            ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db" onclick="resetDevice('${esc(w.username)}','${esc(w.label||w.username)}')">${T.resetDevice}</button>`
+            : `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">${T.noDeviceYet}</span>`
           }
         </td>
       </tr>`;
@@ -1943,10 +2385,10 @@ async function buildWorkers(){
 }
 
 window.resetDevice=async(username, displayName)=>{
-  if(!confirm(`Reset device lock for ${displayName}?\n\nThey will be able to sign in from any device. The new device will become their new locked device on next login.`)) return;
+  if(!confirm(T.resetDeviceConfirm(displayName))) return;
   try{
     await dbSetUser(username,{device_id:null});
-    toast(`✅ Device reset for ${displayName} — they can now sign in from a new device`,'success');
+    toast(T.deviceResetFor(displayName),'success');
     await mTab('workers');
   }catch(e){toast('Error: '+e.message,'error');}
 };
@@ -1970,36 +2412,30 @@ async function buildSettings(){
   const cfg=await dbGetConfig();
   const autoEnd=cfg.auto_end_time||'';
   return`<div class="sg">
-    <div class="sc"><div class="st">⏰ Auto End Time</div>
-      <div class="info-box" style="margin-bottom:14px">
-        If set, all active shifts are automatically ended at this time every day.<br>
-        Leave blank to require workers to end shifts manually.
-      </div>
+    <div class="sc"><div class="st">${T.autoEndSetting}</div>
+      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>
       <div class="sf">
-        <label class="lbl">Daily Auto-End Time <span style="color:#555">(optional)</span></label>
+        <label class="lbl">${T.dailyAutoEnd} <span style="color:#555">${T.autoEndOptional}</span></label>
         <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>
-        <div class="hint">Global fallback — applies to locations with no specific end time set.</div>
+        <div class="hint">${T.globalFallback}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()">💾 Save</button>
-        ${autoEnd?`<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">✕ Clear (manual end)</button>`:''}
+        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()">💾 ${T.save}</button>
+        ${autoEnd?`<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>`:''}
       </div>
-      ${autoEnd?`<div class="warn-box" style="margin-top:12px">⏰ Auto-end is active: shifts end at <strong>${esc(autoEnd)}</strong> daily</div>`:''}
+      ${autoEnd?`<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>`:''}
     </div>
-    <div class="sc"><div class="st">📍 GPS Settings</div>
+    <div class="sc"><div class="st">${T.gpsSetting}</div>
       <div class="sf">
-        <label class="lbl">GPS Fence Radius</label>
+        <label class="lbl">${T.gpsFenceRadius}</label>
         <div style="font-family:monospace;font-size:20px;color:#f0c040;font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>
-        <div class="hint">Workers must be within this distance of any registered site to clock in.</div>
+        <div class="hint">${T.gpsFenceHint}</div>
       </div>
     </div>
-    <div class="sc"><div class="st">📅 Close Month</div>
-      <div class="info-box" style="margin-bottom:14px">
-        Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>
-        No data is deleted.
-      </div>
+    <div class="sc"><div class="st">${T.closeMonth}</div>
+      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>
       <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>
-      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">📅 Export &amp; Close Month</button>
+      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>
     </div>
     <div class="sc"><div class="st">⚠ ${T.danger}</div>
       <p style="font-family:monospace;font-size:11px;color:#555;margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
@@ -2010,12 +2446,12 @@ async function buildSettings(){
 window.saveAutoEnd=async()=>{
   const t=val('cfg-autoend').trim();
   await dbSetConfig({auto_end_time:t||null});
-  toast(t?`✅ Auto-end set to ${t}`:'✅ Auto-end cleared','success');
+  toast(T.autoEndSaved(t),'success');
   mTab('settings');
 };
 window.clearAutoEnd=async()=>{
   await dbSetConfig({auto_end_time:null});
-  toast('✅ Auto-end cleared','success');
+  toast(T.autoEndSaved(''),'success');
   mTab('settings');
 };
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
@@ -2104,6 +2540,7 @@ window.openEdit=async username=>{
   $('em-name').value=u.label||u.username;
   $('em-phone').value=u.phone||'';
   $('em-rate').value=u.hourly_rate||15;
+  updateModalLang();
   $('editModal').classList.add('show');
 };
 window.closeModal=()=>{$('editModal').classList.remove('show');S.editingWorker=null;};
@@ -2116,24 +2553,29 @@ window.saveWorkerEdit=async()=>{
 };
 
 // ── Manager Password Change ──
-window.openPwdModal=()=>{$('pw-current').value='';$('pw-new').value='';$('pw-confirm').value='';$('pw-err').style.display='none';$('pwdModal').classList.add('show');};
+window.openPwdModal=()=>{
+  $('pw-current').value='';$('pw-new').value='';$('pw-confirm').value='';
+  $('pw-err').style.display='none';
+  updateModalLang();
+  $('pwdModal').classList.add('show');
+};
 window.closePwdModal=()=>{$('pwdModal').classList.remove('show');};
 window.doChangePwd=async()=>{
   const cur=val('pw-current'),nw=val('pw-new'),cf=val('pw-confirm');
   const err=msg=>{$('pw-err').textContent=msg;$('pw-err').style.display='block';};
   $('pw-err').style.display='none';
-  if(cur!==S.user.password){err('Current password is wrong.');return;}
-  if(nw.length<6){err('New password must be at least 6 characters.');return;}
-  if(nw!==cf){err('Passwords do not match.');return;}
+  if(cur!==S.user.password){err(T.pwdWrong);return;}
+  if(nw.length<6){err(T.pwdTooShort);return;}
+  if(nw!==cf){err(T.pwdNoMatch);return;}
   await dbSetUser(S.user.username,{password:nw});
   S.user.password=nw;
-  toast('✓ Password changed!','success');closePwdModal();
+  toast(T.pwdChanged,'success');closePwdModal();
 };
 window.doSetDefaultPwd=async()=>{
   if(!confirm(`Reset password to default (${MGR_DEFAULT_PASS})?`)) return;
   await dbSetUser(S.user.username,{password:MGR_DEFAULT_PASS});
   S.user.password=MGR_DEFAULT_PASS;
-  toast('✓ Password reset to default','success');closePwdModal();
+  toast(T.pwdReset,'success');closePwdModal();
 };
 
 // ── Close Month ──
@@ -2156,11 +2598,11 @@ window.closeMonth=async()=>{
   if(sumEl){
     sumEl.style.display='block';
     sumEl.innerHTML=`<div style="background:#141414;border:1px solid #2a2a2a;border-radius:4px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Month</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">${monthName}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Shifts</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0f0f0">${monthShifts.length}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Workers</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#3498db">${activeWorkers}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Hours</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#2ecc71">${totalHours.toFixed(1)}h</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Salary</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.month}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">${monthName}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.shifts}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0f0f0">${monthShifts.length}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.workers}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#3498db">${activeWorkers}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.totalH}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#2ecc71">${totalHours.toFixed(1)}h</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.salDue}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
     </div>`;
   }
   if(!monthShifts.length){toast(`No completed shifts found for ${monthName}`,'warning');return;}
@@ -2204,7 +2646,7 @@ window.closeMonth=async()=>{
 
 // ── Export (Excel) ──
 window.doExport=async()=>{
-  toast('⏳ Preparing export…','info');
+  toast('⏳ '+T.loading,'info');
   const shifts=await dbListShifts();
   const users=await dbListUsers();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
