@@ -1908,24 +1908,49 @@ window.reSalary=async()=>{const p=val('sp')||'month';const panel=$('mpanel');if(
 async function buildWorkers(){
   const workers=(await dbListUsers()).filter(u=>u.role==='worker');
   const allS=await dbListShifts();
-  return`<div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,'Last Site',T.shiftsC,T.action].map(h=>`<th>${h}</th>`).join('')}
+  return`<div class="info-box" style="margin-bottom:14px">
+    📱 <strong>Reset Device</strong> — tap this if a worker's phone died, was lost, or replaced. It unlocks their account so they can sign in from a new device.
+  </div>
+  <div class="table-wrap"><table><thead><tr>
+    ${[T.name,T.phone,T.rateC,'Last Site',T.shiftsC,'Device','Actions'].map(h=>`<th>${h}</th>`).join('')}
   </tr></thead><tbody>
-    ${!workers.length?`<tr><td colspan="6"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
+    ${!workers.length?`<tr><td colspan="7"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
       const wShifts=allS.filter(s=>s.worker===w.username&&s.status==='completed').sort((a,b)=>Number(b.start_time)-Number(a.start_time));
       const tot=wShifts.length;
       const lastSite=wShifts[0]?.location_name||'—';
+      const hasDevice=!!(w.device_id);
       return`<tr>
         <td><strong>${esc(w.label||w.username)}</strong></td>
         <td style="color:#666">${esc(w.phone||'—')}</td>
         <td style="color:#f0c040;font-weight:700">€${w.hourly_rate||0}/hr</td>
         <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(lastSite)}</td>
         <td>${tot}</td>
-        <td><button class="btn-sm btn-dark" onclick="openEdit('${esc(w.username)}')">${T.edit}</button></td>
+        <td>
+          ${hasDevice
+            ? `<span class="badge bg" style="font-size:9px">🔒 Locked to device</span>`
+            : `<span class="badge bgr" style="font-size:9px">🔓 Any device</span>`
+          }
+        </td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px">
+          <button class="btn-sm btn-dark" onclick="openEdit('${esc(w.username)}')">${T.edit}</button>
+          ${hasDevice
+            ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db" onclick="resetDevice('${esc(w.username)}','${esc(w.label||w.username)}')">📱 Reset Device</button>`
+            : `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">No device yet</span>`
+          }
+        </td>
       </tr>`;
     }).join('')}
   </tbody></table></div>`;
 }
+
+window.resetDevice=async(username, displayName)=>{
+  if(!confirm(`Reset device lock for ${displayName}?\n\nThey will be able to sign in from any device. The new device will become their new locked device on next login.`)) return;
+  try{
+    await dbSetUser(username,{device_id:null});
+    toast(`✅ Device reset for ${displayName} — they can now sign in from a new device`,'success');
+    await mTab('workers');
+  }catch(e){toast('Error: '+e.message,'error');}
+};
 
 async function buildAlerts(){
   const alerts=await dbListAlerts();
