@@ -1176,7 +1176,7 @@ async function renderWorkerScreen(){
   <div class="body">
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
-      <div class="info-card"><div class="il">📋 Shifts Today</div><div class="iv" style="color:#f0c040">${todayCompletedShifts.length+(active?1:0)}</div></div>
+      <div class="info-card"><div class="il">📋 Shifts (Month)</div><div class="iv" style="color:#f0c040">${myShifts.filter(x=>{const d=new Date(Number(x.start_time));const n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).length}</div></div>
       <div class="info-card"><div class="il">📍 Site</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
@@ -1429,7 +1429,6 @@ async function loadSummary(force=false){
   _summaryCache=[
     [T.workers,users.length,'#f0c040'],
     [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
-    [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
     ['📍 Sites',locations.length,'#3498db'],
     [T.salDue,'€'+sal,'#f0c040'],
     [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
