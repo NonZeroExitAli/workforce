@@ -924,7 +924,6 @@ const TR = {
     gpsNoSet:'No location set',gpsErr:'GPS error. Enable location.',mapLink:'🗺 Map',
     newDevAlert:'⚠ Unauthorized Device Login',newDevDesc:'tried to log in from blocked device.',
     resolve:'Resolve',noAlerts:'No alerts ✓',changePwd:'🔑 Change Password',
-    // Live tab
     lastUpdated:'LAST UPDATED',refresh:'↺ REFRESH',
     shiftsDone:'shift(s) done',restartPending:'🔓 restart pending',
     endShiftBtn:'■ END SHIFT',allowNewShift:'🔓 ALLOW NEW SHIFT',revokeRestart:'🔒 REVOKE RESTART',
@@ -935,10 +934,8 @@ const TR = {
     canNowStart:name=>`✅ ${name} can now start a new shift`,
     restartRevoked:name=>`🔒 Restart permission revoked for ${name}`,
     shiftNotFound:'⚠ Shift already ended or not found',
-    // Add worker tab
     workerLoginInfo:'Workers log in directly with their phone number — no signup needed.',
     displayNameHint:'(used as display name)',
-    // Locations tab
     addNewSite:'➕ Add New Site Location',
     locGpsInfo:r=>`Workers must be within <strong>${r}m</strong> of any listed location to start a shift.`,
     siteName:'📛 Site Name',siteNamePh:'e.g. Main Warehouse, Site A, Downtown Office',
@@ -964,7 +961,6 @@ const TR = {
     autoEndSetTo:t=>`⏰ Auto-end set to ${t}`,autoEndCleared:'⏰ Auto-end cleared',
     failedToSave:e=>`Failed to save: ${e}`,failed:e=>`Failed: ${e}`,
     noLocationsYet:'No locations added yet. Add your first site above.',
-    // Assign tab
     assignInfoBar:'🗂 <strong>Drag workers</strong> from the pool into location columns to assign them. Workers can be in <strong>multiple locations</strong>. Toggle <strong>OPEN/CLOSED</strong> on each site — workers assigned to a <em>closed</em> site cannot sign in.',
     unassigned:'👷 Unassigned',
     workerCount:(n)=>`${n} worker${n===1?'':'s'}`,
@@ -972,17 +968,14 @@ const TR = {
     noLocations:'No locations yet.',
     siteOpen:'🟢 OPEN',siteClosed:'🔴 CLOSED',
     siteNowOpen:'✅ Site is now OPEN',siteNowClosed:'🔴 Site CLOSED',
-    // Salary tab
     workerCol:'Worker',phoneCol:'Phone',rateCol:'Rate',
     totalHrsCol:'Total Hrs',totalSalaryCol:'TOTAL SALARY',shiftsCol:'Shifts',
-    // Workers tab
     lastSite:'Last Site',deviceCol:'Device',actionsCol:'Actions',
     lockedDevice:'🔒 Locked to device',anyDevice:'🔓 Any device',
     resetDevice:'📱 Reset Device',noDeviceYet:'No device yet',
     resetDeviceConfirm:(name)=>`Reset device lock for ${name}?\n\nThey will be able to sign in from any device. The new device will become their new locked device on next login.`,
     deviceResetFor:name=>`✅ Device reset for ${name} — they can now sign in from a new device`,
     deviceResetInfo:'📱 <strong>Reset Device</strong> — tap this if a worker\'s phone died, was lost, or replaced. It unlocks their account so they can sign in from a new device.',
-    // Settings tab
     autoEndSetting:'⏰ Auto End Time',
     autoEndSettingInfo:'If set, all active shifts are automatically ended at this time every day.<br>Leave blank to require workers to end shifts manually.',
     dailyAutoEnd:'Daily Auto-End Time',
@@ -994,15 +987,12 @@ const TR = {
     closeMonthInfo:'Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>No data is deleted.',
     exportCloseMonth:'📅 Export & Close Month',
     autoEndSaved:t=>t?`✅ Auto-end set to ${t}`:'✅ Auto-end cleared',
-    // Loading
     loading:'Loading…',
-    // Password modal
     pwdTitle:'Change Password',pwdCurrent:'Current Password',
     pwdNew:'New Password (min 6 chars)',pwdConfirm:'Confirm New Password',
     pwdSave:'Save New Password',pwdWrong:'Current password is wrong.',
     pwdTooShort:'New password must be at least 6 characters.',pwdNoMatch:'Passwords do not match.',
     pwdChanged:'✓ Password changed!',pwdReset:'✓ Password reset to default',
-    // Edit worker modal
     editWorkerTitle:'✏️ EDIT WORKER',editName:'Name',editPhone:'Phone',editRate:'💰 Hourly Rate (€)',
     fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,
     endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,
@@ -1072,7 +1062,6 @@ const TR = {
     gpsNoSet:'Nessuna posizione impostata',gpsErr:'Errore GPS. Abilita la posizione.',mapLink:'🗺 Mappa',
     newDevAlert:'⚠ Accesso da Dispositivo Non Autorizzato',newDevDesc:'ha tentato di accedere da un dispositivo bloccato.',
     resolve:'Risolto',noAlerts:'Nessun avviso ✓',changePwd:'🔑 Cambia Password',
-    // Live tab
     lastUpdated:'ULTIMO AGGIORNAMENTO',refresh:'↺ AGGIORNA',
     shiftsDone:'turno/i completato/i',restartPending:'🔓 riavvio in attesa',
     endShiftBtn:'■ FINE TURNO',allowNewShift:'🔓 CONSENTI NUOVO TURNO',revokeRestart:'🔒 REVOCA RIAVVIO',
@@ -1083,10 +1072,8 @@ const TR = {
     canNowStart:name=>`✅ ${name} può ora iniziare un nuovo turno`,
     restartRevoked:name=>`🔒 Permesso di riavvio revocato per ${name}`,
     shiftNotFound:'⚠ Turno già terminato o non trovato',
-    // Add worker tab
     workerLoginInfo:'I lavoratori accedono direttamente con il numero di telefono — nessuna registrazione necessaria.',
     displayNameHint:'(usato come nome visualizzato)',
-    // Locations tab
     addNewSite:'➕ Aggiungi Nuova Sede',
     locGpsInfo:r=>`I lavoratori devono essere entro <strong>${r}m</strong> da una sede per iniziare un turno.`,
     siteName:'📛 Nome Sede',siteNamePh:'es. Magazzino Principale, Cantiere A, Ufficio Centro',
@@ -1112,7 +1099,6 @@ const TR = {
     autoEndSetTo:t=>`⏰ Fine automatica impostata alle ${t}`,autoEndCleared:'⏰ Fine automatica rimossa',
     failedToSave:e=>`Salvataggio fallito: ${e}`,failed:e=>`Errore: ${e}`,
     noLocationsYet:'Nessuna sede aggiunta. Aggiungi la prima sede sopra.',
-    // Assign tab
     assignInfoBar:'🗂 <strong>Trascina i lavoratori</strong> dal pool nelle colonne delle sedi per assegnarli. I lavoratori possono essere in <strong>più sedi</strong>. Attiva/disattiva <strong>APERTA/CHIUSA</strong> per ogni sede — i lavoratori assegnati a una sede <em>chiusa</em> non possono accedere.',
     unassigned:'👷 Non Assegnati',
     workerCount:(n)=>`${n} lavoratore${n===1?'':'i'}`,
@@ -1120,17 +1106,14 @@ const TR = {
     noLocations:'Nessuna sede ancora.',
     siteOpen:'🟢 APERTA',siteClosed:'🔴 CHIUSA',
     siteNowOpen:'✅ Sede ora APERTA',siteNowClosed:'🔴 Sede CHIUSA',
-    // Salary tab
     workerCol:'Lavoratore',phoneCol:'Telefono',rateCol:'Tariffa',
     totalHrsCol:'Ore Totali',totalSalaryCol:'STIPENDIO TOTALE',shiftsCol:'Turni',
-    // Workers tab
     lastSite:'Ultima Sede',deviceCol:'Dispositivo',actionsCol:'Azioni',
     lockedDevice:'🔒 Bloccato al dispositivo',anyDevice:'🔓 Qualsiasi dispositivo',
     resetDevice:'📱 Reset Dispositivo',noDeviceYet:'Nessun dispositivo ancora',
     resetDeviceConfirm:(name)=>`Resettare il blocco dispositivo per ${name}?\n\nPotrà accedere da qualsiasi dispositivo. Il nuovo dispositivo diventerà il dispositivo bloccato al prossimo accesso.`,
     deviceResetFor:name=>`✅ Dispositivo resettato per ${name} — può ora accedere da un nuovo dispositivo`,
     deviceResetInfo:'📱 <strong>Reset Dispositivo</strong> — tocca se il telefono del lavoratore si è guastato, è stato perso o sostituito. Sblocca l\'account per consentire l\'accesso da un nuovo dispositivo.',
-    // Settings tab
     autoEndSetting:'⏰ Orario Fine Automatico',
     autoEndSettingInfo:'Se impostato, tutti i turni attivi vengono terminati automaticamente a quest\'ora ogni giorno.<br>Lascia vuoto per richiedere ai lavoratori di terminare i turni manualmente.',
     dailyAutoEnd:'Orario Fine Automatico Giornaliero',
@@ -1142,15 +1125,12 @@ const TR = {
     closeMonthInfo:'Esporta un file Excel solo per il <strong>mese corrente</strong> — tutti i lavoratori, ore e guadagni.<br>Nessun dato viene eliminato.',
     exportCloseMonth:'📅 Esporta e Chiudi Mese',
     autoEndSaved:t=>t?`✅ Fine automatica impostata alle ${t}`:'✅ Fine automatica rimossa',
-    // Loading
     loading:'Caricamento…',
-    // Password modal
     pwdTitle:'Cambia Password',pwdCurrent:'Password Attuale',
     pwdNew:'Nuova Password (min 6 caratteri)',pwdConfirm:'Conferma Nuova Password',
     pwdSave:'Salva Nuova Password',pwdWrong:'Password attuale errata.',
     pwdTooShort:'La nuova password deve avere almeno 6 caratteri.',pwdNoMatch:'Le password non coincidono.',
     pwdChanged:'✓ Password cambiata!',pwdReset:'✓ Password reimpostata al default',
-    // Edit worker modal
     editWorkerTitle:'✏️ MODIFICA LAVORATORE',editName:'Nome',editPhone:'Telefono',editRate:'💰 Tariffa Oraria (€)',
     fileAdded:(a,s)=>`✓ ${a} aggiunti. ${s} saltati.`,
     endMsg:(d,e)=>`Fatto! ${d} lavorato · €${e} guadagnati.`,
@@ -1220,7 +1200,6 @@ const TR = {
     gpsNoSet:'لم يتم تحديد الموقع',gpsErr:'خطأ في GPS. فعّل الموقع.',mapLink:'🗺 خريطة',
     newDevAlert:'⚠ دخول من جهاز غير مصرح',newDevDesc:'حاول الدخول من جهاز محظور.',
     resolve:'تم الحل',noAlerts:'لا توجد تنبيهات ✓',changePwd:'🔑 تغيير كلمة المرور',
-    // Live tab
     lastUpdated:'آخر تحديث',refresh:'↺ تحديث',
     shiftsDone:'وردية(ات) منجزة',restartPending:'🔓 في انتظار البدء من جديد',
     endShiftBtn:'■ إنهاء الوردية',allowNewShift:'🔓 السماح بوردية جديدة',revokeRestart:'🔒 إلغاء إذن البدء',
@@ -1231,10 +1210,8 @@ const TR = {
     canNowStart:name=>`✅ يمكن لـ ${name} الآن بدء وردية جديدة`,
     restartRevoked:name=>`🔒 تم إلغاء إذن إعادة البدء لـ ${name}`,
     shiftNotFound:'⚠ الوردية انتهت بالفعل أو غير موجودة',
-    // Add worker tab
     workerLoginInfo:'يسجل الموظفون دخولهم مباشرة برقم الهاتف — لا حاجة للتسجيل.',
     displayNameHint:'(يُستخدم كاسم العرض)',
-    // Locations tab
     addNewSite:'➕ إضافة موقع عمل جديد',
     locGpsInfo:r=>`يجب أن يكون الموظفون على بُعد أقل من <strong>${r}م</strong> من أي موقع لبدء الوردية.`,
     siteName:'📛 اسم الموقع',siteNamePh:'مثال: المستودع الرئيسي، الموقع أ، مكتب المركز',
@@ -1260,7 +1237,6 @@ const TR = {
     autoEndSetTo:t=>`⏰ تم تعيين الإنهاء التلقائي في ${t}`,autoEndCleared:'⏰ تم مسح الإنهاء التلقائي',
     failedToSave:e=>`فشل الحفظ: ${e}`,failed:e=>`فشل: ${e}`,
     noLocationsYet:'لم تُضف أي مواقع بعد. أضف أول موقع أعلاه.',
-    // Assign tab
     assignInfoBar:'🗂 <strong>اسحب الموظفين</strong> من المجموعة إلى أعمدة المواقع لتعيينهم. يمكن للموظفين أن يكونوا في <strong>مواقع متعددة</strong>. بدّل بين <strong>مفتوح/مغلق</strong> لكل موقع — لا يمكن للموظفين المعيّنين لموقع <em>مغلق</em> تسجيل الدخول.',
     unassigned:'👷 غير معيّنون',
     workerCount:(n)=>`${n} موظف`,
@@ -1268,17 +1244,14 @@ const TR = {
     noLocations:'لا توجد مواقع بعد.',
     siteOpen:'🟢 مفتوح',siteClosed:'🔴 مغلق',
     siteNowOpen:'✅ الموقع مفتوح الآن',siteNowClosed:'🔴 الموقع مغلق',
-    // Salary tab
     workerCol:'الموظف',phoneCol:'الهاتف',rateCol:'الأجر',
     totalHrsCol:'إجمالي الساعات',totalSalaryCol:'إجمالي الراتب',shiftsCol:'ورديات',
-    // Workers tab
     lastSite:'آخر موقع',deviceCol:'الجهاز',actionsCol:'الإجراءات',
     lockedDevice:'🔒 مرتبط بجهاز',anyDevice:'🔓 أي جهاز',
     resetDevice:'📱 إعادة تعيين الجهاز',noDeviceYet:'لا يوجد جهاز بعد',
     resetDeviceConfirm:(name)=>`إعادة تعيين قفل الجهاز لـ ${name}؟\n\nسيتمكن من الدخول من أي جهاز. سيصبح الجهاز الجديد جهازه المرتبط عند الدخول التالي.`,
     deviceResetFor:name=>`✅ تمت إعادة تعيين جهاز ${name} — يمكنه الآن الدخول من جهاز جديد`,
     deviceResetInfo:'📱 <strong>إعادة تعيين الجهاز</strong> — اضغط هنا إذا فُقد هاتف الموظف أو تعطّل أو تم استبداله. يُلغي قفل الحساب للسماح بالدخول من جهاز جديد.',
-    // Settings tab
     autoEndSetting:'⏰ وقت الإنهاء التلقائي',
     autoEndSettingInfo:'إذا تم التعيين، تنتهي جميع الورديات النشطة تلقائياً في هذا الوقت كل يوم.<br>اتركه فارغاً لإلزام الموظفين بإنهاء الورديات يدوياً.',
     dailyAutoEnd:'وقت الإنهاء التلقائي اليومي',
@@ -1290,15 +1263,12 @@ const TR = {
     closeMonthInfo:'يُصدّر ملف Excel للـ <strong>الشهر الحالي فقط</strong> — جميع الموظفين والساعات والأرباح.<br>لا يتم حذف أي بيانات.',
     exportCloseMonth:'📅 تصدير وإغلاق الشهر',
     autoEndSaved:t=>t?`✅ تم تعيين الإنهاء التلقائي في ${t}`:'✅ تم مسح الإنهاء التلقائي',
-    // Loading
     loading:'جارٍ التحميل…',
-    // Password modal
     pwdTitle:'تغيير كلمة المرور',pwdCurrent:'كلمة المرور الحالية',
     pwdNew:'كلمة المرور الجديدة (6 أحرف على الأقل)',pwdConfirm:'تأكيد كلمة المرور الجديدة',
     pwdSave:'حفظ كلمة المرور الجديدة',pwdWrong:'كلمة المرور الحالية خاطئة.',
     pwdTooShort:'يجب أن تكون كلمة المرور الجديدة 6 أحرف على الأقل.',pwdNoMatch:'كلمتا المرور غير متطابقتين.',
     pwdChanged:'✓ تم تغيير كلمة المرور!',pwdReset:'✓ تمت إعادة تعيين كلمة المرور للافتراضي',
-    // Edit worker modal
     editWorkerTitle:'✏️ تعديل الموظف',editName:'الاسم',editPhone:'الهاتف',editRate:'💰 الأجر الساعي (€)',
     fileAdded:(a,s)=>`✓ تمت إضافة ${a}. تم تخطي ${s}.`,
     endMsg:(d,e)=>`انتهت! ${d} عمل · €${e} أرباح.`,
@@ -1314,7 +1284,6 @@ function setLang(l){
   document.documentElement.lang=l;
   document.documentElement.dir=T.dir;
   document.body.classList.toggle('rtl',T.dir==='rtl');
-  // Update modals that are already in the DOM
   updateModalLang();
 }
 setLang(lang);
@@ -1637,7 +1606,7 @@ async function renderWorkerScreen(){
       <div class="info-card"><div class="il">📍 ${T.site}</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
-    ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ ${T.noEnd} ${T.revokeRestart||'Ask your manager to unlock a new shift for today.'}</div>`:''}
+    ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ ${lang==='ar'?'لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.':lang==='it'?"Hai già completato un turno oggi. Se c'è un problema contatta il manager.":'You already finished a shift today. If there is a problem contact your manager.'}</div>`:''}
     ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px">🔓 ${T.allowNewShift}</div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
       <div class="status-row">
@@ -1718,7 +1687,13 @@ window.wAct=async action=>{
       if(completedToday){
         const freshUser = await dbGetUser(username);
         if(!freshUser?.can_restart){
-          toast('⚠ '+T.noEnd,'warning');
+          // ── FIX 1: Show correct message when worker already finished a shift today ──
+          const alreadyDoneMsg = lang==='ar'
+            ? '⚠ لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
+            : lang==='it'
+            ? "⚠ Hai già completato un turno oggi. Se c'è un problema contatta il manager."
+            : '⚠ You already finished a shift today. If there is a problem contact your manager.';
+          toast(alreadyDoneMsg,'warning');
           await renderWorkerScreen();return;
         }
         await dbSetUser(username,{can_restart:false});
@@ -1948,7 +1923,6 @@ async function buildLive(){
   }).join('')}</div>`;
 }
 
-// ── Allow / Revoke Restart ──
 window.allowRestart=async(username, displayName)=>{
   if(!confirm(T.confirmAllow(displayName))) return;
   try{
@@ -2134,12 +2108,20 @@ window.addLocation=async()=>{
   toast(T.locAdded(name,et),'success');
   mTab('locations');
 };
+
+// ── FIX 2: When deleting a location, only remove assignments for that specific location.
+// Workers assigned to other locations keep those assignments and remain assigned there.
+// Workers ONLY assigned to the deleted location automatically appear in the unassigned pool.
 window.delLocation=async id=>{
   if(!confirm(T.removeLoc))return;
+  // Delete only assignments pointing to this specific location
+  // Workers with other location assignments keep those intact
+  await sql('DELETE FROM wf_assignments WHERE loc_id=$1',[id]);
   await dbDelLocation(id);
   toast(T.locRemoved,'warning');
   mTab('locations');loadSummary();
 };
+
 window.toggleLocEdit=id=>{
   const panel=document.getElementById('loc-edit-'+id);
   if(!panel)return;
