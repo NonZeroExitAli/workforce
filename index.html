@@ -616,6 +616,21 @@ async function dbSetUser(u, d) {
 }
 async function dbListUsers() { return sql('SELECT * FROM wf_users'); }
 
+// ── Cached user list — cleared on any write to wf_users ──
+let _usersCache = null;
+async function dbListUsersCached() {
+  if (_usersCache) return _usersCache;
+  _usersCache = await dbListUsers();
+  return _usersCache;
+}
+function _clearUsersCache() { _usersCache = null; }
+const _origDbSetUser = dbSetUser;
+async function dbSetUser(u, d) { _clearUsersCache(); return _origDbSetUser(u, d); }
+const _origDbDelUser = dbDelUser;
+async function dbDelUser(username) { _clearUsersCache(); return _origDbDelUser(username); }
+const _origDbDelAllWorkers = dbDelAllWorkers;
+async function dbDelAllWorkers() { _clearUsersCache(); return _origDbDelAllWorkers(); }
+
 async function dbGetPhone(norm) {
   const r = await sql('SELECT * FROM wf_phones WHERE norm=$1 LIMIT 1', [norm]);
   return r[0] || null;
@@ -651,6 +666,13 @@ async function dbSetConfig(d) {
 }
 
 async function dbListShifts() { return sql('SELECT * FROM wf_shifts ORDER BY start_time DESC'); }
+async function dbListShiftsMonth(year, month) {
+  const prefix = `${year}-${String(month).padStart(2,'0')}`;
+  return sql('SELECT * FROM wf_shifts WHERE date LIKE $1 ORDER BY start_time DESC', [prefix+'%']);
+}
+async function dbListShiftsToday() {
+  return sql('SELECT * FROM wf_shifts WHERE date=$1 ORDER BY start_time DESC', [todayStr()]);
+}
 async function dbSetShift(id, d) {
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(',');
@@ -746,6 +768,9 @@ async function initDB() {
       worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
       PRIMARY KEY(worker_username, loc_id)
     );
+    CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);
+    CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);
+    CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
   `);
   Promise.allSettled([
     sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
@@ -1446,7 +1471,7 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]);
+    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsersCached()]);
     if(!match){showErr(T.phoneNoAuth);return;}
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
     if(!workerUser){
@@ -1560,9 +1585,13 @@ async function renderWorkerScreen(){
     dbGetUser(u.username),
     dbGetConfig(),
     dbListLocations(),
-    dbListShifts()
+    dbListShiftsToday()
   ]);
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
+
+  const now2=new Date();
+  const monthShifts=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
+  const myMonthShifts=monthShifts.filter(x=>x.worker===u.username);
 
   const globalAutoEnd=cfg.auto_end_time||null;
   let locAutoEnd=null;
@@ -1602,7 +1631,7 @@ async function renderWorkerScreen(){
   <div class="body">
     <div class="info-grid">
       <div class="info-card"><div class="il">${T.workTime}</div><div class="iv" id="wt" style="color:#2ecc71">0h 00m</div></div>
-      <div class="info-card"><div class="il">📋 ${T.shiftsC} (${T.month})</div><div class="iv" style="color:#f0c040">${myShifts.filter(x=>{const d=new Date(Number(x.start_time));const n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).length}</div></div>
+      <div class="info-card"><div class="il">📋 ${T.shiftsC} (${T.month})</div><div class="iv" style="color:#f0c040">${myMonthShifts.length}</div></div>
       <div class="info-card"><div class="il">📍 ${T.site}</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
@@ -1631,9 +1660,9 @@ async function renderWorkerScreen(){
     <div class="table-wrap">
       <div class="table-head">${T.shiftHist}</div>
       <table><thead><tr>${[T.date,'📍 '+T.site,T.start,T.end,T.worked,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${!myShifts.length
+      <tbody>${!myMonthShifts.length
         ?`<tr><td colspan="6"><div class="empty">${T.noShifts}</div></td></tr>`
-        :myShifts.map(sh=>`<tr>
+        :myMonthShifts.map(sh=>`<tr>
           <td>${sh.date}</td>
           <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(sh.location_name||'—')}</td>
           <td>${fmtTime(sh.start_time)}</td><td>${fmtTime(sh.end_time)}</td>
@@ -1676,8 +1705,8 @@ window.wAct=async action=>{
     const now=Date.now();
     const username=S.user.username;
 
-    const allShifts=await dbListShifts();
-    const todayShifts=allShifts.filter(x=>x.worker===username&&x.date===todayStr());
+    const allShifts=await dbListShiftsToday();
+    const todayShifts=allShifts.filter(x=>x.worker===username);
     const activeShift=todayShifts.find(x=>x.status==='working');
     const completedToday=todayShifts.find(x=>x.status==='completed');
 
@@ -1732,7 +1761,7 @@ window.wAct=async action=>{
         status:'working'
       });
 
-      const verify=await dbListShifts();
+      const verify=await dbListShiftsToday();
       const written=verify.find(x=>x.id===id);
       if(!written){toast('⛔ Shift failed to save. Try again.','error');return;}
 
@@ -1846,11 +1875,13 @@ async function loadSummary(force=false){
   if(!force && _summaryCache && now-_summaryCacheTs < 30000){
     const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
   }
-  const [allUsers,shifts,locations,allAlerts]=await Promise.all([dbListUsers(),dbListShifts(),dbListLocations(),dbListAlerts()]);
+  const [allUsers,shifts,locations,allAlerts]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations(),dbListAlerts()]);
   const users=allUsers.filter(u=>u.role==='worker');
-  const ts=shifts.filter(s=>s.date===todayStr());
+  const ts=shifts; // already today-only from dbListShiftsToday
   const alerts=allAlerts.filter(a=>!a.resolved).length;
-  const sal=shifts.filter(s=>inP(s,'month')).reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
+  const now2=new Date();
+  const monthShiftsForSal=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
+  const sal=monthShiftsForSal.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
   const el=$('scards');if(!el)return;
   _summaryCache=[
     [T.workers,users.length,'#f0c040'],
@@ -1875,13 +1906,13 @@ function inP(s,per){
 }
 
 async function buildLive(){
-  const workers=(await dbListUsers()).filter(u=>u.role==='worker');
+  const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
   if(!workers.length)return`<div class="empty">${T.noWorkers}</div>`;
-  const shifts=await dbListShifts();
-  const ts=shifts.filter(s=>s.date===todayStr());
+  const shifts=await dbListShiftsToday();
+  const ts=shifts;
   const now=Date.now();
   const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-  const allUsers=await dbListUsers();
+  const allUsers=await dbListUsersCached();
   const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
 
   return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
@@ -1946,9 +1977,8 @@ window.revokeRestart=async(username, displayName)=>{
 window.mgrEndShift=async(shiftId, workerName)=>{
   if(!confirm(T.confirmEndShift(workerName)))return;
   try{
-    const allShifts=await dbListShifts();
+    const allShifts=await dbListShiftsToday();
     const shift=allShifts.find(s=>s.id===shiftId&&s.status==='working');
-    if(!shift){toast(T.shiftNotFound,'warning');await mTab('live');return;}
     const now=Date.now();
     const wMs=Math.max(0,now-Number(shift.start_time));
     const workHours=wMs/3600000;
@@ -1962,7 +1992,7 @@ window.mgrEndShift=async(shiftId, workerName)=>{
 };
 
 async function buildAddWorker(){
-  const phones=await dbListPhones();const users=await dbListUsers();
+  const phones=await dbListPhones();const users=await dbListUsersCached();
   const listHtml=!phones.length?`<div class="empty">${T.noPhonesYet}</div>`:phones.map(p=>{
     const norm=p.norm;
     const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
@@ -2273,7 +2303,7 @@ window.toggleLocOpen=async(loc_id, is_open)=>{
 async function buildShifts(fw='',fd=''){
   let shifts=await dbListShifts();
   shifts=shifts.filter(s=>(!fw||s.worker.toLowerCase().includes(fw))&&(!fd||s.date===fd));
-  const users=await dbListUsers();const um={};users.forEach(u=>um[u.username]=u);
+  const users=await dbListUsersCached();const um={};users.forEach(u=>um[u.username]=u);
   shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time));
   return`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
     <input class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="fw" placeholder="${T.filterW}" value="${fw}" oninput="reShifts()"/>
@@ -2298,8 +2328,13 @@ async function buildShifts(fw='',fd=''){
 window.reShifts=()=>mTab('shifts');
 
 async function buildSalary(per='month'){
-  const workers=(await dbListUsers()).filter(u=>u.role==='worker');
-  const allS=await dbListShifts();
+  const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
+  const now2=new Date();
+  const allS = per==='month'
+    ? await dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1)
+    : per==='today'
+      ? await dbListShiftsToday()
+      : await dbListShifts();
   const locNames=[...new Set(allS.map(s=>s.location_name).filter(Boolean))].sort();
   return`<div style="margin-bottom:14px">
     <select class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="sp" onchange="reSalary()">
@@ -2338,7 +2373,7 @@ async function buildSalary(per='month'){
 window.reSalary=async()=>{const p=val('sp')||'month';const panel=$('mpanel');if(panel)panel.innerHTML=await buildSalary(p);};
 
 async function buildWorkers(){
-  const workers=(await dbListUsers()).filter(u=>u.role==='worker');
+  const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
   const allS=await dbListShifts();
   return`<div class="info-box" style="margin-bottom:14px">${T.deviceResetInfo}</div>
   <div class="table-wrap"><table><thead><tr>
