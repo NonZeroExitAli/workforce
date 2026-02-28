@@ -2109,17 +2109,24 @@ window.addLocation=async()=>{
   mTab('locations');
 };
 
-// ── FIX 2: When deleting a location, only remove assignments for that specific location.
+// ── When deleting a location, only remove assignments for that specific location.
 // Workers assigned to other locations keep those assignments and remain assigned there.
 // Workers ONLY assigned to the deleted location automatically appear in the unassigned pool.
 window.delLocation=async id=>{
   if(!confirm(T.removeLoc))return;
-  // Delete only assignments pointing to this specific location
-  // Workers with other location assignments keep those intact
-  await sql('DELETE FROM wf_assignments WHERE loc_id=$1',[id]);
-  await dbDelLocation(id);
-  toast(T.locRemoved,'warning');
-  mTab('locations');loadSummary();
+  try{
+    // Step 1: Remove all assignments pointing to this specific location only
+    await sql('DELETE FROM wf_assignments WHERE loc_id=$1',[id]);
+    // Step 2: Remove the location itself
+    await sql('DELETE FROM wf_locations WHERE id=$1',[id]);
+    toast(T.locRemoved,'warning');
+    // Step 3: Refresh both the locations tab and the summary
+    // The assign tab will automatically reflect the correct state when next opened
+    mTab('locations');
+    loadSummary();
+  }catch(e){
+    toast('⛔ Failed to remove location: '+e.message,'error');
+  }
 };
 
 window.toggleLocEdit=id=>{
