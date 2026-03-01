@@ -1608,16 +1608,15 @@ window.doLogout=()=>{
 // ════════ WORKER SCREEN ════════
 async function renderWorkerScreen(){
   const u=S.user;
-  const [fresh,cfg,allLocs,allShifts]=await Promise.all([
+  const now2=new Date();
+  const [fresh,cfg,allLocs,allShifts,monthShifts]=await Promise.all([
     dbGetUser(u.username),
     dbGetConfig(),
     dbListLocations(),
-    dbListShiftsToday()
+    dbListShiftsToday(),
+    dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1)
   ]);
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
-
-  const now2=new Date();
-  const monthShifts=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
   const myMonthShifts=monthShifts.filter(x=>x.worker===u.username);
 
   const globalAutoEnd=cfg.auto_end_time||null;
@@ -1904,13 +1903,35 @@ async function loadSummary(){
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
 }
 
-// doRefresh — called by refresh button, reloads summary + live tab
+// doRefresh — fetches all data ONCE, shares between loadSummary and buildLive
 window.doRefresh = async () => {
   const btn = $('refresh-btn');
   if(btn){ btn.disabled=true; btn.textContent='↺ …'; }
   _clearUsersCache();
-  _liveCache = null; // force fresh DB fetch
-  await Promise.all([loadSummary(), buildLive(true).then(html=>{ const p=$('mpanel'); if(p) p.innerHTML=html; })]);
+  _liveCache = null;
+  // single fetch for all shared data
+  const now2 = new Date();
+  const [allUsers, shifts, locations, monthShifts] = await Promise.all([
+    dbListUsers(),
+    dbListShiftsToday(),
+    dbListLocations(),
+    dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1)
+  ]);
+  _usersCache = allUsers; // populate cache with fresh data
+  // update summary cards from shared data
+  const users = allUsers.filter(u=>u.role==='worker');
+  const sal = monthShifts.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
+  const el=$('scards');
+  if(el) el.innerHTML=[
+    [T.workers,users.length,'#f0c040'],
+    [T.working,shifts.filter(s=>s.status==='working').length,'#2ecc71'],
+    [T.absent,users.filter(w=>!shifts.find(s=>s.worker===w.username)).length,'#e74c3c'],
+    ['📍 '+T.locations,locations.length,'#3498db'],
+    [T.salDue,'€'+sal,'#f0c040'],
+  ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
+  // build live from shared data — no extra queries
+  const liveHtml = await buildLive(true, {allUsers, shifts});
+  const p=$('mpanel'); if(p) p.innerHTML=liveHtml;
   if(btn){ btn.disabled=false; btn.textContent=T.refresh; }
 };
 
@@ -1926,15 +1947,17 @@ function inP(s,per){
 
 let _liveCache = null; // cleared only on refresh or write action
 
-async function buildLive(forceRefresh=false){
+async function buildLive(forceRefresh=false, sharedData=null){
   if(!forceRefresh && _liveCache) return _liveCache;
-  const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
+  // accept shared data from doRefresh to avoid duplicate queries
+  const [allUsers, shifts] = sharedData
+    ? [sharedData.allUsers, sharedData.shifts]
+    : await Promise.all([dbListUsersCached(), dbListShiftsToday()]);
+  const workers = allUsers.filter(u=>u.role==='worker');
   if(!workers.length){ _liveCache=`<div class="empty">${T.noWorkers}</div>`; return _liveCache; }
-  const shifts=await dbListShiftsToday();
   const ts=shifts;
   const now=Date.now();
   const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-  const allUsers=await dbListUsersCached();
   const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
 
   _liveCache = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
