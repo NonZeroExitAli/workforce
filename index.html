@@ -626,6 +626,7 @@ async function dbGetUser(u) {
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
+  _usersCache = null; // clear cache on every write
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(',');
   const placeholders = keys.map((_,i) => `$${i+2}`).join(',');
@@ -646,8 +647,6 @@ async function dbListUsersCached() {
   return _usersCache;
 }
 function _clearUsersCache() { _usersCache = null; }
-const _origDbSetUser = dbSetUser;
-async function dbSetUser(u, d) { _clearUsersCache(); return _origDbSetUser(u, d); }
 const _origDbDelUser = dbDelUser;
 async function dbDelUser(username) { _clearUsersCache(); return _origDbDelUser(username); }
 const _origDbDelAllWorkers = dbDelAllWorkers;
@@ -2448,14 +2447,15 @@ async function buildWorkers(){
 }
 
 window.toggleGpsBypass=async(username, displayName, current)=>{
-  const enabling = !current;
-  const msg = enabling
+  // current=true means GPS bypass is ON (worker can skip GPS)
+  // clicking toggles: ON→OFF or OFF→ON
+  const willEnable = !current;
+  const msg = willEnable
     ? `Allow ${displayName} to sign in WITHOUT GPS location check?`
     : `Re-enable GPS check for ${displayName}?`;
   if(!confirm(msg)) return;
-  await dbSetUser(username, {gps_bypass: enabling});
-  _clearUsersCache();
-  toast(enabling ? `✅ ${displayName} can now sign in without GPS` : `📍 GPS check restored for ${displayName}`, enabling?'success':'warning');
+  await dbSetUser(username, {gps_bypass: willEnable});
+  toast(willEnable ? `✅ ${displayName} can now sign in without GPS` : `📍 GPS check restored for ${displayName}`, willEnable?'success':'warning');
   await mTab('addworker');
 };
 
@@ -2464,7 +2464,7 @@ window.resetDevice=async(username, displayName)=>{
   try{
     await dbSetUser(username,{device_id:null});
     toast(T.deviceResetFor(displayName),'success');
-    await mTab('workers');
+    await mTab('addworker');
   }catch(e){toast('Error: '+e.message,'error');}
 };
 
