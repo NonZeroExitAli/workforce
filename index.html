@@ -1534,7 +1534,7 @@ window.doPhoneLogin=async()=>{
           dist:Math.round(haversine(uLat,uLng,parseFloat(l.lat),parseFloat(l.lng)))
         }));
         const allAssignments=await dbListAssignments();
-        const myAssignments=allAssignments.filter(a=>a.worker_username===norm);
+        const myAssignments=allAssignments.filter(a=>a.worker_username===norm||a.worker_username===workerUser.username);
         const anyAssignmentsExist=allAssignments.length>0;
         if(anyAssignmentsExist && myAssignments.length===0){
           showErr('⛔ You are not assigned to any site. Contact your manager.');return;
@@ -2095,7 +2095,7 @@ async function buildAddWorker(){
         <strong>${T.clickDrop}</strong>
         <div style="font-size:10px;color:#444;margin-top:4px">${T.fileTypes}</div>
       </div>
-      <input id="fup" type="file" accept=".csv,.txt,text/*" style="display:none" onchange="handleDrop(event)"/>
+      <input id="fup" type="file" accept=".csv,.txt,.xls,.xlsx,text/*" style="display:none" onchange="handleDrop(event)"/>
     </div>
   </div>
   <div class="sc" style="margin-top:14px">
@@ -2125,6 +2125,11 @@ async function buildLocations(){
         </div>
       </div>
       <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#2ecc71;text-transform:uppercase;display:block;margin-bottom:6px">RENAME SITE</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <input id="loc-rename-${esc(l.id)}" value="${esc(l.name)}" style="flex:1;max-width:260px"/>
+          <button class="btn-sm" style="background:rgba(0,208,132,.12);border:1px solid rgba(0,208,132,.3);color:#00d084" onclick="renameLocation('${esc(l.id)}')">💾 Save Name</button>
+        </div>
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}</select>
@@ -2206,6 +2211,15 @@ window.addLocation=async()=>{
 window.delLocation=async id=>{
   if(!confirm(T.removeLoc))return;
   try{
+    // Warn if any worker is currently clocked in at this location
+    const activeShifts=await dbListShiftsToday();
+    const loc=await sql('SELECT name FROM wf_locations WHERE id=$1 LIMIT 1',[id]);
+    const locName=loc[0]?.name||'';
+    const activeHere=activeShifts.filter(s=>s.status==='working'&&s.location_id===id);
+    if(activeHere.length>0){
+      const names=activeHere.map(s=>s.worker).join(', ');
+      if(!confirm(`⚠ ${activeHere.length} worker(s) are currently clocked in at "${locName}":\n${names}\n\nThey will keep their active shift but won't be able to log in here again. Continue?`))return;
+    }
     await sql('DELETE FROM wf_assignments WHERE loc_id=$1',[id]);
     await sql('DELETE FROM wf_locations WHERE id=$1',[id]);
     toast(T.locRemoved,'warning');
@@ -2214,6 +2228,17 @@ window.delLocation=async id=>{
   }catch(e){
     toast('⛔ Failed to remove location: '+e.message,'error');
   }
+};
+
+window.renameLocation=async id=>{
+  const input=document.getElementById('loc-rename-'+id);
+  const newName=input?.value?.trim();
+  if(!newName){toast('⛔ Name cannot be empty','error');return;}
+  try{
+    await sql('UPDATE wf_locations SET name=$2 WHERE id=$1',[id,newName]);
+    toast(`✅ Location renamed to "${newName}"`, 'success');
+    mTab('locations');
+  }catch(e){toast('⛔ Failed to rename: '+e.message,'error');}
 };
 
 window.toggleLocEdit=id=>{
@@ -2241,15 +2266,26 @@ window.clearLocEndTime=async id=>{
 
 // ════════ ASSIGN TAB ════════
 async function buildAssign(){
-  const [phones, locs, assignments] = await Promise.all([
-    dbListPhones(), dbListLocations(), dbListAssignments()
+  const [phones, locs, assignments, allUsers] = await Promise.all([
+    dbListPhones(), dbListLocations(), dbListAssignments(), dbListUsersCached()
   ]);
+  const workers = allUsers.filter(u=>u.role==='worker');
+  // Build a unified worker list — prefer phone record for display, fall back to user record
+  const phoneMap = {};
+  phones.forEach(p=>phoneMap[p.norm]=p);
+  const workerEntries = workers.map(u=>{
+    const norm = normPhone(u.phone||'');
+    return phoneMap[norm] || {norm: u.username, phone: u.phone||u.username, label: u.label||u.username};
+  });
+  // Deduplicate by norm
+  const seen = new Set();
+  const uniqueWorkers = workerEntries.filter(w=>{ if(seen.has(w.norm))return false; seen.add(w.norm); return true; });
   const assignedMap = {};
   assignments.forEach(a=>{
     if(!assignedMap[a.worker_username]) assignedMap[a.worker_username]=new Set();
     assignedMap[a.worker_username].add(a.loc_id);
   });
-  const unassigned = phones.filter(p=>!assignedMap[p.norm]||assignedMap[p.norm].size===0);
+  const unassigned = uniqueWorkers.filter(p=>!assignedMap[p.norm]||assignedMap[p.norm].size===0);
 
   function workerChip(p, locId){
     const removeBtn = locId
@@ -2274,7 +2310,7 @@ async function buildAssign(){
     ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">${T.noLocations}</div>`
     : locs.map(l=>{
         const isOpen = l.is_open !== false && l.is_open !== 'false';
-        const assignedPhones = phones.filter(p=>assignedMap[p.norm]?.has(l.id));
+        const assignedPhones = uniqueWorkers.filter(p=>assignedMap[p.norm]?.has(l.id));
         const chips = assignedPhones.length
           ? assignedPhones.map(p=>workerChip(p,l.id)).join('')
           : `<div class="assign-empty-drop">${T.dropHere}</div>`;
@@ -2579,12 +2615,12 @@ window.addPhone=async()=>{
   await mTab('addworker');
 };
 window.delPhone=async norm=>{
-  await dbDelAllAssignmentsForWorker(norm);
   const users=await dbListUsers();
   const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
+  await dbDelAllAssignmentsForWorker(norm);
   for(const u of linked){
-    await dbDelUser(u.username);
     await dbDelAllAssignmentsForWorker(u.username);
+    await dbDelUser(u.username);
   }
   await dbDelPhone(norm);
   toast(T.phoneRemoved,'warning');
@@ -2607,7 +2643,39 @@ window.clearPhones=async()=>{
   await loadSummary();
   toast(T.cleared,'warning');
 };
-window.handleDrop=e=>{e.preventDefault();const f=e.dataTransfer?.files[0]||e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>procFile(ev.target.result);r.readAsText(f);if(e.target.value!==undefined)e.target.value='';};
+window.handleDrop=e=>{
+  e.preventDefault();
+  const f=e.dataTransfer?.files[0]||e.target.files[0];
+  if(!f)return;
+  if(e.target.value!==undefined)e.target.value='';
+  const isXlsx=f.name.match(/\.xlsx?$/i);
+  if(isXlsx){
+    if(typeof XLSX==='undefined'){
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=()=>readXlsx(f);
+      s.onerror=()=>toast('⛔ Failed to load Excel reader','error');
+      document.head.appendChild(s);
+    } else { readXlsx(f); }
+  } else {
+    const r=new FileReader();r.onload=ev=>procFile(ev.target.result);r.readAsText(f);
+  }
+};
+
+function readXlsx(f){
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const lines=rows.map(row=>row.map(c=>String(c).trim()).join(','));
+      procFile(lines.join('\n'));
+    }catch(err){toast('⛔ Could not read Excel file: '+err.message,'error');}
+  };
+  r.readAsArrayBuffer(f);
+}
+
 async function procFile(text){
   const defR=parseFloat(val('nr'))||15;
   const lines=text.split(/[\r\n]+/).map(l=>l.trim()).filter(Boolean);
@@ -2615,13 +2683,25 @@ async function procFile(text){
   for(const line of lines){
     if(/^(phone|number|name|label|rate|#)/i.test(line)){skipped++;continue;}
     const parts=line.split(/[\t,;|]+/).map(p=>p.trim()).filter(Boolean);
+    if(!parts.length){skipped++;continue;}
     let phone='',label='',rate=defR;
-    parts.forEach(p=>{const d=p.replace(/[\s\-\+\(\)\.]/g,'');if(/^\d{6,15}$/.test(d)&&!phone)phone=p;else if(/^\d+(\.\d+)?$/.test(p)&&phone)rate=parseFloat(p);else if(p&&!label)label=p;});
-    if(!phone){const r=line.replace(/[\s\-\+\(\)\.]/g,'');if(/^\d{6,15}$/.test(r))phone=line.trim();}
+    const isPhone=v=>/^\d{6,15}$/.test(v.replace(/[\s\-\+\(\)\.]/g,''));
+    const isNum=v=>/^\d+(\.\d+)?$/.test(v);
+    const col0=parts[0]||'',col1=parts[1]||'',col2=parts[2]||'';
+    if(isPhone(col0)){
+      // Structured: number | name | rate
+      phone=col0;
+      if(col1&&!isNum(col1)){label=col1;if(col2&&isNum(col2))rate=parseFloat(col2);}
+      else if(col1&&isNum(col1)){rate=parseFloat(col1);}
+    } else {
+      // Fallback scan
+      parts.forEach(p=>{const d=p.replace(/[\s\-\+\(\)\.]/g,'');if(/^\d{6,15}$/.test(d)&&!phone)phone=p;else if(isNum(p)&&phone)rate=parseFloat(p);else if(p&&!label&&!isNum(p))label=p;});
+    }
     if(!phone){skipped++;continue;}
-    const norm=normPhone(phone);const ex=await dbGetPhone(norm);if(ex){skipped++;continue;}
+    const norm=normPhone(phone);if(!norm){skipped++;continue;}
+    const ex=await dbGetPhone(norm);if(ex){skipped++;continue;}
     await dbSetPhone(norm,{phone:phone.trim(),label:label.trim(),rate,used:false,added_at:Date.now()});
-    await ensureWorkerAccount(phone.trim(), norm, label.trim(), rate);
+    await ensureWorkerAccount(phone.trim(),norm,label.trim(),rate);
     added++;
   }
   toast(T.fileAdded(added,skipped),'success');mTab('addworker');loadSummary();
