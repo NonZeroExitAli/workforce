@@ -1386,7 +1386,7 @@ function niLogoSVG(size=90) {
 
 function niTopbarLogo() {
   return `<div class="ni-topbar-logo">
-    <img src="/logo-horizontal.png" height="38" style="object-fit:contain;" alt="New Idra S.R.L.S."/>
+    <img src="/logo-horizontal.png" height="52" style="object-fit:contain;" alt="New Idra S.R.L.S."/>
   </div>`;
 }
 
@@ -1448,12 +1448,8 @@ function renderAuth(){
     ${langBar()}
     <div style="margin-bottom:28px;text-align:center;position:relative;z-index:1">
       <div class="ni-logo-wrap" style="margin-bottom:20px;text-align:center">
-        ${niLogoSVG(100)}
+        ${niLogoSVG(260)}
       </div>
-      <div style="font-family:'Arial Rounded MT Bold','Trebuchet MS',Arial,sans-serif;font-size:clamp(28px,8vw,48px);font-weight:900;letter-spacing:4px;color:#fff;text-transform:uppercase;line-height:1">
-        NEW <span style="background:linear-gradient(90deg,#e8491e,#4dc8e8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">IDRA</span>
-      </div>
-      <div style="font-family:'Consolas','Courier New',monospace;font-size:11px;letter-spacing:6px;color:#3a6080;margin-top:6px">S.R.L.S.</div>
       <p class="brand-sub" style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:5px;color:#3a6080;margin-top:4px">${T.appSub}</p>
     </div>
     <div class="auth-wrap">
