@@ -1787,11 +1787,7 @@ window.wAct=async action=>{
         status:'working'
       });
 
-      const verify=await dbListShiftsToday();
-      const written=verify.find(x=>x.id===id);
-      if(!written){toast('⛔ Shift failed to save. Try again.','error');return;}
-
-      S.shift=written;
+      S.shift={id,worker:username,date:todayStr(),start_time:now,status:'working',location_name:locationName,location_id:S.nearestLocation?.id||null,hourly_rate:parseFloat(S.user.hourly_rate)||0};
       toast(`✅ ${T.shiftStarted}`,'success');
       await renderWorkerScreen();
 
