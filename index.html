@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>FlowForce — Plumbing Crew</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230d1b2a'/%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%23b87333' stroke-width='3'/%3E%3Crect x='28' y='10' width='8' height='44' rx='4' fill='%23b87333'/%3E%3Crect x='10' y='28' width='44' height='8' rx='4' fill='%23b87333'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23e8a020'/%3E%3C/svg%3E"/>
+<title>New Idra S.R.L.S. — Plumbing Crew</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230d1b2a'/%3E%3Cdefs%3E%3ClinearGradient id='go' x1='0' y1='0' x2='0.3' y2='1'%3E%3Cstop offset='0%25' stop-color='%23e63d1a'/%3E%3Cstop offset='100%25' stop-color='%23c97035'/%3E%3C/linearGradient%3E%3ClinearGradient id='gc' x1='0.4' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2355d4f0'/%3E%3Cstop offset='100%25' stop-color='%2318a8d8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M28 4 L36 4 Q50 4 58 14 Q64 22 64 32 Q64 42 58 50 Q50 60 36 60 L28 60 L28 50 L35 50 Q44 50 50 44 Q55 38 55 32 Q55 26 50 20 Q44 14 35 14 L28 14 Z' fill='url(%23gc)'/%3E%3Cpath d='M28 14 L20 14 L20 24 L11 32 L20 40 L20 50 L28 50 L28 42 L17 32 L28 22 Z' fill='url(%23go)'/%3E%3Crect x='37' y='20' width='7' height='24' rx='3' fill='%230d1b2a'/%3E%3C/svg%3E"/>
 
 <style>
 :root{
-  --bg:#060f18;
-  --bg1:#0a1628;
-  --bg2:#0e1e35;
-  --bg3:#122444;
+  --bg:#080f1a;
+  --bg1:#0d1e30;
+  --bg2:#112436;
+  --bg3:#162c42;
   --border:#1a3050;
   --border2:#1e3a60;
-  --copper:#b87333;
-  --copper2:#d4894a;
-  --copper3:#e8a020;
-  --steel:#7fa8c8;
-  --steel2:#a8c8e0;
+  --copper:#e8491e;
+  --copper2:#d0604a;
+  --copper3:#f06030;
+  --steel:#4dc8e8;
+  --steel2:#80d8f0;
   --green:#00d084;
   --red:#ff4444;
-  --orange:#ff8c00;
+  --orange:#e8491e;
   --text:#d8eaf8;
   --muted:#3a6080;
-  --dim:#0a1628;
+  --dim:#0d1e30;
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
@@ -55,7 +55,7 @@ body::after{
   position:fixed;
   top:0;left:0;right:0;
   height:3px;
-  background:linear-gradient(90deg,transparent,var(--copper),var(--copper2),var(--copper),transparent);
+  background:linear-gradient(90deg,transparent,#e8491e,#4dc8e8,transparent);
   z-index:999;
 }
 
@@ -197,7 +197,7 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .topbar::after{
   content:'';
   position:absolute;bottom:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--copper),transparent);
+  background:linear-gradient(90deg,transparent,#e8491e,#4dc8e8,transparent);
   pointer-events:none;
 }
 
@@ -210,6 +210,21 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 }
 .top-brand span{color:var(--copper2)}
 .top-brand .pipe-dot{width:8px;height:8px;border-radius:50%;background:var(--copper);box-shadow:0 0 8px var(--copper);}
+
+/* New Idra topbar inline logo */
+.ni-topbar-logo{display:flex;align-items:center;gap:10px;}
+.ni-topbar-logo .ni-name{
+  font-family:'Arial Rounded MT Bold','Trebuchet MS',Arial,sans-serif;
+  font-size:18px;font-weight:900;
+  letter-spacing:2px;
+  background:linear-gradient(90deg,#4dc8e8,#ffffff);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  text-transform:uppercase;
+}
+.ni-topbar-logo .ni-srls{
+  font-family:'Consolas','Courier New',monospace;
+  font-size:9px;letter-spacing:3px;color:var(--muted);
+}
 
 .top-right{display:flex;align-items:center;gap:8px;font-family:'Consolas','Courier New',monospace;font-size:11px;color:var(--muted);flex-wrap:wrap}
 .role-pill{padding:3px 10px;border-radius:2px;font-size:9px;font-weight:700;font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;letter-spacing:2px;text-transform:uppercase}
@@ -540,6 +555,13 @@ input:focus{
 .body{
   background:radial-gradient(ellipse at top,rgba(184,115,51,.03) 0%,transparent 50%);
 }
+
+/* New Idra logo animation on auth screen */
+@keyframes ni-float{
+  0%,100%{transform:translateY(0px);}
+  50%{transform:translateY(-6px);}
+}
+.ni-logo-wrap{animation:ni-float 4s ease-in-out infinite;}
 </style>
 </head>
 <body>
@@ -1357,6 +1379,33 @@ document.addEventListener('visibilitychange', () => {
 // ── App state ──
 const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
 
+// ── NEW IDRA LOGO SVG — matches 2026 brand exactly ──
+function niLogoSVG(size=90) {
+  const id='g'+size;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"   stop-color="#e8491e"/>
+        <stop offset="45%"  stop-color="#d0604a"/>
+        <stop offset="100%" stop-color="#4dc8e8"/>
+      </linearGradient>
+    </defs>
+    <path d="M18 12 L70 12 Q88 12 88 30 L88 70 Q88 88 70 88 L18 88 L18 70 L66 70 Q72 70 72 64 L72 36 Q72 30 66 30 L18 30 Z" fill="url(#${id})"/>
+    <path d="M18 30 L38 30 L52 50 L38 70 L18 70 L32 50 Z" fill="#0d1e30"/>
+  </svg>`;
+}
+
+// Small topbar version
+function niTopbarLogo() {
+  return `<div class="ni-topbar-logo">
+    ${niLogoSVG(34)}
+    <div>
+      <div class="ni-name">NEW IDRA</div>
+      <div class="ni-srls">S.R.L.S.</div>
+    </div>
+  </div>`;
+}
+
 function statusBadge(st){
   const c={working:'bg',completed:'bb',ended:'bb',absent:'bgr'};
   const l={working:T.wking,completed:'DONE',ended:'DONE',absent:(T.absent||'ABSENT').toUpperCase()};
@@ -1413,23 +1462,15 @@ function render(){
 function renderAuth(){
   return `<div class="center">
     ${langBar()}
-    <div style="margin-bottom:28px;text-align:center">
-      <div style="margin-bottom:16px;text-align:center">
-      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="36" cy="36" r="34" stroke="#b87333" stroke-width="2" opacity="0.4"/>
-        <circle cx="36" cy="36" r="26" stroke="#b87333" stroke-width="1" opacity="0.2"/>
-        <rect x="8" y="31" width="56" height="10" rx="5" fill="#b87333" opacity="0.9"/>
-        <rect x="31" y="8" width="10" height="56" rx="5" fill="#b87333" opacity="0.9"/>
-        <circle cx="36" cy="36" r="8" fill="#e8a020"/>
-        <circle cx="36" cy="36" r="4" fill="#060f18"/>
-        <circle cx="36" cy="19" r="3" fill="#d4894a"/>
-        <circle cx="36" cy="53" r="3" fill="#d4894a"/>
-        <circle cx="19" cy="36" r="3" fill="#d4894a"/>
-        <circle cx="53" cy="36" r="3" fill="#d4894a"/>
-      </svg>
-    </div>
-    <h1 class="brand-title">FLOW<span>FORCE</span></h1>
-      <p class="brand-sub" style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:5px;color:#3a6080">${T.appSub}</p>
+    <div style="margin-bottom:28px;text-align:center;position:relative;z-index:1">
+      <div class="ni-logo-wrap" style="margin-bottom:20px;text-align:center">
+        ${niLogoSVG(100)}
+      </div>
+      <div style="font-family:'Arial Rounded MT Bold','Trebuchet MS',Arial,sans-serif;font-size:clamp(28px,8vw,48px);font-weight:900;letter-spacing:4px;color:#fff;text-transform:uppercase;line-height:1">
+        NEW <span style="background:linear-gradient(90deg,#e8491e,#4dc8e8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">IDRA</span>
+      </div>
+      <div style="font-family:'Consolas','Courier New',monospace;font-size:11px;letter-spacing:6px;color:#3a6080;margin-top:6px">S.R.L.S.</div>
+      <p class="brand-sub" style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:5px;color:#3a6080;margin-top:4px">${T.appSub}</p>
     </div>
     <div class="auth-wrap">
       <div class="card-body" style="border-top:1px solid #2a2a2a;border-radius:4px">
@@ -1619,7 +1660,7 @@ async function renderWorkerScreen(){
 
   $('root').innerHTML=`
   <div class="topbar">
-    <div class="top-brand">FLOW<span>FORCE</span></div>
+    ${niTopbarLogo()}
     <div class="top-right">
       ${langBar(true)}
       <span class="clock" id="clock"></span>
@@ -1716,7 +1757,6 @@ window.wAct=async action=>{
       if(completedToday){
         const freshUser = await dbGetUser(username);
         if(!freshUser?.can_restart){
-          // ── FIX 1: Show correct message when worker already finished a shift today ──
           const alreadyDoneMsg = lang==='ar'
             ? '⚠ لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
             : lang==='it'
@@ -1821,7 +1861,7 @@ window.wAct=async action=>{
 async function renderManagerScreen(){
   $('root').innerHTML=`
   <div class="topbar">
-    <div class="top-brand">FLOW<span>FORCE</span></div>
+    ${niTopbarLogo()}
     <div class="top-right">
       ${langBar(true)}
       <span class="clock" id="clock"></span>
@@ -1877,7 +1917,7 @@ async function loadSummary(force=false){
   }
   const [allUsers,shifts,locations,allAlerts]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations(),dbListAlerts()]);
   const users=allUsers.filter(u=>u.role==='worker');
-  const ts=shifts; // already today-only from dbListShiftsToday
+  const ts=shifts;
   const alerts=allAlerts.filter(a=>!a.resolved).length;
   const now2=new Date();
   const monthShiftsForSal=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
@@ -2139,19 +2179,12 @@ window.addLocation=async()=>{
   mTab('locations');
 };
 
-// ── When deleting a location, only remove assignments for that specific location.
-// Workers assigned to other locations keep those assignments and remain assigned there.
-// Workers ONLY assigned to the deleted location automatically appear in the unassigned pool.
 window.delLocation=async id=>{
   if(!confirm(T.removeLoc))return;
   try{
-    // Step 1: Remove all assignments pointing to this specific location only
     await sql('DELETE FROM wf_assignments WHERE loc_id=$1',[id]);
-    // Step 2: Remove the location itself
     await sql('DELETE FROM wf_locations WHERE id=$1',[id]);
     toast(T.locRemoved,'warning');
-    // Step 3: Refresh both the locations tab and the summary
-    // The assign tab will automatically reflect the correct state when next opened
     mTab('locations');
     loadSummary();
   }catch(e){
