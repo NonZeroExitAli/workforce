@@ -793,6 +793,7 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);
     CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);
     CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
+    CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
   `);
   Promise.allSettled([
     sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
@@ -1372,7 +1373,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     clearTimeout(_sleepTimer); _sleepTimer=null;
     _resetInactiveTimer();
-    if (S.user && S.screen==='manager') loadSummary();
+
   }
 });
 
@@ -1882,31 +1883,33 @@ window.mTab=async tab=>{
   if(tab==='settings')  panel.innerHTML=await buildSettings();
 };
 
-let _summaryCache=null, _summaryCacheTs=0;
-async function loadSummary(force=false){
-  const now=Date.now();
-  if(!force && _summaryCache && now-_summaryCacheTs < 30000){
-    const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
-  }
+// loadSummary — only called on login, refresh button, or after a write action
+async function loadSummary(){
+  const el=$('scards');if(!el)return;
+  el.innerHTML=`<div class="info-card" style="opacity:.4"><div class="spin" style="width:14px;height:14px;margin:4px auto"></div></div>`;
   const [allUsers,shifts,locations]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations()]);
   const users=allUsers.filter(u=>u.role==='worker');
-  const ts=shifts;
-
   const now2=new Date();
   const monthShiftsForSal=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
   const sal=monthShiftsForSal.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
-  const el=$('scards');if(!el)return;
-  _summaryCache=[
+  if(!$('scards'))return;
+  $('scards').innerHTML=[
     [T.workers,users.length,'#f0c040'],
-    [T.working,ts.filter(s=>s.status==='working').length,'#2ecc71'],
-    [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
+    [T.working,shifts.filter(s=>s.status==='working').length,'#2ecc71'],
+    [T.absent,users.filter(w=>!shifts.find(s=>s.worker===w.username)).length,'#e74c3c'],
     ['📍 '+T.locations,locations.length,'#3498db'],
     [T.salDue,'€'+sal,'#f0c040'],
-
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
-  _summaryCacheTs=now;
-  el.innerHTML=_summaryCache;
 }
+
+// doRefresh — called by refresh button, reloads summary + live tab
+window.doRefresh = async () => {
+  const btn = $('refresh-btn');
+  if(btn){ btn.disabled=true; btn.textContent='↺ …'; }
+  _clearUsersCache();
+  await Promise.all([loadSummary(), mTab('live')]);
+  if(btn){ btn.disabled=false; btn.textContent=T.refresh; }
+};
 
 function inP(s,per){
   const ts=Number(s.start_time);
@@ -1930,7 +1933,7 @@ async function buildLive(){
 
   return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">${T.lastUpdated} ${updatedAt}</span>
-    <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="mTab('live')">${T.refresh}</button>
+    <button class="btn-sm" id="refresh-btn" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="doRefresh()">${T.refresh}</button>
   </div>
   <div class="worker-grid">${workers.map(w=>{
     const active=ts.find(s=>s.worker===w.username&&s.status==='working');
@@ -1972,7 +1975,6 @@ window.allowRestart=async(username, displayName)=>{
   try{
     await dbSetUser(username,{can_restart:true});
     toast(T.canNowStart(displayName),'success');
-    _summaryCacheTs=0;
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
 };
@@ -1982,7 +1984,6 @@ window.revokeRestart=async(username, displayName)=>{
   try{
     await dbSetUser(username,{can_restart:false});
     toast(T.restartRevoked(displayName),'warning');
-    _summaryCacheTs=0;
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
 };
@@ -1998,9 +1999,8 @@ window.mgrEndShift=async(shiftId, workerName)=>{
     const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
     await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
     toast(T.shiftEndedFor(workerName,fmtDur(wMs)),'success');
-    _summaryCacheTs=0;
     await mTab('live');
-    loadSummary(true);
+    loadSummary();
   }catch(e){toast('Error: '+e.message,'error');}
 };
 
