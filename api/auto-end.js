@@ -13,34 +13,12 @@ async function sql(query, params = []) {
   return result.rows;
 }
 
-// Convert a local HH:MM time on today's local date to a UTC timestamp
-function localTimeToUtcMs(today, eh, em, nowUTC) {
-  try {
-    const tzFmt = new Intl.DateTimeFormat('en-CA', {
-      timeZone: TIMEZONE,
-      year:'numeric', month:'2-digit', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', second:'2-digit',
-      hour12: false
-    });
-    // Get current UTC offset by comparing UTC to local
-    const utcDate   = new Date(nowUTC);
-    const localStr  = tzFmt.format(utcDate).replace(',', '');
-    const localDate = new Date(localStr + ' UTC');
-    const offsetMs  = utcDate.getTime() - localDate.getTime();
-    // Apply offset to target local time
-    const targetLocal = new Date(`${today}T${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}:00`);
-    return targetLocal.getTime() + offsetMs;
-  } catch {
-    return nowUTC;
-  }
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).send('');
 
-  // Auth
+  // ── Auth ──
   if (CRON_SECRET) {
     const auth = req.headers['authorization'] || '';
     if (auth !== `Bearer ${CRON_SECRET}`) {
@@ -51,7 +29,7 @@ export default async function handler(req, res) {
   try {
     const nowUTC = Date.now();
 
-    // Italian local time (handles CET/CEST automatically)
+    // ── Italian local time (handles CET/CEST automatically) ──
     const fmt = new Intl.DateTimeFormat('en-GB', {
       timeZone: TIMEZONE,
       year: 'numeric', month: '2-digit', day: '2-digit',
@@ -70,7 +48,7 @@ export default async function handler(req, res) {
     const today        = `${parts.year}-${String(parts.month).padStart(2,'0')}-${String(parts.day).padStart(2,'0')}`;
     const timeLabel    = `${localH}:${String(localM).padStart(2,'0')} ${TIMEZONE} → rounded ${localH}:${String(roundedM).padStart(2,'0')}`;
 
-    // Active shifts for today using LOCAL date (not UTC date)
+    // ── Active shifts ──
     const activeShifts = await sql(
       `SELECT * FROM wf_shifts WHERE status = 'working' AND date = $1`, [today]
     );
@@ -79,7 +57,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, checked: 0, ended: 0, time: timeLabel, ts: new Date().toISOString() });
     }
 
-    // Locations + config
+    // ── Locations + config ──
     const [locations, configRows] = await Promise.all([
       sql('SELECT id, name, end_time FROM wf_locations'),
       sql('SELECT auto_end_time FROM wf_config WHERE id = 1 LIMIT 1')
@@ -93,7 +71,7 @@ export default async function handler(req, res) {
     const endedWorkers = [];
 
     for (const shift of activeShifts) {
-      // Resolve end_time: per-location first, then global, then skip
+      // Resolve end_time: per-location → global → skip
       const loc     = locById[shift.location_id] || locByName[shift.location_name];
       const endTime = loc?.end_time || globalEndTime;
       if (!endTime) continue;
@@ -114,18 +92,15 @@ export default async function handler(req, res) {
          .forEach(p => { if (p.type !== 'literal') sp[p.type] = parseInt(p.value, 10); });
       if ((sp.hour * 60 + sp.minute) >= endTotalMins) continue;
 
-      // FIX: Calculate earnings up to EXACT end time, not cron fire time
-      // e.g. end_time=18:00, cron fires at 18:29 → worker paid until 18:00 not 18:29
-      const exactEndMs = localTimeToUtcMs(today, eh, em, nowUTC);
-      const endMs      = (exactEndMs > startMs && exactEndMs <= nowUTC + 1800000) ? exactEndMs : nowUTC;
-      const wMs        = Math.max(0, endMs - startMs);
-      const workHours  = wMs / 3600000;
-      const earnings   = workHours * (parseFloat(shift.hourly_rate) || 0);
+      // Calculate hours + earnings
+      const wMs       = Math.max(0, nowUTC - startMs);
+      const workHours = wMs / 3600000;
+      const earnings  = workHours * (parseFloat(shift.hourly_rate) || 0);
 
       await sql(
         `UPDATE wf_shifts SET status='completed', end_time=$2, work_hours=$3, earnings=$4
          WHERE id=$1 AND status='working'`,
-        [shift.id, endMs, workHours, earnings]
+        [shift.id, nowUTC, workHours, earnings]
       );
 
       endedCount++;
@@ -135,7 +110,7 @@ export default async function handler(req, res) {
         endTime,
         hours:    +(workHours.toFixed(2))
       });
-      console.log(`[AutoEnd] ✓ ${shift.worker} @ ${shift.location_name} → ${workHours.toFixed(2)}h (ended at ${endTime})`);
+      console.log(`[AutoEnd] ✓ ${shift.worker} @ ${shift.location_name} → ${workHours.toFixed(2)}h`);
     }
 
     return res.status(200).json({
