@@ -804,6 +804,7 @@ async function initDB() {
     sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
     sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
     sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
+    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
   ]);
   await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
@@ -1517,6 +1518,12 @@ window.doPhoneLogin=async()=>{
     }
 
     const locations=await dbListLocations();
+    // GPS bypass — skip location check if manager enabled it for this worker
+    if(workerUser.gps_bypass===true||workerUser.gps_bypass==='true'){
+      S.gps='ok'; S.gpsDist=null; S.nearestLocation=null;
+      S.user=workerUser; _resetInactiveTimer(); renderWorkerScreen(); return;
+    }
+
     if(locations.length>0){
       if(!navigator.geolocation){showErr(T.gpsRequired);return;}
       if(btn)btn.textContent='📍 '+(T.gpsCheck||'Getting location…');
@@ -1875,7 +1882,7 @@ window.mTab=async tab=>{
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   const panel=$('mpanel');if(!panel)return;
   panel.innerHTML=`<div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto 10px"></div>${T.loading}</div>`;
-  if(tab==='live')      panel.innerHTML=await buildLive();
+  if(tab==='live')      panel.innerHTML=await buildLive(false);
   if(tab==='addworker') panel.innerHTML=await buildAddWorker();
   if(tab==='locations') panel.innerHTML=await buildLocations();
   if(tab==='assign')    { panel.innerHTML=await buildAssign(); initAssignBoard(); }
@@ -1907,7 +1914,8 @@ window.doRefresh = async () => {
   const btn = $('refresh-btn');
   if(btn){ btn.disabled=true; btn.textContent='↺ …'; }
   _clearUsersCache();
-  await Promise.all([loadSummary(), mTab('live')]);
+  _liveCache = null; // force fresh DB fetch
+  await Promise.all([loadSummary(), buildLive(true).then(html=>{ const p=$('mpanel'); if(p) p.innerHTML=html; })]);
   if(btn){ btn.disabled=false; btn.textContent=T.refresh; }
 };
 
@@ -1921,9 +1929,12 @@ function inP(s,per){
   return true;
 }
 
-async function buildLive(){
+let _liveCache = null; // cleared only on refresh or write action
+
+async function buildLive(forceRefresh=false){
+  if(!forceRefresh && _liveCache) return _liveCache;
   const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
-  if(!workers.length)return`<div class="empty">${T.noWorkers}</div>`;
+  if(!workers.length){ _liveCache=`<div class="empty">${T.noWorkers}</div>`; return _liveCache; }
   const shifts=await dbListShiftsToday();
   const ts=shifts;
   const now=Date.now();
@@ -1931,7 +1942,7 @@ async function buildLive(){
   const allUsers=await dbListUsersCached();
   const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
 
-  return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+  _liveCache = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">${T.lastUpdated} ${updatedAt}</span>
     <button class="btn-sm" id="refresh-btn" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="doRefresh()">${T.refresh}</button>
   </div>
@@ -1968,12 +1979,14 @@ async function buildLive(){
       ${!active&&done&&alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.revokeRestart}</button>`:''}
     </div>`;
   }).join('')}</div>`;
+  return _liveCache;
 }
 
 window.allowRestart=async(username, displayName)=>{
   if(!confirm(T.confirmAllow(displayName))) return;
   try{
     await dbSetUser(username,{can_restart:true});
+    _liveCache=null;
     toast(T.canNowStart(displayName),'success');
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
@@ -1983,6 +1996,7 @@ window.revokeRestart=async(username, displayName)=>{
   if(!confirm(T.confirmRevoke(displayName))) return;
   try{
     await dbSetUser(username,{can_restart:false});
+    _liveCache=null;
     toast(T.restartRevoked(displayName),'warning');
     await mTab('live');
   }catch(e){toast('Error: '+e.message,'error');}
@@ -1998,6 +2012,7 @@ window.mgrEndShift=async(shiftId, workerName)=>{
     const workHours=wMs/3600000;
     const earnings=workHours*(parseFloat(shift.hourly_rate)||0);
     await dbSetShift(shiftId,{end_time:now,work_hours:workHours,earnings,status:'completed'});
+    _liveCache=null;
     toast(T.shiftEndedFor(workerName,fmtDur(wMs)),'success');
     await mTab('live');
     loadSummary();
@@ -2030,7 +2045,13 @@ async function buildAddWorker(){
               : `<span class="badge bgr" style="font-size:9px">${T.anyDevice}</span>`) : ''}
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+          ${workerUser ? (() => {
+            const bypassed = workerUser.gps_bypass===true||workerUser.gps_bypass==='true';
+            return `<button class="btn-sm" title="GPS Bypass — worker can sign in without location" style="background:${bypassed?'rgba(0,208,132,.15)':'rgba(58,96,128,.15)'};border:1px solid ${bypassed?'rgba(0,208,132,.4)':'var(--border2)'};color:${bypassed?'#00d084':'#3a6080'};font-size:11px;letter-spacing:1px" onclick="toggleGpsBypass('${esc(workerUser.username)}','${esc(p.label||p.phone)}',${bypassed})">
+              📍 GPS ${bypassed?'OFF':'ON'}
+            </button>`;
+          })() : ''}
           ${workerUser && hasDevice
             ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db;font-size:11px" onclick="resetDevice('${esc(workerUser.username)}','${esc(p.label||p.phone)}')">${T.resetDevice}</button>`
             : workerUser ? `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">${T.noDeviceYet}</span>` : ''}
@@ -2425,6 +2446,18 @@ async function buildWorkers(){
     }).join('')}
   </tbody></table></div>`;
 }
+
+window.toggleGpsBypass=async(username, displayName, current)=>{
+  const enabling = !current;
+  const msg = enabling
+    ? `Allow ${displayName} to sign in WITHOUT GPS location check?`
+    : `Re-enable GPS check for ${displayName}?`;
+  if(!confirm(msg)) return;
+  await dbSetUser(username, {gps_bypass: enabling});
+  _clearUsersCache();
+  toast(enabling ? `✅ ${displayName} can now sign in without GPS` : `📍 GPS check restored for ${displayName}`, enabling?'success':'warning');
+  await mTab('addworker');
+};
 
 window.resetDevice=async(username, displayName)=>{
   if(!confirm(T.resetDeviceConfirm(displayName))) return;
