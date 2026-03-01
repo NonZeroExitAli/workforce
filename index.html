@@ -1379,16 +1379,14 @@ document.addEventListener('visibilitychange', () => {
 // ── App state ──
 const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
 
-// ── NEW IDRA LOGO — GitHub hosted PNG ──
-const NI_LOGO_URL = "https://raw.githubusercontent.com/NonZeroExitAli/us/main/image%20(1).png";
-
+// ── NEW IDRA LOGO — uses actual PNG files ──
 function niLogoSVG(size=220) {
-  return `<img src="${NI_LOGO_URL}" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra S.R.L.S."/>`;
+  return `<img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra S.R.L.S."/>`;
 }
 
 function niTopbarLogo() {
   return `<div class="ni-topbar-logo">
-    <img src="${NI_LOGO_URL}" height="48" style="object-fit:contain;" alt="New Idra S.R.L.S."/>
+    <img src="/logo-horizontal.png" height="48" style="object-fit:contain;" alt="New Idra S.R.L.S."/>
   </div>`;
 }
 
