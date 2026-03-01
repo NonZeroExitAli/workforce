@@ -10,11 +10,5 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" }
       ]
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/auto-end",
-      "schedule": "*/30 * * * *"
-    }
   ]
 }
