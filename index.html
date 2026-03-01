@@ -1493,7 +1493,7 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsersCached()]);
+    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]); // always fresh at login — no cache
     if(!match){showErr(T.phoneNoAuth);return;}
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
     if(!workerUser){
