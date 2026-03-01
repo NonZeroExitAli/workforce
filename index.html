@@ -1707,11 +1707,41 @@ function startTimer(){
   if(!S.shift) return;
   const startMs=Number(S.shift.start_time);
   if(!startMs) return;
-  S.timerInt=setInterval(()=>{
+  S.timerInt=setInterval(async()=>{
     const now=Date.now();
     const wMs=Math.max(0,now-startMs);
     const e=$('tbig');if(e)e.textContent=fmtMs(wMs);
     const wt=$('wt');if(wt)wt.textContent=fmtDur(wMs);
+
+    // ── Auto-end check ──
+    if(S._autoEndFired||!S.autoEndTime||!S.shift) return;
+    const [eh,em]=S.autoEndTime.split(':').map(Number);
+    if(isNaN(eh)||isNaN(em)) return;
+    const nowD=new Date(now);
+    const nowMins=nowD.getHours()*60+nowD.getMinutes();
+    const endMins=eh*60+em;
+    if(nowMins<endMins) return;
+    // Time has passed — end the shift
+    S._autoEndFired=true;
+    clearInterval(S.timerInt);
+    try{
+      const todayBase=new Date(); todayBase.setHours(eh,em,0,0);
+      const endMs=todayBase.getTime();
+      const useMs=(endMs>startMs&&endMs<=now)?endMs:now;
+      const workHours=Math.max(0,useMs-startMs)/3600000;
+      const earnings=workHours*(parseFloat(S.user?.hourly_rate)||0);
+      await sql(
+        `UPDATE wf_shifts SET status='completed',end_time=$2,work_hours=$3,earnings=$4
+         WHERE id=$1 AND status='working'`,
+        [S.shift.id,useMs,workHours,earnings]
+      );
+      S.shift=null;
+      toast(`⏰ ${S.autoEndTime} — `+(lang==='ar'?'انتهت الوردية تلقائياً':lang==='it'?'Turno terminato automaticamente':'Shift auto-ended'),'info');
+      await renderWorkerScreen();
+    }catch(err){
+      console.error('[AutoEnd]',err.message);
+      S._autoEndFired=false; // allow retry next tick
+    }
   },1000);
 }
 
