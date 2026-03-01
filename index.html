@@ -1512,7 +1512,6 @@ window.doPhoneLogin=async()=>{
       await dbSetUser(workerUser.username,{device_id:DEVICE_ID});
       workerUser.device_id=DEVICE_ID;
     } else if(workerUser.device_id!==DEVICE_ID){
-      await dbSetAlert('blk_'+Date.now()+'_'+workerUser.username,{type:'device_blocked',worker:workerUser.username,phone:ph,blocked_device:DEVICE_ID,ts:Date.now(),resolved:false});
       showErr(T.deviceBlocked);return;
     }
 
@@ -1862,10 +1861,7 @@ async function renderManagerScreen(){
       <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
       <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 ${T.locations}</button>
       <button class="nav-tab" data-tab="assign"     onclick="mTab('assign')">🗂 ${T.assign}</button>
-      <button class="nav-tab" data-tab="shifts"     onclick="mTab('shifts')">📋 ${T.shifts}</button>
       <button class="nav-tab" data-tab="salary"     onclick="mTab('salary')">💶 ${T.salary}</button>
-      <button class="nav-tab" data-tab="workers"    onclick="mTab('workers')">👷 ${T.workers}</button>
-      <button class="nav-tab" data-tab="alerts"     onclick="mTab('alerts')">🔔 ${T.alerts}</button>
       <button class="nav-tab" data-tab="settings"   onclick="mTab('settings')">⚙️ ${T.settings}</button>
     </div>
     <div id="mpanel"></div>
@@ -1882,10 +1878,7 @@ window.mTab=async tab=>{
   if(tab==='addworker') panel.innerHTML=await buildAddWorker();
   if(tab==='locations') panel.innerHTML=await buildLocations();
   if(tab==='assign')    { panel.innerHTML=await buildAssign(); initAssignBoard(); }
-  if(tab==='shifts')    panel.innerHTML=await buildShifts();
   if(tab==='salary')    panel.innerHTML=await buildSalary('month');
-  if(tab==='workers')   panel.innerHTML=await buildWorkers();
-  if(tab==='alerts')    panel.innerHTML=await buildAlerts();
   if(tab==='settings')  panel.innerHTML=await buildSettings();
 };
 
@@ -1895,10 +1888,10 @@ async function loadSummary(force=false){
   if(!force && _summaryCache && now-_summaryCacheTs < 30000){
     const el=$('scards');if(el)el.innerHTML=_summaryCache;return;
   }
-  const [allUsers,shifts,locations,allAlerts]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations(),dbListAlerts()]);
+  const [allUsers,shifts,locations]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations()]);
   const users=allUsers.filter(u=>u.role==='worker');
   const ts=shifts;
-  const alerts=allAlerts.filter(a=>!a.resolved).length;
+
   const now2=new Date();
   const monthShiftsForSal=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
   const sal=monthShiftsForSal.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
@@ -1909,7 +1902,7 @@ async function loadSummary(force=false){
     [T.absent,users.filter(w=>!ts.find(s=>s.worker===w.username)).length,'#e74c3c'],
     ['📍 '+T.locations,locations.length,'#3498db'],
     [T.salDue,'€'+sal,'#f0c040'],
-    [T.alerts,alerts,alerts>0?'#e74c3c':'#555']
+
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
   _summaryCacheTs=now;
   el.innerHTML=_summaryCache;
@@ -2016,22 +2009,34 @@ async function buildAddWorker(){
   const listHtml=!phones.length?`<div class="empty">${T.noPhonesYet}</div>`:phones.map(p=>{
     const norm=p.norm;
     const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
-    return`<div class="phone-row">
-      <div style="flex:1">
-        <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
+    const workerUser = linked[0] || null;
+    const hasDevice = !!(workerUser?.device_id);
+    return`<div class="phone-row" style="flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
+        <div style="flex:1">
+          <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
+          </div>
+          <div class="phone-meta">
+            <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
+            <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>
+            <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
+          </div>
+          <div class="pmbadges">
+            <span class="badge ${linked.length>=1?'bg':'br'}">${linked.length===0?T.noAccount:T.registered}</span>
+            ${linked.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
+            ${workerUser ? (hasDevice
+              ? `<span class="badge bg" style="font-size:9px">${T.lockedDevice}</span>`
+              : `<span class="badge bgr" style="font-size:9px">${T.anyDevice}</span>`) : ''}
+          </div>
         </div>
-        <div class="phone-meta">
-          <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
-          <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>
-          <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
-        </div>
-        <div class="pmbadges">
-          <span class="badge ${linked.length>=1?'bg':'br'}">${linked.length===0?T.noAccount:T.registered}</span>
-          ${linked.map(u=>`<span class="badge bb">${esc(u.label||u.username)}</span>`).join('')}
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          ${workerUser && hasDevice
+            ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db;font-size:11px" onclick="resetDevice('${esc(workerUser.username)}','${esc(p.label||p.phone)}')">${T.resetDevice}</button>`
+            : workerUser ? `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">${T.noDeviceYet}</span>` : ''}
+          <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="padding:6px 10px;font-size:14px">✕</button>
         </div>
       </div>
-      <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="flex-shrink:0;padding:6px 10px;font-size:14px">✕</button>
     </div>`;
   }).join('');
   return`<div class="sg">
