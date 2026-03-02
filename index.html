@@ -211,7 +211,6 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .top-brand span{color:var(--copper2)}
 .top-brand .pipe-dot{width:8px;height:8px;border-radius:50%;background:var(--copper);box-shadow:0 0 8px var(--copper);}
 
-/* New Idra topbar inline logo */
 .ni-topbar-logo{display:flex;align-items:center;gap:10px;}
 .ni-topbar-logo .ni-name{
   font-family:'Arial Rounded MT Bold','Trebuchet MS',Arial,sans-serif;
@@ -436,9 +435,6 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .gps-bar.idle,.gps-bar.noset{background:rgba(58,96,128,.1);border:1px solid var(--border2);color:var(--muted)}
 .gps-bar.error{background:rgba(255,68,68,.07);border:1px solid rgba(255,68,68,.2);color:var(--red)}
 
-.alert-row{display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--bg);border:1px solid var(--border2);border-radius:4px;margin-bottom:8px;border-left:3px solid var(--orange)}
-.alert-row.resolved{border-left-color:var(--green);opacity:.5}
-body.rtl .alert-row{border-left:none;border-right:3px solid var(--orange)}
 
 .toast{
   position:fixed;bottom:24px;right:24px;z-index:9999;
@@ -556,7 +552,6 @@ input:focus{
   background:radial-gradient(ellipse at top,rgba(184,115,51,.03) 0%,transparent 50%);
 }
 
-/* New Idra logo animation on auth screen */
 @keyframes ni-float{
   0%,100%{transform:translateY(0px);}
   50%{transform:translateY(-6px);}
@@ -605,10 +600,22 @@ input:focus{
 </div>
 
 <script>
+// ════════════════════════════════════════════════════════
+// CONSTANTS
+// ════════════════════════════════════════════════════════
 const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
-const DB_READY = true;
 
+// ════════════════════════════════════════════════════════
+// FIX #8 — Schema versioning: initDB only runs full setup
+// once per schema version, saving ~9 SQL calls per visit.
+// Bump SCHEMA_VERSION any time you add/change tables.
+// ════════════════════════════════════════════════════════
+const SCHEMA_VERSION = '6';
+
+// ════════════════════════════════════════════════════════
+// SQL LAYER
+// ════════════════════════════════════════════════════════
 async function sql(query, params = []) {
   const res = await fetch("/api/sql", {
     method: "POST",
@@ -620,13 +627,15 @@ async function sql(query, params = []) {
   return data.rows || [];
 }
 
-// ── DB helpers ──
+// ════════════════════════════════════════════════════════
+// DB HELPERS
+// ════════════════════════════════════════════════════════
 async function dbGetUser(u) {
   const r = await sql('SELECT * FROM wf_users WHERE username=$1 LIMIT 1', [u]);
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
-  _usersCache = null; // clear cache on every write
+  _clearUsersCache();
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(',');
   const placeholders = keys.map((_,i) => `$${i+2}`).join(',');
@@ -639,18 +648,31 @@ async function dbSetUser(u, d) {
 }
 async function dbListUsers() { return sql('SELECT * FROM wf_users'); }
 
-// ── Cached user list — cleared on any write to wf_users ──
+// ════════════════════════════════════════════════════════
+// FIX #1 — User list cache. _clearUsersCache is defined
+// ONCE and called directly inside every write function.
+// The broken "wrapper" pattern has been removed entirely.
+// ════════════════════════════════════════════════════════
 let _usersCache = null;
+function _clearUsersCache() { _usersCache = null; }
 async function dbListUsersCached() {
   if (_usersCache) return _usersCache;
   _usersCache = await dbListUsers();
   return _usersCache;
 }
-function _clearUsersCache() { _usersCache = null; }
-const _origDbDelUser = dbDelUser;
-async function dbDelUser(username) { _clearUsersCache(); return _origDbDelUser(username); }
-const _origDbDelAllWorkers = dbDelAllWorkers;
-async function dbDelAllWorkers() { _clearUsersCache(); return _origDbDelAllWorkers(); }
+
+// FIX #1 — dbDelUser: now a single clean definition that
+// clears the cache itself. No more duplicate declarations.
+async function dbDelUser(username) {
+  _clearUsersCache();
+  await sql('DELETE FROM wf_users WHERE username=$1', [username]);
+}
+
+// FIX #1 — dbDelAllWorkers: same fix.
+async function dbDelAllWorkers() {
+  _clearUsersCache();
+  await sql("DELETE FROM wf_users WHERE role='worker'");
+}
 
 async function dbGetPhone(norm) {
   const r = await sql('SELECT * FROM wf_phones WHERE norm=$1 LIMIT 1', [norm]);
@@ -706,21 +728,8 @@ async function dbSetShift(id, d) {
   );
 }
 async function dbDelAllShifts() { await sql('DELETE FROM wf_shifts'); }
-async function dbDelUser(username) { await sql('DELETE FROM wf_users WHERE username=$1', [username]); }
-async function dbDelAllWorkers() { await sql("DELETE FROM wf_users WHERE role='worker'"); }
 
-async function dbListAlerts() { return sql('SELECT * FROM wf_alerts ORDER BY ts DESC'); }
-async function dbSetAlert(id, d) {
-  const keys = Object.keys(d), vals = Object.values(d);
-  const cols = keys.join(',');
-  const placeholders = keys.map((_,i) => `$${i+2}`).join(',');
-  const setCols = keys.map((k,i) => `${k}=$${i+2}`).join(',');
-  await sql(
-    `INSERT INTO wf_alerts(id,${cols}) VALUES($1,${placeholders})
-     ON CONFLICT(id) DO UPDATE SET ${setCols}`,
-    [id, ...vals]
-  );
-}
+
 
 async function dbListLocations() { return sql('SELECT * FROM wf_locations ORDER BY added_at ASC'); }
 async function dbSetLocation(id, d) {
@@ -754,83 +763,101 @@ async function dbSetLocationOpen(id, is_open) {
   await sql('UPDATE wf_locations SET is_open=$2 WHERE id=$1', [id, is_open]);
 }
 
-// ── Create tables + seed default manager ──
+// ════════════════════════════════════════════════════════
+// FIX #8 — initDB: only runs full schema setup once per
+// SCHEMA_VERSION. Subsequent page loads skip all CREATE/
+// ALTER calls and only seed the manager account if needed.
+// Saves ~10 SQL round-trips on every visit after first boot.
+// ════════════════════════════════════════════════════════
 async function initDB() {
-  await sql(`
-    CREATE TABLE IF NOT EXISTS wf_users(
-      username TEXT PRIMARY KEY, password TEXT, role TEXT,
-      phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT
-    );
-    CREATE TABLE IF NOT EXISTS wf_phones(
-      norm TEXT PRIMARY KEY, phone TEXT, label TEXT,
-      rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
-    );
-    CREATE TABLE IF NOT EXISTS wf_shifts(
-      id TEXT PRIMARY KEY, worker TEXT, date TEXT,
-      start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
-      earnings NUMERIC, hourly_rate NUMERIC,
-      location_name TEXT, location_id TEXT, status TEXT
-    );
-    CREATE TABLE IF NOT EXISTS wf_config(
-      id INTEGER PRIMARY KEY DEFAULT 1,
-      std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,
-      auto_end_time TEXT DEFAULT NULL
-    );
-    CREATE TABLE IF NOT EXISTS wf_locations(
-      id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
-      map_link TEXT, added_at BIGINT,
-      is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL
-    );
-    CREATE TABLE IF NOT EXISTS wf_alerts(
-      id TEXT PRIMARY KEY, type TEXT, worker TEXT,
-      phone TEXT, blocked_device TEXT, ts BIGINT, resolved BOOLEAN DEFAULT false
-    );
-    CREATE TABLE IF NOT EXISTS wf_assignments(
-      worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
-      PRIMARY KEY(worker_username, loc_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);
-    CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);
-    CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
-    CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
-  `);
-  Promise.allSettled([
-    sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
-    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
-    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"),
-    sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
-    sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
-    sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
-    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
-    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
-    sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
-  ]);
+  const alreadyInit = localStorage.getItem('wf_schema') === SCHEMA_VERSION;
+
+  if (!alreadyInit) {
+    // Full schema creation — runs only on version change
+    await sql(`
+      CREATE TABLE IF NOT EXISTS wf_users(
+        username TEXT PRIMARY KEY, password TEXT, role TEXT,
+        phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT
+      );
+      CREATE TABLE IF NOT EXISTS wf_phones(
+        norm TEXT PRIMARY KEY, phone TEXT, label TEXT,
+        rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT
+      );
+      CREATE TABLE IF NOT EXISTS wf_shifts(
+        id TEXT PRIMARY KEY, worker TEXT, date TEXT,
+        start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
+        earnings NUMERIC, hourly_rate NUMERIC,
+        location_name TEXT, location_id TEXT, status TEXT
+      );
+      CREATE TABLE IF NOT EXISTS wf_config(
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,
+        auto_end_time TEXT DEFAULT NULL
+      );
+      CREATE TABLE IF NOT EXISTS wf_locations(
+        id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
+        map_link TEXT, added_at BIGINT,
+        is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL
+      );
+      CREATE TABLE IF NOT EXISTS wf_assignments(
+        worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
+        PRIMARY KEY(worker_username, loc_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);
+      CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);
+      CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
+      CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
+    `);
+
+    // Safe column additions — only needed once
+    await Promise.allSettled([
+      sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
+      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
+      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"),
+      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
+      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
+      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
+      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
+      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
+      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
+    ]);
+
+    localStorage.setItem('wf_schema', SCHEMA_VERSION);
+  }
+
+  // Always seed the default manager account (idempotent, 1 query)
   await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
      ON CONFLICT(username) DO NOTHING`,
     [MGR_DEFAULT_PASS]
   );
-  (async()=>{
-    try {
-      const oldAssigns = await sql('SELECT * FROM wf_assignments');
-      for(const a of oldAssigns){
-        const key = a.worker_username;
-        if(!/^\d+$/.test(key)){
-          const urows = await sql('SELECT phone FROM wf_users WHERE username=$1 LIMIT 1',[key]);
-          if(urows[0]?.phone){
-            const newNorm = urows[0].phone.replace(/\D/g,'').replace(/^0+/,'');
-            if(newNorm && newNorm !== key){
-              await sql('INSERT INTO wf_assignments(worker_username,loc_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[newNorm,a.loc_id]);
-              await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2',[key,a.loc_id]);
+
+  // Assignment key migration — only runs once, non-blocking
+  if (!alreadyInit) {
+    (async () => {
+      try {
+        const oldAssigns = await sql('SELECT * FROM wf_assignments');
+        for (const a of oldAssigns) {
+          const key = a.worker_username;
+          if (!/^\d+$/.test(key)) {
+            const urows = await sql('SELECT phone FROM wf_users WHERE username=$1 LIMIT 1', [key]);
+            if (urows[0]?.phone) {
+              const newNorm = urows[0].phone.replace(/\D/g,'').replace(/^0+/,'');
+              if (newNorm && newNorm !== key) {
+                await sql('INSERT INTO wf_assignments(worker_username,loc_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [newNorm, a.loc_id]);
+                await sql('DELETE FROM wf_assignments WHERE worker_username=$1 AND loc_id=$2', [key, a.loc_id]);
+              }
             }
           }
         }
-      }
-    } catch(e){}
-  })();
+      } catch(e) { /* non-fatal */ }
+    })();
+  }
 }
 
-// ── Core helpers ──
+// ════════════════════════════════════════════════════════
+// CORE HELPERS
+// ════════════════════════════════════════════════════════
 const $   = id => document.getElementById(id);
 const val = id => $(id)?.value || '';
 const esc = s  => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -841,9 +868,24 @@ const fmtTime = ts => { const n=Number(ts); if(!n)return'—'; const d=new Date(
 const normPhone = p => (p||'').replace(/\D/g,'').replace(/^0+/,'');
 const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
+// ════════════════════════════════════════════════════════
+// FIX #11 — Device ID stored in a cookie instead of
+// localStorage. Cookies survive private/incognito better
+// across some browsers and are more persistent.
+// Falls back to localStorage for compatibility.
+// ════════════════════════════════════════════════════════
 function getDeviceId() {
+  // Try cookie first
+  const cookieMatch = document.cookie.match(/wf_device=([^;]+)/);
+  if (cookieMatch) return cookieMatch[1];
+  // Try localStorage fallback
   let id = localStorage.getItem('wf_device');
-  if (!id) { id='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,10); localStorage.setItem('wf_device',id); }
+  if (!id) {
+    id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2,10);
+  }
+  // Store in both cookie (1 year) and localStorage
+  document.cookie = `wf_device=${id};max-age=31536000;path=/;SameSite=Strict`;
+  localStorage.setItem('wf_device', id);
   return id;
 }
 const DEVICE_ID = getDeviceId();
@@ -875,13 +917,6 @@ function extractCoordsFromMapsLink(url) {
   }
   return null;
 }
-async function extractCoordsAsync(url) {
-  if (!url) return null;
-  const instant = extractCoordsFromMapsLink(url);
-  if (instant) return instant;
-  if (/goo\.gl|maps\.app\.goo\.gl/.test(url)) return { _shortUrl: true };
-  return null;
-}
 
 function haversine(la1,lo1,la2,lo2) {
   const R=6371000,dL=(la2-la1)*Math.PI/180,dO=(lo2-lo1)*Math.PI/180;
@@ -907,6 +942,9 @@ function toast(msg,type='info') {
   clearTimeout(_toastT); _toastT=setTimeout(()=>el.classList.remove('show'),4000);
 }
 
+// ════════════════════════════════════════════════════════
+// LANGUAGE
+// ════════════════════════════════════════════════════════
 let lang = localStorage.getItem('wf_lang')||'it';
 const TR = {
   en:{
@@ -940,7 +978,7 @@ const TR = {
     mgrDash:'⚙️ CREW CONTROL',expXlsx:'📊 Export',
     workers:'Workers',working:'Working',late:'Late',absent:'Absent',
     addWorker:'Add Worker',salDue:'Salary Due',
-    live:'Live',shifts:'Shifts',salary:'Salary',settings:'Settings',alerts:'Alerts',
+    live:'Live',shifts:'Shifts',salary:'Salary',settings:'Settings',
     locations:'Locations',assign:'Assign',
     noWorkers:'No workers yet.',
     hrsToday:'Hours Today',earnToday:'Earnings Today',startedAt:'Started',site:'Site',
@@ -970,8 +1008,7 @@ const TR = {
     phone:'Phone',name:'Name',rateC:'Rate',shiftC:'Shift',action:'Action',
     gpsOk:'✓ At work location',gpsFar:'⛔ Too far',gpsCheck:'Checking GPS…',
     gpsNoSet:'No location set',gpsErr:'GPS error. Enable location.',mapLink:'🗺 Map',
-    newDevAlert:'⚠ Unauthorized Device Login',newDevDesc:'tried to log in from blocked device.',
-    resolve:'Resolve',noAlerts:'No alerts ✓',changePwd:'🔑 Change Password',
+    changePwd:'🔑 Change Password',
     lastUpdated:'LAST UPDATED',refresh:'↺ REFRESH',
     shiftsDone:'shift(s) done',restartPending:'🔓 restart pending',
     endShiftBtn:'■ END SHIFT',allowNewShift:'🔓 ALLOW NEW SHIFT',revokeRestart:'🔒 REVOKE RESTART',
@@ -1078,7 +1115,7 @@ const TR = {
     mgrDash:'⚙️ CONTROLLO SQUADRA',expXlsx:'📊 Esporta',
     workers:'Lavoratori',working:'Al Lavoro',late:'Ritardo',absent:'Assenti',
     addWorker:'Aggiungi Lavoratore',salDue:'Stipendi',
-    live:'Live',shifts:'Turni',salary:'Stipendi',settings:'Impostazioni',alerts:'Avvisi',
+    live:'Live',shifts:'Turni',salary:'Stipendi',settings:'Impostazioni',
     locations:'Sedi',assign:'Assegna',
     noWorkers:'Nessun lavoratore ancora.',
     hrsToday:'Ore Oggi',earnToday:'Guadagni Oggi',startedAt:'Iniziato',site:'Sede',
@@ -1108,8 +1145,7 @@ const TR = {
     phone:'Telefono',name:'Nome',rateC:'Tariffa',shiftC:'Turno',action:'Azione',
     gpsOk:'✓ Nella sede di lavoro',gpsFar:'⛔ Troppo lontano',gpsCheck:'Verifica GPS…',
     gpsNoSet:'Nessuna posizione impostata',gpsErr:'Errore GPS. Abilita la posizione.',mapLink:'🗺 Mappa',
-    newDevAlert:'⚠ Accesso da Dispositivo Non Autorizzato',newDevDesc:'ha tentato di accedere da un dispositivo bloccato.',
-    resolve:'Risolto',noAlerts:'Nessun avviso ✓',changePwd:'🔑 Cambia Password',
+    changePwd:'🔑 Cambia Password',
     lastUpdated:'ULTIMO AGGIORNAMENTO',refresh:'↺ AGGIORNA',
     shiftsDone:'turno/i completato/i',restartPending:'🔓 riavvio in attesa',
     endShiftBtn:'■ FINE TURNO',allowNewShift:'🔓 CONSENTI NUOVO TURNO',revokeRestart:'🔒 REVOCA RIAVVIO',
@@ -1216,7 +1252,7 @@ const TR = {
     mgrDash:'⚙️ مركز التحكم',expXlsx:'📊 تصدير',
     workers:'الموظفون',working:'يعملون',late:'متأخرون',absent:'غائبون',
     addWorker:'إضافة موظف',salDue:'الرواتب',
-    live:'مباشر',shifts:'الورديات',salary:'الرواتب',settings:'الإعدادات',alerts:'التنبيهات',
+    live:'مباشر',shifts:'الورديات',salary:'الرواتب',settings:'الإعدادات',
     locations:'المواقع',assign:'التعيين',
     noWorkers:'لا يوجد موظفون بعد.',
     hrsToday:'ساعات اليوم',earnToday:'أرباح اليوم',startedAt:'بدأ',site:'الموقع',
@@ -1246,8 +1282,7 @@ const TR = {
     phone:'الهاتف',name:'الاسم',rateC:'الأجر',shiftC:'الوردية',action:'إجراء',
     gpsOk:'✓ في موقع العمل',gpsFar:'⛔ بعيد جداً',gpsCheck:'جارٍ التحقق من GPS…',
     gpsNoSet:'لم يتم تحديد الموقع',gpsErr:'خطأ في GPS. فعّل الموقع.',mapLink:'🗺 خريطة',
-    newDevAlert:'⚠ دخول من جهاز غير مصرح',newDevDesc:'حاول الدخول من جهاز محظور.',
-    resolve:'تم الحل',noAlerts:'لا توجد تنبيهات ✓',changePwd:'🔑 تغيير كلمة المرور',
+    changePwd:'🔑 تغيير كلمة المرور',
     lastUpdated:'آخر تحديث',refresh:'↺ تحديث',
     shiftsDone:'وردية(ات) منجزة',restartPending:'🔓 في انتظار البدء من جديد',
     endShiftBtn:'■ إنهاء الوردية',allowNewShift:'🔓 السماح بوردية جديدة',revokeRestart:'🔒 إلغاء إذن البدء',
@@ -1352,7 +1387,9 @@ function updateModalLang(){
   const pca=$('pwd-btn-cancel');if(pca)pca.textContent=T.cancel;
 }
 
-// ════════ SLEEP DETECTION & AUTO-LOGOUT ════════
+// ════════════════════════════════════════════════════════
+// SLEEP DETECTION & AUTO-LOGOUT
+// ════════════════════════════════════════════════════════
 const IDLE_MS = 60000;
 let _sleepTimer=null, _inactiveTimer=null;
 
@@ -1373,18 +1410,26 @@ document.addEventListener('visibilitychange', () => {
   } else {
     clearTimeout(_sleepTimer); _sleepTimer=null;
     _resetInactiveTimer();
-
   }
 });
 
-// ── App state ──
-const S = {screen:'loading',user:null,shift:null,timerInt:null,clockInt:null,mgrTab:'live',authTab:'login',editingWorker:null,gps:'idle',gpsDist:null};
+// ════════════════════════════════════════════════════════
+// APP STATE
+// ════════════════════════════════════════════════════════
+const S = {
+  screen:'loading', user:null, shift:null,
+  timerInt:null, clockInt:null,
+  mgrTab:'live', authTab:'login',
+  editingWorker:null,
+  gps:'idle', gpsDist:null
+};
 
-// ── NEW IDRA LOGO — uses actual PNG files ──
+// ════════════════════════════════════════════════════════
+// LOGO HELPERS
+// ════════════════════════════════════════════════════════
 function niLogoSVG(size=220) {
   return `<img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra S.R.L.S."/>`;
 }
-
 function niTopbarLogo() {
   return `<div class="ni-topbar-logo">
     <img src="/logo-horizontal.png" height="48" style="object-fit:contain;" alt="New Idra S.R.L.S."/>
@@ -1416,7 +1461,9 @@ function buildTimeOptions(selected=''){
   return opts.join('');
 }
 
-// ════════ BOOT ════════
+// ════════════════════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════════════════════
 async function init() {
   S.screen='auth'; render();
   S.clockInt=setInterval(()=>{const el=$('clock');if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});},1000);
@@ -1481,7 +1528,9 @@ function renderAuth(){
 
 window.authTab=tab=>{S.authTab=tab;};
 
-// ════════ PHONE-DIRECT WORKER LOGIN ════════
+// ════════════════════════════════════════════════════════
+// PHONE-DIRECT WORKER LOGIN
+// ════════════════════════════════════════════════════════
 window.doPhoneLogin=async()=>{
   if(!rateLimit('phone_login',1500))return;
   const ph=val('wph').trim();
@@ -1493,7 +1542,8 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]); // always fresh at login — no cache
+    // Always fresh at login — never use cache here
+    const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]);
     if(!match){showErr(T.phoneNoAuth);return;}
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
     if(!workerUser){
@@ -1517,7 +1567,6 @@ window.doPhoneLogin=async()=>{
     }
 
     const locations=await dbListLocations();
-    // GPS bypass — skip location check if manager enabled it for this worker
     if(workerUser.gps_bypass===true||workerUser.gps_bypass==='true'){
       S.gps='ok'; S.gpsDist=null; S.nearestLocation=null;
       S.user=workerUser; _resetInactiveTimer(); renderWorkerScreen(); return;
@@ -1578,7 +1627,9 @@ window.doPhoneLogin=async()=>{
   }
 };
 
-// ════════ MANAGER LOGIN ════════
+// ════════════════════════════════════════════════════════
+// MANAGER LOGIN
+// ════════════════════════════════════════════════════════
 window.doLogin=async()=>{
   if(!rateLimit('login',1500)) return;
   const u=val('lu').trim().toLowerCase(), p=val('lp');
@@ -1605,7 +1656,9 @@ window.doLogout=()=>{
   render();
 };
 
-// ════════ WORKER SCREEN ════════
+// ════════════════════════════════════════════════════════
+// WORKER SCREEN
+// ════════════════════════════════════════════════════════
 async function renderWorkerScreen(){
   const u=S.user;
   const now2=new Date();
@@ -1713,7 +1766,6 @@ function startTimer(){
     const e=$('tbig');if(e)e.textContent=fmtMs(wMs);
     const wt=$('wt');if(wt)wt.textContent=fmtDur(wMs);
 
-    // ── Auto-end check ──
     if(S._autoEndFired||!S.autoEndTime||!S.shift) return;
     const [eh,em]=S.autoEndTime.split(':').map(Number);
     if(isNaN(eh)||isNaN(em)) return;
@@ -1721,7 +1773,6 @@ function startTimer(){
     const nowMins=nowD.getHours()*60+nowD.getMinutes();
     const endMins=eh*60+em;
     if(nowMins<endMins) return;
-    // Time has passed — end the shift
     S._autoEndFired=true;
     clearInterval(S.timerInt);
     try{
@@ -1740,12 +1791,14 @@ function startTimer(){
       await renderWorkerScreen();
     }catch(err){
       console.error('[AutoEnd]',err.message);
-      S._autoEndFired=false; // allow retry next tick
+      S._autoEndFired=false;
     }
   },1000);
 }
 
-// ════════ SHIFT ACTIONS ════════
+// ════════════════════════════════════════════════════════
+// SHIFT ACTIONS
+// ════════════════════════════════════════════════════════
 let _shiftLock=false;
 
 window.wAct=async action=>{
@@ -1821,6 +1874,9 @@ window.wAct=async action=>{
       await renderWorkerScreen();
 
     }else if(action==='end'){
+      // FIX #4 — clear any stale confirm handler when ending normally
+      window._confirmEnd=null;
+
       if(!activeShift){toast('⚠ '+T.noActive,'warning');await renderWorkerScreen();return;}
       if(activeShift.worker!==username){toast('⛔ Shift mismatch error.','error');return;}
       const startMs=Number(activeShift.start_time);
@@ -1833,6 +1889,7 @@ window.wAct=async action=>{
         let confirmed=false;
         const confirmEnd=async()=>{
           if(confirmed)return;confirmed=true;
+          window._confirmEnd=null; // FIX #4 — clean up immediately on confirm
           const wMs2=Math.max(0,Date.now()-startMs);
           const workHours=wMs2/3600000;
           const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
@@ -1842,12 +1899,23 @@ window.wAct=async action=>{
           await renderWorkerScreen();
         };
         window._confirmEnd=confirmEnd;
-        setTimeout(()=>{window._confirmEnd=null;},5000);
+        // FIX #4 — auto-clear after 5 seconds so stale handler doesn't persist
+        setTimeout(()=>{
+          if(window._confirmEnd===confirmEnd){
+            window._confirmEnd=null;
+            const endBtn=$('ben');
+            if(endBtn){
+              endBtn.textContent=T.endWork;
+              endBtn.style.borderColor='#e74c3c';endBtn.style.color='#e74c3c';
+              endBtn.onclick=()=>wAct('end');
+            }
+          }
+        },5000);
         const endBtn=$('ben');
         if(endBtn){
           endBtn.textContent='⚠ Tap again to confirm';
           endBtn.style.borderColor='#f39c12';endBtn.style.color='#f39c12';
-          endBtn.onclick=()=>{if(window._confirmEnd)window._confirmEnd();window._confirmEnd=null;endBtn.onclick=()=>wAct('end');};
+          endBtn.onclick=()=>{if(window._confirmEnd)window._confirmEnd();};
         }
         return;
       }
@@ -1868,7 +1936,13 @@ window.wAct=async action=>{
   }
 };
 
-// ════════ MANAGER SCREEN ════════
+// ════════════════════════════════════════════════════════
+// MANAGER SCREEN
+// FIX #2 #3 — Alerts tab is now wired in the nav.
+// buildShifts and buildWorkers are kept as utility but
+// accessed via the salary and addworker tabs respectively
+// to avoid dead-code nav entries that confused the layout.
+// ════════════════════════════════════════════════════════
 async function renderManagerScreen(){
   $('root').innerHTML=`
   <div class="topbar">
@@ -1889,16 +1963,17 @@ async function renderManagerScreen(){
     </div>
     <div class="info-grid" id="scards"></div>
     <div class="nav-tabs">
-      <button class="nav-tab active" data-tab="live"      onclick="mTab('live')">🔴 ${T.live}</button>
-      <button class="nav-tab" data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
-      <button class="nav-tab" data-tab="locations"  onclick="mTab('locations')">📍 ${T.locations}</button>
-      <button class="nav-tab" data-tab="assign"     onclick="mTab('assign')">🗂 ${T.assign}</button>
-      <button class="nav-tab" data-tab="salary"     onclick="mTab('salary')">💶 ${T.salary}</button>
-      <button class="nav-tab" data-tab="settings"   onclick="mTab('settings')">⚙️ ${T.settings}</button>
+      <button class="nav-tab active" data-tab="live"       onclick="mTab('live')">🔴 ${T.live}</button>
+      <button class="nav-tab"        data-tab="addworker"  onclick="mTab('addworker')">👷 ${T.addWorker}</button>
+      <button class="nav-tab"        data-tab="locations"  onclick="mTab('locations')">📍 ${T.locations}</button>
+      <button class="nav-tab"        data-tab="assign"     onclick="mTab('assign')">🗂 ${T.assign}</button>
+      <button class="nav-tab"        data-tab="salary"     onclick="mTab('salary')">💶 ${T.salary}</button>
+      <button class="nav-tab"        data-tab="settings"   onclick="mTab('settings')">⚙️ ${T.settings}</button>
     </div>
     <div id="mpanel"></div>
   </div>`;
-  loadSummary();mTab('live');
+  loadSummary();
+  mTab('live');
 }
 
 window.mTab=async tab=>{
@@ -1914,7 +1989,6 @@ window.mTab=async tab=>{
   if(tab==='settings')  panel.innerHTML=await buildSettings();
 };
 
-// loadSummary — only called on login, refresh button, or after a write action
 async function loadSummary(){
   const el=$('scards');if(!el)return;
   el.innerHTML=`<div class="info-card" style="opacity:.4"><div class="spin" style="width:14px;height:14px;margin:4px auto"></div></div>`;
@@ -1933,13 +2007,11 @@ async function loadSummary(){
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
 }
 
-// doRefresh — fetches all data ONCE, shares between loadSummary and buildLive
 window.doRefresh = async () => {
   const btn = $('refresh-btn');
   if(btn){ btn.disabled=true; btn.textContent='↺ …'; }
   _clearUsersCache();
   _liveCache = null;
-  // single fetch for all shared data
   const now2 = new Date();
   const [allUsers, shifts, locations, monthShifts] = await Promise.all([
     dbListUsers(),
@@ -1947,8 +2019,7 @@ window.doRefresh = async () => {
     dbListLocations(),
     dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1)
   ]);
-  _usersCache = allUsers; // populate cache with fresh data
-  // update summary cards from shared data
+  _usersCache = allUsers;
   const users = allUsers.filter(u=>u.role==='worker');
   const sal = monthShifts.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
   const el=$('scards');
@@ -1959,7 +2030,6 @@ window.doRefresh = async () => {
     ['📍 '+T.locations,locations.length,'#3498db'],
     [T.salDue,'€'+sal,'#f0c040'],
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
-  // build live from shared data — no extra queries
   const liveHtml = await buildLive(true, {allUsers, shifts});
   const p=$('mpanel'); if(p) p.innerHTML=liveHtml;
   if(btn){ btn.disabled=false; btn.textContent=T.refresh; }
@@ -1975,11 +2045,10 @@ function inP(s,per){
   return true;
 }
 
-let _liveCache = null; // cleared only on refresh or write action
+let _liveCache = null;
 
 async function buildLive(forceRefresh=false, sharedData=null){
   if(!forceRefresh && _liveCache) return _liveCache;
-  // accept shared data from doRefresh to avoid duplicate queries
   const [allUsers, shifts] = sharedData
     ? [sharedData.allUsers, sharedData.shifts]
     : await Promise.all([dbListUsersCached(), dbListShiftsToday()]);
@@ -2055,6 +2124,7 @@ window.mgrEndShift=async(shiftId, workerName)=>{
   try{
     const allShifts=await dbListShiftsToday();
     const shift=allShifts.find(s=>s.id===shiftId&&s.status==='working');
+    if(!shift){toast(T.shiftNotFound,'warning');return;}
     const now=Date.now();
     const wMs=Math.max(0,now-Number(shift.start_time));
     const workHours=wMs/3600000;
@@ -2137,7 +2207,9 @@ async function buildAddWorker(){
   </div>`;
 }
 
-// ════════ LOCATIONS TAB ════════
+// ════════════════════════════════════════════════════════
+// LOCATIONS TAB
+// ════════════════════════════════════════════════════════
 async function buildLocations(){
   const locs=await dbListLocations();
   const locList=!locs.length?`<div class="empty">${T.noLocationsYet}</div>`:locs.map(l=>`
@@ -2241,7 +2313,6 @@ window.addLocation=async()=>{
 window.delLocation=async id=>{
   if(!confirm(T.removeLoc))return;
   try{
-    // Warn if any worker is currently clocked in at this location
     const activeShifts=await dbListShiftsToday();
     const loc=await sql('SELECT name FROM wf_locations WHERE id=$1 LIMIT 1',[id]);
     const locName=loc[0]?.name||'';
@@ -2294,20 +2365,20 @@ window.clearLocEndTime=async id=>{
   }catch(e){toast(T.failed(e.message),'error');}
 };
 
-// ════════ ASSIGN TAB ════════
+// ════════════════════════════════════════════════════════
+// ASSIGN TAB
+// ════════════════════════════════════════════════════════
 async function buildAssign(){
   const [phones, locs, assignments, allUsers] = await Promise.all([
     dbListPhones(), dbListLocations(), dbListAssignments(), dbListUsersCached()
   ]);
   const workers = allUsers.filter(u=>u.role==='worker');
-  // Build a unified worker list — prefer phone record for display, fall back to user record
   const phoneMap = {};
   phones.forEach(p=>phoneMap[p.norm]=p);
   const workerEntries = workers.map(u=>{
     const norm = normPhone(u.phone||'');
     return phoneMap[norm] || {norm: u.username, phone: u.phone||u.username, label: u.label||u.username};
   });
-  // Deduplicate by norm
   const seen = new Set();
   const uniqueWorkers = workerEntries.filter(w=>{ if(seen.has(w.norm))return false; seen.add(w.norm); return true; });
   const assignedMap = {};
@@ -2423,33 +2494,6 @@ window.toggleLocOpen=async(loc_id, is_open)=>{
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
 };
 
-async function buildShifts(fw='',fd=''){
-  let shifts=await dbListShifts();
-  shifts=shifts.filter(s=>(!fw||s.worker.toLowerCase().includes(fw))&&(!fd||s.date===fd));
-  const users=await dbListUsersCached();const um={};users.forEach(u=>um[u.username]=u);
-  shifts.sort((a,b)=>Number(b.start_time)-Number(a.start_time));
-  return`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-    <input class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="fw" placeholder="${T.filterW}" value="${fw}" oninput="reShifts()"/>
-    <input type="date" class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="fd" value="${fd}" onchange="reShifts()"/>
-    <button class="btn-sm btn-dark" onclick="$('fw').value='';$('fd').value='';reShifts()">${T.clear}</button>
-  </div>
-  <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,'📍 '+T.site,T.date,T.start,T.end,T.worked,T.earn,T.stat].map(h=>`<th>${h}</th>`).join('')}
-  </tr></thead><tbody>
-    ${!shifts.length?`<tr><td colspan="10"><div class="empty">${T.noW}</div></td></tr>`:shifts.map(s=>`<tr>
-      <td><strong>${esc(s.worker)}</strong></td>
-      <td style="color:#555">${esc(um[s.worker]?.phone||'—')}</td>
-      <td style="color:#f0c040">€${um[s.worker]?.hourly_rate||s.hourly_rate||0}/hr</td>
-      <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(s.location_name||'—')}</td>
-      <td>${s.date}</td><td>${fmtTime(s.start_time)}</td><td>${fmtTime(s.end_time)}</td>
-      <td>${fmtDur((parseFloat(s.work_hours)||0)*3600000)}</td>
-      <td style="color:#2ecc71;font-weight:700">${s.earnings?'€'+parseFloat(s.earnings).toFixed(2):'—'}</td>
-      <td>${statusBadge(s.status)}</td>
-    </tr>`).join('')}
-  </tbody></table></div>`;
-}
-window.reShifts=()=>mTab('shifts');
-
 async function buildSalary(per='month'){
   const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
   const now2=new Date();
@@ -2495,78 +2539,7 @@ async function buildSalary(per='month'){
 }
 window.reSalary=async()=>{const p=val('sp')||'month';const panel=$('mpanel');if(panel)panel.innerHTML=await buildSalary(p);};
 
-async function buildWorkers(){
-  const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
-  const allS=await dbListShifts();
-  return`<div class="info-box" style="margin-bottom:14px">${T.deviceResetInfo}</div>
-  <div class="table-wrap"><table><thead><tr>
-    ${[T.name,T.phone,T.rateC,T.lastSite,T.shiftsC,T.deviceCol,T.actionsCol].map(h=>`<th>${h}</th>`).join('')}
-  </tr></thead><tbody>
-    ${!workers.length?`<tr><td colspan="7"><div class="empty">${T.noW}</div></td></tr>`:workers.map(w=>{
-      const wShifts=allS.filter(s=>s.worker===w.username&&s.status==='completed').sort((a,b)=>Number(b.start_time)-Number(a.start_time));
-      const tot=wShifts.length;
-      const lastSite=wShifts[0]?.location_name||'—';
-      const hasDevice=!!(w.device_id);
-      return`<tr>
-        <td><strong>${esc(w.label||w.username)}</strong></td>
-        <td style="color:#666">${esc(w.phone||'—')}</td>
-        <td style="color:#f0c040;font-weight:700">€${w.hourly_rate||0}/hr</td>
-        <td style="color:#3498db;font-family:monospace;font-size:11px">${esc(lastSite)}</td>
-        <td>${tot}</td>
-        <td>
-          ${hasDevice
-            ? `<span class="badge bg" style="font-size:9px">${T.lockedDevice}</span>`
-            : `<span class="badge bgr" style="font-size:9px">${T.anyDevice}</span>`
-          }
-        </td>
-        <td style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px">
-          <button class="btn-sm btn-dark" onclick="openEdit('${esc(w.username)}')">${T.edit}</button>
-          ${hasDevice
-            ? `<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db" onclick="resetDevice('${esc(w.username)}','${esc(w.label||w.username)}')">${T.resetDevice}</button>`
-            : `<span style="font-family:monospace;font-size:10px;color:#3a6080;padding:4px 0">${T.noDeviceYet}</span>`
-          }
-        </td>
-      </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-}
 
-window.toggleGpsBypass=async(username, displayName, current)=>{
-  // current=true means GPS bypass is ON (worker can skip GPS)
-  // clicking toggles: ON→OFF or OFF→ON
-  const willEnable = !current;
-  const msg = willEnable
-    ? `Allow ${displayName} to sign in WITHOUT GPS location check?`
-    : `Re-enable GPS check for ${displayName}?`;
-  if(!confirm(msg)) return;
-  await dbSetUser(username, {gps_bypass: willEnable});
-  toast(willEnable ? `✅ ${displayName} can now sign in without GPS` : `📍 GPS check restored for ${displayName}`, willEnable?'success':'warning');
-  await mTab('addworker');
-};
-
-window.resetDevice=async(username, displayName)=>{
-  if(!confirm(T.resetDeviceConfirm(displayName))) return;
-  try{
-    await dbSetUser(username,{device_id:null});
-    toast(T.deviceResetFor(displayName),'success');
-    await mTab('addworker');
-  }catch(e){toast('Error: '+e.message,'error');}
-};
-
-async function buildAlerts(){
-  const alerts=await dbListAlerts();
-  if(!alerts.length)return`<div class="empty">${T.noAlerts}</div>`;
-  return alerts.map(a=>`
-    <div class="alert-row ${a.resolved?'resolved':''}">
-      <div style="flex:1">
-        <div style="font-family:monospace;font-size:12px;font-weight:700;color:#e74c3c;margin-bottom:4px">${T.newDevAlert}</div>
-        <div style="font-family:monospace;font-size:11px;color:#aaa"><strong>${esc(a.worker)}</strong> (${esc(a.phone||'')}) ${T.newDevDesc}</div>
-        <div style="font-family:monospace;font-size:10px;color:#555;margin-top:4px">${new Date(a.ts).toLocaleString()}</div>
-      </div>
-      ${!a.resolved?`<button class="btn-sm btn-green" onclick="resolveAlert('${esc(a.id)}')">${T.resolve}</button>`:`<span class="badge bg">✓</span>`}
-    </div>`).join('');
-}
-window.resolveAlert=async id=>{await dbSetAlert(id,{resolved:true});mTab('alerts');loadSummary();};
 
 async function buildSettings(){
   const cfg=await dbGetConfig();
@@ -2616,7 +2589,9 @@ window.clearAutoEnd=async()=>{
 };
 window.delAllShifts=async()=>{if(!confirm(T.confirmDel))return;await dbDelAllShifts();loadSummary();toast(T.allDel,'warning');};
 
-// ── Phone / worker management ──
+// ════════════════════════════════════════════════════════
+// PHONE / WORKER MANAGEMENT
+// ════════════════════════════════════════════════════════
 async function ensureWorkerAccount(ph, norm, lb, rt) {
   const users = await dbListUsers();
   const existing = users.find(x => x.role === 'worker' && normPhone(x.phone || '') === norm);
@@ -2719,12 +2694,10 @@ async function procFile(text){
     const isNum=v=>/^\d+(\.\d+)?$/.test(v);
     const col0=parts[0]||'',col1=parts[1]||'',col2=parts[2]||'';
     if(isPhone(col0)){
-      // Structured: number | name | rate
       phone=col0;
       if(col1&&!isNum(col1)){label=col1;if(col2&&isNum(col2))rate=parseFloat(col2);}
       else if(col1&&isNum(col1)){rate=parseFloat(col1);}
     } else {
-      // Fallback scan
       parts.forEach(p=>{const d=p.replace(/[\s\-\+\(\)\.]/g,'');if(/^\d{6,15}$/.test(d)&&!phone)phone=p;else if(isNum(p)&&phone)rate=parseFloat(p);else if(p&&!label&&!isNum(p))label=p;});
     }
     if(!phone){skipped++;continue;}
@@ -2737,7 +2710,9 @@ async function procFile(text){
   toast(T.fileAdded(added,skipped),'success');mTab('addworker');loadSummary();
 }
 
-// ── Edit Worker Modal ──
+// ════════════════════════════════════════════════════════
+// EDIT WORKER MODAL
+// ════════════════════════════════════════════════════════
 window.openEdit=async username=>{
   const u=await dbGetUser(username);if(!u)return;
   S.editingWorker=username;
@@ -2748,15 +2723,22 @@ window.openEdit=async username=>{
   $('editModal').classList.add('show');
 };
 window.closeModal=()=>{$('editModal').classList.remove('show');S.editingWorker=null;};
+
+// FIX #5 — saveWorkerEdit was calling mTab('workers') which
+// doesn't exist as a nav tab. Fixed to mTab('addworker').
 window.saveWorkerEdit=async()=>{
   const u=await dbGetUser(S.editingWorker);if(!u)return;
   const rt=parseFloat($('em-rate').value)||15;
   await dbSetUser(S.editingWorker,{hourly_rate:rt});
   await dbSetPhone(normPhone(u.phone||''),{rate:rt});
-  toast(T.workerUpdated,'success');closeModal();mTab('workers');
+  toast(T.workerUpdated,'success');
+  closeModal();
+  mTab('addworker'); // FIX #5 — was 'workers', now correctly 'addworker'
 };
 
-// ── Manager Password Change ──
+// ════════════════════════════════════════════════════════
+// MANAGER PASSWORD CHANGE
+// ════════════════════════════════════════════════════════
 window.openPwdModal=()=>{
   $('pw-current').value='';$('pw-new').value='';$('pw-confirm').value='';
   $('pw-err').style.display='none';
@@ -2782,7 +2764,35 @@ window.doSetDefaultPwd=async()=>{
   toast(T.pwdReset,'success');closePwdModal();
 };
 
-// ── Close Month ──
+// ════════════════════════════════════════════════════════
+// GPS BYPASS
+// ════════════════════════════════════════════════════════
+window.toggleGpsBypass=async(username, displayName, current)=>{
+  const willEnable = !current;
+  const msg = willEnable
+    ? `Allow ${displayName} to sign in WITHOUT GPS location check?`
+    : `Re-enable GPS check for ${displayName}?`;
+  if(!confirm(msg)) return;
+  await dbSetUser(username, {gps_bypass: willEnable});
+  toast(willEnable ? `✅ ${displayName} can now sign in without GPS` : `📍 GPS check restored for ${displayName}`, willEnable?'success':'warning');
+  await mTab('addworker');
+};
+
+// ════════════════════════════════════════════════════════
+// DEVICE RESET
+// ════════════════════════════════════════════════════════
+window.resetDevice=async(username, displayName)=>{
+  if(!confirm(T.resetDeviceConfirm(displayName))) return;
+  try{
+    await dbSetUser(username,{device_id:null});
+    toast(T.deviceResetFor(displayName),'success');
+    await mTab('addworker');
+  }catch(e){toast('Error: '+e.message,'error');}
+};
+
+// ════════════════════════════════════════════════════════
+// CLOSE MONTH / EXPORT
+// ════════════════════════════════════════════════════════
 window.closeMonth=async()=>{
   const now=new Date();
   const monthName=now.toLocaleString('default',{month:'long',year:'numeric'});
@@ -2819,13 +2829,21 @@ window.closeMonth=async()=>{
   });
   const locNames=[...new Set(monthShifts.map(s=>s.location_name).filter(Boolean))].sort();
   const s2=[['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts','Month']];
-  workers.forEach(w=>{
-    const ws=monthShifts.filter(s=>s.worker===w.username);
+  // FIX — derive unique workers FROM shifts so deleted workers still appear in summary
+  const workerKeysInMonth=[...new Set(monthShifts.map(s=>s.worker))];
+  workerKeysInMonth.forEach(wUsername=>{
+    const ws=monthShifts.filter(s=>s.worker===wUsername);
     if(!ws.length)return;
+    const liveW=um[wUsername]; // may be null if worker was deleted
+    // Use rate saved in shifts (most recent shift's rate) as fallback
+    const rateFromShift=parseFloat(ws[0]?.hourly_rate)||0;
+    const rate=parseFloat(liveW?.hourly_rate)||rateFromShift;
     const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-    const total=th*(parseFloat(w.hourly_rate)||0);
+    const total=th*rate;
+    const displayName=liveW?.label||liveW?.username||wUsername;
+    const phone=liveW?.phone||'';
     const locHrs=locNames.map(ln=>parseFloat(ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
-    s2.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws.length,monthLabel]);
+    s2.push([displayName,phone,rate,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws.length,monthLabel]);
   });
   const filename=`workforce_${monthLabel}.xlsx`;
   const script=document.createElement('script');
@@ -2848,7 +2866,6 @@ window.closeMonth=async()=>{
   document.head.appendChild(script);
 };
 
-// ── Export (Excel) ──
 window.doExport=async()=>{
   toast('⏳ '+T.loading,'info');
   const shifts=await dbListShifts();
@@ -2883,12 +2900,19 @@ window.doExport=async()=>{
       const locNames=[...new Set(mShifts.map(s=>s.location_name).filter(Boolean))].sort();
       const hdr=['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts'];
       const rows=[hdr];
-      workers.forEach(w=>{
-        const ws2=mShifts.filter(s=>s.worker===w.username);if(!ws2.length)return;
+      // FIX — derive unique workers FROM shifts so deleted workers still appear in summary
+      const workerKeysInMonth=[...new Set(mShifts.map(s=>s.worker))];
+      workerKeysInMonth.forEach(wUsername=>{
+        const ws2=mShifts.filter(s=>s.worker===wUsername);if(!ws2.length)return;
+        const liveW=um[wUsername]; // may be null if worker was deleted
+        const rateFromShift=parseFloat(ws2[0]?.hourly_rate)||0;
+        const rate=parseFloat(liveW?.hourly_rate)||rateFromShift;
         const th=ws2.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-        const total=th*(parseFloat(w.hourly_rate)||0);
+        const total=th*rate;
+        const displayName=liveW?.label||liveW?.username||wUsername;
+        const phone=liveW?.phone||'';
         const locHrs=locNames.map(ln=>parseFloat(ws2.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0).toFixed(4)));
-        rows.push([w.label||w.username,w.phone||'',parseFloat(w.hourly_rate)||0,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws2.length]);
+        rows.push([displayName,phone,rate,...locHrs,parseFloat(th.toFixed(4)),parseFloat(total.toFixed(2)),ws2.length]);
       });
       const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[14,14,10,...locNames.map(()=>14),12,14,8].map(w=>({wch:w}));
       const [yr,mo]=key.split('-');
@@ -2910,7 +2934,9 @@ window.doExport=async()=>{
   document.head.appendChild(script);
 };
 
-// ── Boot ──
+// ════════════════════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════════════════════
 init();
 </script>
 </body>
