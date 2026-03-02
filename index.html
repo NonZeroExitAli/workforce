@@ -1584,13 +1584,10 @@ window.doPhoneLogin=async()=>{
         }));
         const allAssignments=await dbListAssignments();
         const myAssignments=allAssignments.filter(a=>a.worker_username===norm||a.worker_username===workerUser.username);
-        const anyAssignmentsExist=allAssignments.length>0;
-        if(anyAssignmentsExist && myAssignments.length===0){
+        if(myAssignments.length===0){
           showErr('⛔ You are not assigned to any site. Contact your manager.');return;
         }
-        const candidateLocs = myAssignments.length>0
-          ? locsWithDist.filter(l=>myAssignments.some(a=>a.loc_id===l.id))
-          : locsWithDist;
+        const candidateLocs=locsWithDist.filter(l=>myAssignments.some(a=>a.loc_id===l.id));
         const nearbyCandidate = candidateLocs
           .filter(l=>l.dist<=GPS_RADIUS)
           .sort((a,b)=>a.dist-b.dist)[0];
