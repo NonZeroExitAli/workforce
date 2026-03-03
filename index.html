@@ -396,6 +396,9 @@ tr:hover td{background:rgba(184,115,51,.03)}
 .bb{background:rgba(127,168,200,.1);color:var(--steel);border:1px solid rgba(127,168,200,.25)}
 .bgr{background:rgba(58,96,128,.15);color:var(--muted);border:1px solid var(--border)}
 
+/* =====================================================
+   FIX #2 — Worker name overflow: smaller font, word-break
+   ===================================================== */
 .worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-bottom:20px}
 .wcard{
   background:var(--bg1);
@@ -403,13 +406,26 @@ tr:hover td{background:rgba(184,115,51,.03)}
   border-radius:4px;padding:18px;
   border-left:3px solid var(--border2);
   transition:border-left-color .3s,transform .2s;
+  overflow:hidden;min-width:0;
 }
 .wcard:hover{transform:translateY(-1px)}
 .wcard.working{border-left-color:var(--green)}
 .wcard.ended{border-left-color:var(--steel)}
 body.rtl .wcard{border-left:none;border-right:3px solid var(--border2)}
 body.rtl .wcard.working{border-right-color:var(--green)}
-.wname{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-weight:800;font-size:18px;letter-spacing:1px;margin-bottom:2px;color:var(--text);text-transform:uppercase}
+.wname{
+  font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;
+  font-weight:800;
+  font-size:14px;
+  letter-spacing:.3px;
+  margin-bottom:2px;
+  color:var(--text);
+  text-transform:uppercase;
+  overflow-wrap:break-word;
+  word-break:break-word;
+  line-height:1.2;
+  max-width:100%;
+}
 .wphone{font-family:'Consolas','Courier New',monospace;font-size:10px;color:var(--muted);margin-bottom:10px}
 .wbadges{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}
 .wstats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -640,11 +656,6 @@ input:focus{
 const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
 
-// ════════════════════════════════════════════════════════
-// FIX #8 — Schema versioning: initDB only runs full setup
-// once per schema version, saving ~9 SQL calls per visit.
-// Bump SCHEMA_VERSION any time you add/change tables.
-// ════════════════════════════════════════════════════════
 const SCHEMA_VERSION = '6';
 
 // ════════════════════════════════════════════════════════
@@ -682,11 +693,6 @@ async function dbSetUser(u, d) {
 }
 async function dbListUsers() { return sql('SELECT * FROM wf_users'); }
 
-// ════════════════════════════════════════════════════════
-// FIX #1 — User list cache. _clearUsersCache is defined
-// ONCE and called directly inside every write function.
-// The broken "wrapper" pattern has been removed entirely.
-// ════════════════════════════════════════════════════════
 let _usersCache = null;
 function _clearUsersCache() { _usersCache = null; }
 async function dbListUsersCached() {
@@ -695,14 +701,11 @@ async function dbListUsersCached() {
   return _usersCache;
 }
 
-// FIX #1 — dbDelUser: now a single clean definition that
-// clears the cache itself. No more duplicate declarations.
 async function dbDelUser(username) {
   _clearUsersCache();
   await sql('DELETE FROM wf_users WHERE username=$1', [username]);
 }
 
-// FIX #1 — dbDelAllWorkers: same fix.
 async function dbDelAllWorkers() {
   _clearUsersCache();
   await sql("DELETE FROM wf_users WHERE role='worker'");
@@ -763,8 +766,6 @@ async function dbSetShift(id, d) {
 }
 async function dbDelAllShifts() { await sql('DELETE FROM wf_shifts'); }
 
-
-
 async function dbListLocations() { return sql('SELECT * FROM wf_locations ORDER BY added_at ASC'); }
 async function dbSetLocation(id, d) {
   const keys = Object.keys(d), vals = Object.values(d);
@@ -797,17 +798,10 @@ async function dbSetLocationOpen(id, is_open) {
   await sql('UPDATE wf_locations SET is_open=$2 WHERE id=$1', [id, is_open]);
 }
 
-// ════════════════════════════════════════════════════════
-// FIX #8 — initDB: only runs full schema setup once per
-// SCHEMA_VERSION. Subsequent page loads skip all CREATE/
-// ALTER calls and only seed the manager account if needed.
-// Saves ~10 SQL round-trips on every visit after first boot.
-// ════════════════════════════════════════════════════════
 async function initDB() {
   const alreadyInit = localStorage.getItem('wf_schema') === SCHEMA_VERSION;
 
   if (!alreadyInit) {
-    // Full schema creation — runs only on version change
     await sql(`
       CREATE TABLE IF NOT EXISTS wf_users(
         username TEXT PRIMARY KEY, password TEXT, role TEXT,
@@ -843,7 +837,6 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
     `);
 
-    // Safe column additions — only needed once
     await Promise.allSettled([
       sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
       sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
@@ -859,14 +852,12 @@ async function initDB() {
     localStorage.setItem('wf_schema', SCHEMA_VERSION);
   }
 
-  // Always seed the default manager account (idempotent, 1 query)
   await sql(
     `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
      ON CONFLICT(username) DO NOTHING`,
     [MGR_DEFAULT_PASS]
   );
 
-  // Assignment key migration — only runs once, non-blocking
   if (!alreadyInit) {
     (async () => {
       try {
@@ -902,22 +893,13 @@ const fmtTime = ts => { const n=Number(ts); if(!n)return'—'; const d=new Date(
 const normPhone = p => (p||'').replace(/\D/g,'').replace(/^0+/,'');
 const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
 
-// ════════════════════════════════════════════════════════
-// FIX #11 — Device ID stored in a cookie instead of
-// localStorage. Cookies survive private/incognito better
-// across some browsers and are more persistent.
-// Falls back to localStorage for compatibility.
-// ════════════════════════════════════════════════════════
 function getDeviceId() {
-  // Try cookie first
   const cookieMatch = document.cookie.match(/wf_device=([^;]+)/);
   if (cookieMatch) return cookieMatch[1];
-  // Try localStorage fallback
   let id = localStorage.getItem('wf_device');
   if (!id) {
     id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2,10);
   }
-  // Store in both cookie (1 year) and localStorage
   document.cookie = `wf_device=${id};max-age=31536000;path=/;SameSite=Strict`;
   localStorage.setItem('wf_device', id);
   return id;
@@ -990,7 +972,6 @@ function toggleDark() {
   localStorage.setItem('wf_dark', _darkMode);
   applyDark();
 }
-// Apply on load (default is light mode)
 applyDark();
 
 // ════════════════════════════════════════════════════════
@@ -1492,10 +1473,14 @@ function statusBadge(st){
   const l={working:T.wking,completed:'DONE',ended:'DONE',absent:(T.absent||'ABSENT').toUpperCase()};
   return `<span class="badge ${c[st]||'bgr'}">${l[st]||String(st||'?').toUpperCase()}</span>`;
 }
+
+// ════════════════════════════════════════════════════════
+// FIX #1 — Egypt flag 🇪🇬 replaces Saudi Arabia flag 🇸🇦
+// ════════════════════════════════════════════════════════
 function langBar(inline=false){
   return `<div class="lang-bar" style="${inline?'display:flex;gap:6px;':''}">
     <button class="lang-btn ${lang==='it'?'active':''}" onclick="switchLang('it')">🇮🇹</button>
-    <button class="lang-btn ${lang==='ar'?'active':''}" onclick="switchLang('ar')">🇸🇦</button>
+    <button class="lang-btn ${lang==='ar'?'active':''}" onclick="switchLang('ar')">🇪🇬</button>
   </div>`;
 }
 
@@ -1596,7 +1581,6 @@ window.doPhoneLogin=async()=>{
     if(!ph){showErr(T.badPhone);return;}
     const norm=normPhone(ph);
     if(!norm){showErr(T.badPhoneNum);return;}
-    // Always fresh at login — never use cache here
     const [match,users]=await Promise.all([dbGetPhone(norm),dbListUsers()]);
     if(!match){showErr(T.phoneNoAuth);return;}
     let workerUser=users.find(x=>x.role==='worker'&&normPhone(x.phone||'')===norm);
@@ -1921,7 +1905,6 @@ window.wAct=async action=>{
       await renderWorkerScreen();
 
     }else if(action==='end'){
-      // FIX #4 — clear any stale confirm handler when ending normally
       window._confirmEnd=null;
 
       if(!activeShift){toast('⚠ '+T.noActive,'warning');await renderWorkerScreen();return;}
@@ -1936,7 +1919,7 @@ window.wAct=async action=>{
         let confirmed=false;
         const confirmEnd=async()=>{
           if(confirmed)return;confirmed=true;
-          window._confirmEnd=null; // FIX #4 — clean up immediately on confirm
+          window._confirmEnd=null;
           const wMs2=Math.max(0,Date.now()-startMs);
           const workHours=wMs2/3600000;
           const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
@@ -1946,7 +1929,6 @@ window.wAct=async action=>{
           await renderWorkerScreen();
         };
         window._confirmEnd=confirmEnd;
-        // FIX #4 — auto-clear after 5 seconds so stale handler doesn't persist
         setTimeout(()=>{
           if(window._confirmEnd===confirmEnd){
             window._confirmEnd=null;
@@ -1985,10 +1967,6 @@ window.wAct=async action=>{
 
 // ════════════════════════════════════════════════════════
 // MANAGER SCREEN
-// FIX #2 #3 — Alerts tab is now wired in the nav.
-// buildShifts and buildWorkers are kept as utility but
-// accessed via the salary and addworker tabs respectively
-// to avoid dead-code nav entries that confused the layout.
 // ════════════════════════════════════════════════════════
 async function renderManagerScreen(){
   $('root').innerHTML=`
@@ -2196,11 +2174,11 @@ async function buildAddWorker(){
       <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
         <div style="flex:1">
           <div style="font-family:monospace;font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:#aaa;font-size:12px">— ${esc(p.label)}</span>`:''}
+            <strong>${esc(p.phone)}</strong>${p.label?`<span style="color:var(--muted);font-size:12px">— ${esc(p.label)}</span>`:''}
           </div>
           <div class="phone-meta">
-            <span style="font-family:monospace;font-size:10px;color:#666">${T.rateLabel}</span>
-            <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:#0a0a0a;color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>
+            <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.rateLabel}</span>
+            <input type="number" min="1" step="0.5" value="${p.rate||15}" style="width:70px;padding:4px 8px;border:1px solid #f0c04066;border-radius:3px;background:var(--bg);color:#f0c040;font-weight:700;font-family:monospace;font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>
             <span style="color:#f0c040;font-family:monospace;font-size:10px">/hr</span>
           </div>
           <div class="pmbadges">
@@ -2214,7 +2192,7 @@ async function buildAddWorker(){
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           ${workerUser ? (() => {
             const bypassed = workerUser.gps_bypass===true||workerUser.gps_bypass==='true';
-            return `<button class="btn-sm" title="GPS Bypass — worker can sign in without location" style="background:${bypassed?'rgba(0,208,132,.15)':'rgba(58,96,128,.15)'};border:1px solid ${bypassed?'rgba(0,208,132,.4)':'var(--border2)'};color:${bypassed?'#00d084':'#3a6080'};font-size:11px;letter-spacing:1px" onclick="toggleGpsBypass('${esc(workerUser.username)}','${esc(p.label||p.phone)}',${bypassed})">
+            return `<button class="btn-sm" title="GPS Bypass" style="background:${bypassed?'rgba(0,208,132,.15)':'rgba(58,96,128,.15)'};border:1px solid ${bypassed?'rgba(0,208,132,.4)':'var(--border2)'};color:${bypassed?'#00d084':'#3a6080'};font-size:11px;letter-spacing:1px" onclick="toggleGpsBypass('${esc(workerUser.username)}','${esc(p.label||p.phone)}',${bypassed})">
               📍 GPS ${bypassed?'OFF':'ON'}
             </button>`;
           })() : ''}
@@ -2231,7 +2209,7 @@ async function buildAddWorker(){
       <div class="st">${T.addManual}</div>
       <div class="info-box" style="margin-bottom:14px">${T.workerLoginInfo}</div>
       <div class="sf"><label class="lbl">${T.phoneLbl}</label><input id="np" placeholder="e.g. 0501234567" type="tel"/></div>
-      <div class="sf"><label class="lbl">${T.workerLbl} <span style="color:#555">${T.displayNameHint}</span></label><input id="nl" placeholder="e.g. Ahmed"/></div>
+      <div class="sf"><label class="lbl">${T.workerLbl} <span style="color:var(--muted)">${T.displayNameHint}</span></label><input id="nl" placeholder="e.g. Ahmed"/></div>
       <div class="sf rh"><label class="lbl" style="color:#f0c040">${T.rateLbl}</label><input id="nr" type="number" value="15" min="1" step="0.5"/><div class="hint">${T.rateHint}</div></div>
       <button class="btn btn-gold" onclick="addPhone()">${T.addBtn}</button>
     </div>
@@ -2241,13 +2219,13 @@ async function buildAddWorker(){
       <div class="drop-zone" onclick="$('fup').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
         <div style="font-size:28px;margin-bottom:8px">📁</div>
         <strong>${T.clickDrop}</strong>
-        <div style="font-size:10px;color:#444;margin-top:4px">${T.fileTypes}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${T.fileTypes}</div>
       </div>
       <input id="fup" type="file" accept=".csv,.txt,.xls,.xlsx,text/*" style="display:none" onchange="handleDrop(event)"/>
     </div>
   </div>
   <div class="sc" style="margin-top:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #2a2a2a;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border2);flex-wrap:wrap;gap:8px">
       <div style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#f0c040;text-transform:uppercase">${T.approved}</div>
       <button class="btn-sm btn-red" onclick="clearPhones()">${T.clearAll}</button>
     </div>
@@ -2264,28 +2242,28 @@ async function buildLocations(){
     <div class="phone-row" style="flex-direction:column;gap:0">
       <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
         <div style="flex:1">
-          <div style="font-weight:700;font-family:Georgia,serif;font-size:16px;color:#f0f0f0;margin-bottom:4px">📍 ${esc(l.name)}</div>
-          <div style="font-family:monospace;font-size:11px;color:#555;margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
-          ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:#444;margin-bottom:4px">${T.noAutoEnd}</div>`}
+          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px">📍 ${esc(l.name)}</div>
+          <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
+          ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:4px">${T.noAutoEnd}</div>`}
           ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">${T.viewOnMap}</a>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f39c12;padding:6px 10px;font-size:12px" onclick="toggleLocEdit('${esc(l.id)}')" title="${T.autoEndTime}">✏</button>
+          <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:#f39c12;padding:6px 10px;font-size:12px" onclick="toggleLocEdit('${esc(l.id)}')" title="${T.autoEndTime}">✏</button>
           <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="padding:6px 10px;font-size:14px">✕</button>
         </div>
       </div>
-      <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;width:100%">
+      <div id="loc-edit-${esc(l.id)}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2);width:100%">
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#2ecc71;text-transform:uppercase;display:block;margin-bottom:6px">RENAME SITE</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <input id="loc-rename-${esc(l.id)}" value="${esc(l.name)}" style="flex:1;max-width:260px"/>
           <button class="btn-sm" style="background:rgba(0,208,132,.12);border:1px solid rgba(0,208,132,.3);color:#00d084" onclick="renameLocation('${esc(l.id)}')">💾 Save Name</button>
         </div>
-        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#666;text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}</select>
           <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 ${T.save}</button>
-          <button class="btn-sm" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#666" onclick="clearLocEndTime('${esc(l.id)}')">✕ ${T.clear}</button>
-          <span style="font-family:monospace;font-size:10px;color:#555">${T.leaveBlank}</span>
+          <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--muted)" onclick="clearLocEndTime('${esc(l.id)}')">✕ ${T.clear}</button>
+          <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.leaveBlank}</span>
         </div>
       </div>
     </div>`).join('');
@@ -2295,11 +2273,11 @@ async function buildLocations(){
       <div class="st">${T.addNewSite}</div>
       <div class="info-box" style="margin-bottom:16px">${T.locGpsInfo(GPS_RADIUS)}</div>
       <div class="sf"><label class="lbl">${T.siteName}</label><input id="loc-name" placeholder="${T.siteNamePh}"/></div>
-      <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:#555">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
+      <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">${T.coordinates}</label>
         <div style="margin-bottom:10px">
-          <label class="lbl" style="color:#aaa">${T.pasteMapLink}</label>
+          <label class="lbl" style="color:var(--muted)">${T.pasteMapLink}</label>
           <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">
             <input id="loc-ml" placeholder="https://maps.google.com/maps?q=24.688,46.722" style="flex:1" oninput="onLocLinkChange()"/>
             <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:#2ecc7155;color:#2ecc71" onclick="extractLocCoords()">${T.getCoords}</button>
@@ -2307,18 +2285,18 @@ async function buildLocations(){
           <div id="loc-ml-status" class="hint" style="margin-top:5px"></div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
-          <div style="flex:1;height:1px;background:#2a2a2a"></div><span style="font-family:monospace;font-size:10px;color:#444">${T.orManual}</span><div style="flex:1;height:1px;background:#2a2a2a"></div>
+          <div style="flex:1;height:1px;background:var(--border2)"></div><span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.orManual}</span><div style="flex:1;height:1px;background:var(--border2)"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label class="lbl" style="color:#aaa">${T.latitude}</label><input type="number" id="loc-lat" step="0.000001" placeholder="24.6881"/></div>
-          <div><label class="lbl" style="color:#aaa">${T.longitude}</label><input type="number" id="loc-lng" step="0.000001" placeholder="46.7227"/></div>
+          <div><label class="lbl" style="color:var(--muted)">${T.latitude}</label><input type="number" id="loc-lat" step="0.000001" placeholder="24.6881"/></div>
+          <div><label class="lbl" style="color:var(--muted)">${T.longitude}</label><input type="number" id="loc-lng" step="0.000001" placeholder="46.7227"/></div>
         </div>
         <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;margin-top:10px" onclick="useMyLocForSite()">${T.useMyLoc}</button>
       </div>
       <button class="btn btn-gold" onclick="addLocation()">${T.addSiteBtn}</button>
     </div>
     <div class="sc" style="min-width:280px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #2a2a2a">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border2)">
         <div class="st" style="margin-bottom:0">${T.registeredSites(locs.length)}</div>
       </div>
       <div>${locList}</div>
@@ -2456,7 +2434,7 @@ async function buildAssign(){
     : `<div class="assign-empty-drop">${T.allAssigned}</div>`;
 
   const locCols = !locs.length
-    ? `<div style="color:#444;font-family:monospace;font-size:11px;padding:20px">${T.noLocations}</div>`
+    ? `<div style="color:var(--muted);font-family:monospace;font-size:11px;padding:20px">${T.noLocations}</div>`
     : locs.map(l=>{
         const isOpen = l.is_open !== false && l.is_open !== 'false';
         const assignedPhones = uniqueWorkers.filter(p=>assignedMap[p.norm]?.has(l.id));
@@ -2467,7 +2445,7 @@ async function buildAssign(){
           <div class="assign-col-head">
             <div>
               <div class="assign-col-title">📍 ${esc(l.name)}</div>
-              <div style="font-family:monospace;font-size:10px;color:#555;margin-top:2px">${T.workerCount(assignedPhones.length)}</div>
+              <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-top:2px">${T.workerCount(assignedPhones.length)}</div>
             </div>
             <button class="loc-toggle ${isOpen?'open':'closed'}" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
               ${isOpen?T.siteOpen:T.siteClosed}
@@ -2482,8 +2460,8 @@ async function buildAssign(){
     <div class="assign-col unassigned" data-locid="__unassigned__">
       <div class="assign-col-head">
         <div>
-          <div class="assign-col-title" style="color:#888">${T.unassigned}</div>
-          <div style="font-family:monospace;font-size:10px;color:#444;margin-top:2px">${T.workerCount(unassigned.length)}</div>
+          <div class="assign-col-title" style="color:var(--muted)">${T.unassigned}</div>
+          <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-top:2px">${T.workerCount(unassigned.length)}</div>
         </div>
       </div>
       <div class="assign-col-body" data-locid="__unassigned__">${unassignedChips}</div>
@@ -2571,11 +2549,11 @@ async function buildSalary(per='month'){
       const total=th*workerRate;
       const locCells=locNames.map(ln=>{
         const lh=ws.filter(s=>s.location_name===ln).reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
-        return lh>0?`<td style="font-family:monospace;color:#3498db">${lh.toFixed(2)}h</td>`:`<td style="color:#333">—</td>`;
+        return lh>0?`<td style="font-family:monospace;color:#3498db">${lh.toFixed(2)}h</td>`:`<td style="color:var(--muted)">—</td>`;
       }).join('');
       return`<tr>
         <td><strong>${esc(w.label||w.username)}</strong></td>
-        <td style="color:#555">${esc(w.phone||'—')}</td>
+        <td style="color:var(--muted)">${esc(w.phone||'—')}</td>
         <td style="color:#f0c040;font-weight:700">€${workerRate}/hr</td>
         ${locCells}
         <td style="font-weight:700">${th.toFixed(2)}h</td>
@@ -2587,8 +2565,6 @@ async function buildSalary(per='month'){
 }
 window.reSalary=async()=>{const p=val('sp')||'month';const panel=$('mpanel');if(panel)panel.innerHTML=await buildSalary(p);};
 
-
-
 async function buildSettings(){
   const cfg=await dbGetConfig();
   const autoEnd=cfg.auto_end_time||'';
@@ -2596,7 +2572,7 @@ async function buildSettings(){
     <div class="sc"><div class="st">${T.autoEndSetting}</div>
       <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>
       <div class="sf">
-        <label class="lbl">${T.dailyAutoEnd} <span style="color:#555">${T.autoEndOptional}</span></label>
+        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>
         <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>
         <div class="hint">${T.globalFallback}</div>
       </div>
@@ -2619,7 +2595,7 @@ async function buildSettings(){
       <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>
     </div>
     <div class="sc"><div class="st">⚠ ${T.danger}</div>
-      <p style="font-family:monospace;font-size:11px;color:#555;margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
+      <p style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>
       <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>
     </div>
   </div>`;
@@ -2772,8 +2748,6 @@ window.openEdit=async username=>{
 };
 window.closeModal=()=>{$('editModal').classList.remove('show');S.editingWorker=null;};
 
-// FIX #5 — saveWorkerEdit was calling mTab('workers') which
-// doesn't exist as a nav tab. Fixed to mTab('addworker').
 window.saveWorkerEdit=async()=>{
   const u=await dbGetUser(S.editingWorker);if(!u)return;
   const rt=parseFloat($('em-rate').value)||15;
@@ -2781,7 +2755,7 @@ window.saveWorkerEdit=async()=>{
   await dbSetPhone(normPhone(u.phone||''),{rate:rt});
   toast(T.workerUpdated,'success');
   closeModal();
-  mTab('addworker'); // FIX #5 — was 'workers', now correctly 'addworker'
+  mTab('addworker');
 };
 
 // ════════════════════════════════════════════════════════
@@ -2859,12 +2833,12 @@ window.closeMonth=async()=>{
   const sumEl=document.getElementById('close-month-summary');
   if(sumEl){
     sumEl.style.display='block';
-    sumEl.innerHTML=`<div style="background:#141414;border:1px solid #2a2a2a;border-radius:4px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.month}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">${monthName}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.shifts}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0f0f0">${monthShifts.length}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.workers}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#3498db">${activeWorkers}</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.totalH}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#2ecc71">${totalHours.toFixed(1)}h</div></div>
-      <div><div style="font-family:monospace;font-size:9px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.salDue}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
+    sumEl.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:4px;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+      <div><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.month}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">${monthName}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.shifts}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:var(--text)">${monthShifts.length}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.workers}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#3498db">${activeWorkers}</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.totalH}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#2ecc71">${totalHours.toFixed(1)}h</div></div>
+      <div><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${T.salDue}</div><div style="font-family:monospace;font-size:14px;font-weight:700;color:#f0c040">€${totalEarnings.toFixed(2)}</div></div>
     </div>`;
   }
   if(!monthShifts.length){toast(`No completed shifts found for ${monthName}`,'warning');return;}
@@ -2877,13 +2851,11 @@ window.closeMonth=async()=>{
   });
   const locNames=[...new Set(monthShifts.map(s=>s.location_name).filter(Boolean))].sort();
   const s2=[['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts','Month']];
-  // FIX — derive unique workers FROM shifts so deleted workers still appear in summary
   const workerKeysInMonth=[...new Set(monthShifts.map(s=>s.worker))];
   workerKeysInMonth.forEach(wUsername=>{
     const ws=monthShifts.filter(s=>s.worker===wUsername);
     if(!ws.length)return;
-    const liveW=um[wUsername]; // may be null if worker was deleted
-    // Use rate saved in shifts (most recent shift's rate) as fallback
+    const liveW=um[wUsername];
     const rateFromShift=parseFloat(ws[0]?.hourly_rate)||0;
     const rate=parseFloat(liveW?.hourly_rate)||rateFromShift;
     const th=ws.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
@@ -2919,7 +2891,6 @@ window.doExport=async()=>{
   const shifts=await dbListShifts();
   const users=await dbListUsers();
   const um={};users.filter(u=>u.role==='worker').forEach(u=>um[u.username]=u);
-  const workers=users.filter(u=>u.role==='worker');
   const fmtExcel=ts=>{if(!ts)return'—';const d=new Date(Number(ts));if(isNaN(d.getTime()))return'—';const pad=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
   const SHIFT_COLS=[14,14,10,16,10,18,18,12,12,10];
   const SHIFT_HDR=['Worker','Phone','Rate (€/hr)','Site / Location','Date','Start Time','End Time','Work Hours','Earnings (€)','Status'];
@@ -2948,11 +2919,10 @@ window.doExport=async()=>{
       const locNames=[...new Set(mShifts.map(s=>s.location_name).filter(Boolean))].sort();
       const hdr=['Worker','Phone','Rate (€/hr)',...locNames.map(l=>`Hrs @ ${l}`),'Total Hours','Total Salary (€)','Shifts'];
       const rows=[hdr];
-      // FIX — derive unique workers FROM shifts so deleted workers still appear in summary
       const workerKeysInMonth=[...new Set(mShifts.map(s=>s.worker))];
       workerKeysInMonth.forEach(wUsername=>{
         const ws2=mShifts.filter(s=>s.worker===wUsername);if(!ws2.length)return;
-        const liveW=um[wUsername]; // may be null if worker was deleted
+        const liveW=um[wUsername];
         const rateFromShift=parseFloat(ws2[0]?.hourly_rate)||0;
         const rate=parseFloat(liveW?.hourly_rate)||rateFromShift;
         const th=ws2.reduce((a,s)=>a+(parseFloat(s.work_hours)||0),0);
