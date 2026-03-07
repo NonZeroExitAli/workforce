@@ -503,9 +503,9 @@ body.rtl .toast{right:auto;left:24px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--copper);border-radius:50%;animation:spin .7s linear infinite}
 
-.assign-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:14px;align-items:flex-start}
-.assign-col{flex:0 0 220px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;min-height:160px;display:flex;flex-direction:column;transition:border-color .2s}
-.assign-col.unassigned{border-color:var(--border);flex:0 0 200px}
+.assign-board{display:flex;gap:14px;overflow-x:auto;overflow-y:auto;padding-bottom:14px;align-items:flex-start;max-height:calc(100vh - 200px)}
+.assign-col{flex:0 0 220px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;min-height:5200px;display:flex;flex-direction:column;transition:border-color .2s}
+.assign-col.unassigned{border-color:var(--border);flex:0 0 220px;min-height:5200px}
 .assign-col-head{padding:12px 14px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .assign-col-title{font-family:'Arial Narrow','Impact','Franklin Gothic Medium',Arial,sans-serif;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:1px}
 .assign-col.unassigned .assign-col-title{color:var(--muted)}
@@ -2416,17 +2416,12 @@ async function buildAssign(){
 
   function workerChip(p, locId){
     const removeBtn = locId
-      ? `<span class="chip-remove" title="${T.cancel}" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">✕</span>`
+      ? `<span class="chip-remove" title="${T.cancel}" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">&#x2715;</span>`
       : '';
-    return `<div class="assign-worker-chip" draggable="true"
-      data-worker="${esc(p.norm)}"
-      data-from="${esc(locId||'__unassigned__')}">
-      <div style="display:flex;flex-direction:column;flex:1;min-width:0">
-        <span class="chip-name">${esc(p.label||p.phone)}</span>
-        <span class="chip-phone">${esc(p.phone)}</span>
-      </div>
-      ${removeBtn}
-    </div>`;
+    const quickAssign = !locId && locs.length
+      ? `<div style="margin-top:5px"><select style="width:100%;padding:3px 5px;font-size:10px;border-radius:3px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);font-family:monospace" onchange="quickAssignWorker('${esc(p.norm)}',this.value,this)"><option value="">&#128205; assign to...</option>${locs.map(l=>`<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}</select></div>`
+      : '';
+    return `<div class="assign-worker-chip" draggable="true" data-worker="${esc(p.norm)}" data-from="${esc(locId||'__unassigned__')}" style="flex-direction:column;align-items:stretch;gap:2px"><div style="display:flex;align-items:center;gap:8px"><div style="display:flex;flex-direction:column;flex:1;min-width:0"><span class="chip-name">${esc(p.label||p.phone)}</span><span class="chip-phone">${esc(p.phone)}</span></div>${removeBtn}</div>${quickAssign}</div>`;
   }
 
   const unassignedChips = unassigned.length
@@ -2518,6 +2513,20 @@ window.toggleLocOpen=async(loc_id, is_open)=>{
   toast(is_open?T.siteNowOpen:T.siteNowClosed, is_open?'success':'warning');
   const panel=$('mpanel');
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
+};
+
+window.quickAssignWorker=async(workerNorm, locId, selectEl)=>{
+  if(!locId) return;
+  selectEl.disabled=true;
+  try{
+    await dbSetAssignment(workerNorm, locId);
+    const panel=$('mpanel');
+    if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
+  }catch(e){
+    toast('Error: '+e.message,'error');
+    selectEl.disabled=false;
+    selectEl.value='';
+  }
 };
 
 async function buildSalary(per='month'){
