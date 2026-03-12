@@ -652,23 +652,23 @@ input:focus{
 <!-- Edit Attendance Modal -->
 <div class="modal-bg" id="attendanceModal">
   <div class="card" style="max-width:440px">
-    <div class="modal-title">✏️ EDIT ATTENDANCE</div>
+    <div class="modal-title" id="att-title">✏️ EDIT ATTENDANCE</div>
     <div style="font-family:monospace;font-size:12px;color:var(--muted);margin-bottom:14px" id="att-worker-name"></div>
     <div class="err-box" id="att-err" style="display:none;margin-bottom:12px"></div>
     <div class="sf">
-      <label class="lbl" style="color:#2ecc71">▶ CHECK-IN TIME</label>
+      <label class="lbl" id="att-lbl-start" style="color:#2ecc71">▶ CHECK-IN TIME</label>
       <input type="time" id="att-start" style="font-family:monospace;font-size:16px"/>
     </div>
     <div class="sf">
-      <label class="lbl" style="color:#f39c12">■ CHECK-OUT TIME <span style="color:var(--muted)">(leave blank if still working)</span></label>
+      <label class="lbl" id="att-lbl-end" style="color:#f39c12">■ CHECK-OUT TIME <span id="att-lbl-end-hint" style="color:var(--muted)">(leave blank if still working)</span></label>
       <input type="time" id="att-end" style="font-family:monospace;font-size:16px"/>
     </div>
-    <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:14px;padding:8px;background:var(--bg2);border-radius:3px">
+    <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:14px;padding:8px;background:var(--bg2);border-radius:3px" id="att-recalc-warn">
       ⚠ Editing times will recalculate hours and earnings automatically.
     </div>
     <div class="modal-btns">
-      <button class="btn btn-dark" style="flex:1" onclick="closeAttendanceModal()">Cancel</button>
-      <button class="btn btn-gold" style="flex:1" onclick="saveAttendanceEdit()">💾 Save</button>
+      <button class="btn btn-dark" style="flex:1" id="att-btn-cancel" onclick="closeAttendanceModal()">Cancel</button>
+      <button class="btn btn-gold" style="flex:1" id="att-btn-save" onclick="saveAttendanceEdit()">💾 Save</button>
     </div>
   </div>
 </div>
@@ -1139,7 +1139,23 @@ const TR = {
     editWorkerTitle:'✏️ EDIT WORKER',editName:'Name',editPhone:'Phone',editRate:'💰 Hourly Rate (€)',
     fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,
     endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,
-    lateMsg:n=>`⚠ ${n} min late!`
+    lateMsg:n=>`⚠ ${n} min late!`,
+    editTimesBtn:'✏️ Edit Times',
+    editAttendanceTitle:'✏️ EDIT ATTENDANCE',
+    editCheckinLabel:'▶ CHECK-IN TIME',
+    editCheckoutLabel:'■ CHECK-OUT TIME',
+    editCheckoutHint:'leave blank if still working',
+    editRecalcWarn:'Editing times will recalculate hours and earnings automatically.',
+    autoStartLabel:'▶ Auto-Start Time',
+    autoStartHint:'Workers cannot sign in before this time at this site.',
+    noAutoStart:'▶ No auto-start',
+    autoStartSet:t=>`▶ Auto-start set to ${t}`,
+    autoStartCleared:'Auto-start cleared',
+    autoStartNoEntry:t=>`⛔ ${t} opens at `,
+    siteOpensAt:(site,time,mins)=>`⛔ ${site} opens at ${time}. ${mins} minute${mins===1?'':'s'} remaining.`,
+    attUpdateSuccess:'✅ Attendance updated successfully',
+    attCheckoutAfter:'Check-out time must be after check-in time.',
+    attCheckinRequired:'Check-in time is required.'
   },
 
   it:{
@@ -1276,7 +1292,22 @@ const TR = {
     editWorkerTitle:'✏️ MODIFICA LAVORATORE',editName:'Nome',editPhone:'Telefono',editRate:'💰 Tariffa Oraria (€)',
     fileAdded:(a,s)=>`✓ ${a} aggiunti. ${s} saltati.`,
     endMsg:(d,e)=>`Fatto! ${d} lavorato · €${e} guadagnati.`,
-    lateMsg:n=>`⚠ ${n} min di ritardo!`
+    lateMsg:n=>`⚠ ${n} min di ritardo!`,
+    editTimesBtn:'✏️ Modifica Orari',
+    editAttendanceTitle:'✏️ MODIFICA PRESENZE',
+    editCheckinLabel:'▶ ORA DI ENTRATA',
+    editCheckoutLabel:'■ ORA DI USCITA',
+    editCheckoutHint:'lascia vuoto se ancora al lavoro',
+    editRecalcWarn:'La modifica degli orari ricalcolerà automaticamente le ore e i guadagni.',
+    autoStartLabel:'▶ Orario Inizio Automatico',
+    autoStartHint:'I lavoratori non possono accedere prima di questo orario in questa sede.',
+    noAutoStart:'▶ Nessun inizio automatico',
+    autoStartSet:t=>`▶ Inizio automatico impostato alle ${t}`,
+    autoStartCleared:'Inizio automatico rimosso',
+    siteOpensAt:(site,time,mins)=>`⛔ ${site} apre alle ${time}. ${mins} minut${mins===1?'o':'i'} rimanent${mins===1?'e':'i'}.`,
+    attUpdateSuccess:'✅ Presenze aggiornate con successo',
+    attCheckoutAfter:"L'ora di uscita deve essere successiva all'ora di entrata.",
+    attCheckinRequired:"L'ora di entrata è obbligatoria."
   },
 
   ar:{
@@ -1413,7 +1444,22 @@ const TR = {
     editWorkerTitle:'✏️ تعديل الموظف',editName:'الاسم',editPhone:'الهاتف',editRate:'💰 الأجر الساعي (€)',
     fileAdded:(a,s)=>`✓ تمت إضافة ${a}. تم تخطي ${s}.`,
     endMsg:(d,e)=>`انتهت! ${d} عمل · €${e} أرباح.`,
-    lateMsg:n=>`⚠ متأخر ${n} دقيقة!`
+    lateMsg:n=>`⚠ متأخر ${n} دقيقة!`,
+    editTimesBtn:'✏️ تعديل الأوقات',
+    editAttendanceTitle:'✏️ تعديل الحضور',
+    editCheckinLabel:'▶ وقت الحضور',
+    editCheckoutLabel:'■ وقت الانصراف',
+    editCheckoutHint:'اتركه فارغاً إذا كان لا يزال يعمل',
+    editRecalcWarn:'تعديل الأوقات سيعيد حساب الساعات والأرباح تلقائياً.',
+    autoStartLabel:'▶ وقت البدء التلقائي',
+    autoStartHint:'لا يمكن للموظفين تسجيل الدخول قبل هذا الوقت في هذا الموقع.',
+    noAutoStart:'▶ لا يوجد بدء تلقائي',
+    autoStartSet:t=>`▶ تم تعيين البدء التلقائي في ${t}`,
+    autoStartCleared:'تم مسح البدء التلقائي',
+    siteOpensAt:(site,time,mins)=>`⛔ ${site} يفتح في ${time}. ${mins} دقيقة متبقية.`,
+    attUpdateSuccess:'✅ تم تحديث الحضور بنجاح',
+    attCheckoutAfter:'يجب أن يكون وقت الانصراف بعد وقت الحضور.',
+    attCheckinRequired:'وقت الحضور مطلوب.'
   }
 };
 
@@ -1443,6 +1489,14 @@ function updateModalLang(){
   const pf=$('pwd-lbl-cfm');if(pf)pf.textContent=T.pwdConfirm;
   const ps=$('pwd-btn-save');if(ps)ps.textContent=T.pwdSave;
   const pca=$('pwd-btn-cancel');if(pca)pca.textContent=T.cancel;
+  // Attendance modal
+  const at=$('att-title');if(at)at.textContent=T.editAttendanceTitle;
+  const als=$('att-lbl-start');if(als)als.childNodes[0].textContent=T.editCheckinLabel+' ';
+  const ale=$('att-lbl-end');if(ale)ale.childNodes[0].textContent=T.editCheckoutLabel+' ';
+  const aleh=$('att-lbl-end-hint');if(aleh)aleh.textContent='('+T.editCheckoutHint+')';
+  const arw=$('att-recalc-warn');if(arw)arw.textContent='⚠ '+T.editRecalcWarn;
+  const abc=$('att-btn-cancel');if(abc)abc.textContent=T.cancel;
+  const abs=$('att-btn-save');if(abs)abs.textContent='💾 '+T.save;
 }
 
 // ════════════════════════════════════════════════════════
@@ -1524,7 +1578,7 @@ function buildTimeOptions(selected=''){
 }
 
 function buildStartTimeOptions(selected=''){
-  const opts=[`<option value="">— No auto-start (manual) —</option>`];
+  const opts=[`<option value="">— ${T.noAutoStart||'No auto-start (manual)'} —</option>`];
   for(let h=5;h<=12;h++){
     for(const m of [0,15,30,45]){
       if(h===12&&m>0)continue;
@@ -1920,13 +1974,13 @@ window.wAct=async action=>{
         const startMins=sh*60+sm;
         if(nowMins<startMins){
           const minsUntil=startMins-nowMins;
-          toast(`⛔ ${esc(S.nearestLocation?.name||'This site')} opens at ${siteStartTime}. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
+          toast(T.siteOpensAt(S.nearestLocation?.name||'',siteStartTime,minsUntil),'error');
           await renderWorkerScreen();return;
         }
       } else {
         if(nowD.getHours()<globalStartHour){
           const minsUntil=(globalStartHour*60)-(nowD.getHours()*60+nowD.getMinutes());
-          toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
+          toast(T.siteOpensAt('',`0${globalStartHour}:00`,minsUntil).replace('  opens','Shifts start'),'error');
           await renderWorkerScreen();return;
         }
       }
@@ -2190,7 +2244,7 @@ async function buildLive(forceRefresh=false, sharedData=null){
         ${done.length>0?`<div style="display:flex;flex-direction:column"><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.shifts}</div><div style="font-family:monospace;font-size:14px;color:var(--text);margin-top:3px">${done.length}</div></div>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end">
-        ${shiftForEdit?`<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db;font-size:11px;white-space:nowrap" onclick="openAttendanceEdit('${esc(shiftForEdit.id)}','${esc(w.label||w.username)}')">✏️ Edit Times</button>`:''}
+        ${shiftForEdit?`<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db;font-size:11px;white-space:nowrap" onclick="openAttendanceEdit('${esc(shiftForEdit.id)}','${esc(w.label||w.username)}')">${T.editTimesBtn}</button>`:''}
         ${active?`<button class="btn-sm btn-red" style="font-size:11px;white-space:nowrap" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">${T.endShiftBtn}</button>`:''}
         ${!active&&latestDone&&!alreadyUnlocked?`<button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12;font-size:11px;white-space:nowrap" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.allowNewShift}</button>`:''}
         ${!active&&latestDone&&alreadyUnlocked?`<button class="btn-sm" style="background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c;font-size:11px;white-space:nowrap" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.revokeRestart}</button>`:''}
@@ -2320,7 +2374,7 @@ async function buildLocations(){
         <div style="flex:1">
           <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px">📍 ${esc(l.name)}</div>
           <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
-          ${l.start_time?`<div style="font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:2px">▶ Auto-start: ${l.start_time}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:2px">▶ No auto-start</div>`}
+          ${l.start_time?`<div style="font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:2px">▶ ${T.autoStartLabel||'Auto-start'}: ${l.start_time}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:2px">${T.noAutoStart||'▶ No auto-start'}</div>`}
           ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:4px">${T.noAutoEnd}</div>`}
           ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">${T.viewOnMap}</a>`:''}
         </div>
@@ -2335,12 +2389,12 @@ async function buildLocations(){
           <input id="loc-rename-${esc(l.id)}" value="${esc(l.name)}" style="flex:1;max-width:260px"/>
           <button class="btn-sm" style="background:rgba(0,208,132,.12);border:1px solid rgba(0,208,132,.3);color:#00d084" onclick="renameLocation('${esc(l.id)}')">💾 Save Name</button>
         </div>
-        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#2ecc71;text-transform:uppercase;display:block;margin-bottom:6px">▶ AUTO-START TIME</label>
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#2ecc71;text-transform:uppercase;display:block;margin-bottom:6px">${T.autoStartLabel||'▶ AUTO-START TIME'}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <select id="loc-st-${esc(l.id)}" style="max-width:220px">${buildStartTimeOptions(l.start_time||'')}</select>
           <button class="btn-sm" style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.3);color:#2ecc71" onclick="saveLocStartTime('${esc(l.id)}')">💾 ${T.save}</button>
           <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--muted)" onclick="clearLocStartTime('${esc(l.id)}')">✕ ${T.clear}</button>
-          <span style="font-family:monospace;font-size:10px;color:var(--muted)">Workers cannot sign in before this time</span>
+          <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.autoStartHint||'Workers cannot sign in before this time'}</span>
         </div>
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2357,7 +2411,7 @@ async function buildLocations(){
       <div class="st">${T.addNewSite}</div>
       <div class="info-box" style="margin-bottom:16px">${T.locGpsInfo(GPS_RADIUS)}</div>
       <div class="sf"><label class="lbl">${T.siteName}</label><input id="loc-name" placeholder="${T.siteNamePh}"/></div>
-      <div class="sf"><label class="lbl">▶ Auto-Start Time <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-start" style="max-width:220px">${buildStartTimeOptions()}</select><div class="hint">Workers cannot sign in before this time at this site.</div></div>
+      <div class="sf"><label class="lbl">${T.autoStartLabel||'▶ Auto-Start Time'} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-start" style="max-width:220px">${buildStartTimeOptions()}</select><div class="hint">${T.autoStartHint||'Workers cannot sign in before this time at this site.'}</div></div>
       <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">${T.coordinates}</label>
@@ -2481,14 +2535,14 @@ window.saveLocStartTime=async id=>{
   const st=input?.value?.trim()||null;
   try{
     await sql('UPDATE wf_locations SET start_time=$2 WHERE id=$1',[id,st||null]);
-    toast(st?`▶ Auto-start set to ${st}`:'Auto-start cleared','success');
+    toast(st?T.autoStartSet(st):T.autoStartCleared,'success');
     mTab('locations');
   }catch(e){toast(T.failedToSave(e.message),'error');}
 };
 window.clearLocStartTime=async id=>{
   try{
     await sql('UPDATE wf_locations SET start_time=NULL WHERE id=$1',[id]);
-    toast('Auto-start cleared','success');
+    toast(T.autoStartCleared,'success');
     mTab('locations');
   }catch(e){toast(T.failed(e.message),'error');}
 };
@@ -3105,14 +3159,14 @@ window.saveAttendanceEdit = async () => {
   const errEl = $('att-err');
   errEl.style.display = 'none';
   const showErr = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
-  if(!_attendanceEditShiftId){ showErr('No shift selected.'); return; }
+  if(!_attendanceEditShiftId){ showErr(T.attCheckinRequired); return; }
   const startStr = val('att-start').trim();
   const endStr = val('att-end').trim();
-  if(!startStr){ showErr('Check-in time is required.'); return; }
+  if(!startStr){ showErr(T.attCheckinRequired); return; }
   try {
     const rows = await sql('SELECT * FROM wf_shifts WHERE id=$1 LIMIT 1', [_attendanceEditShiftId]);
     const shift = rows[0];
-    if(!shift){ showErr('Shift not found.'); return; }
+    if(!shift){ showErr(lang==='ar'?'الوردية غير موجودة.':lang==='it'?'Turno non trovato.':'Shift not found.'); return; }
     const origDate = shift.date || todayStr();
     const [sy,sm,sd] = origDate.split('-').map(Number);
     const [sh,smin] = startStr.split(':').map(Number);
@@ -3126,7 +3180,7 @@ window.saveAttendanceEdit = async () => {
       const [eh,emin] = endStr.split(':').map(Number);
       const endDate = new Date(sy,sm-1,sd,eh,emin,0,0);
       newEndMs = endDate.getTime();
-      if(newEndMs <= newStartMs){ showErr('Check-out time must be after check-in time.'); return; }
+      if(newEndMs <= newStartMs){ showErr(T.attCheckoutAfter); return; }
       newWorkHours = (newEndMs - newStartMs) / 3600000;
       newEarnings = newWorkHours * (_attendanceEditHourlyRate||0);
       newStatus = 'completed';
@@ -3138,12 +3192,12 @@ window.saveAttendanceEdit = async () => {
       [_attendanceEditShiftId, newStartMs, newEndMs, newWorkHours, newEarnings, newStatus]
     );
     _liveCache = null;
-    toast(`✅ Attendance updated for shift`, 'success');
+    toast(T.attUpdateSuccess, 'success');
     closeAttendanceModal();
     await mTab('live');
     loadSummary();
   } catch(e) {
-    showErr('Error saving: '+e.message);
+    showErr((T.failedToSave||((x)=>'Error: '+x))(e.message));
   }
 };
 
