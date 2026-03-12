@@ -649,6 +649,30 @@ input:focus{
   </div>
 </div>
 
+<!-- Edit Attendance Modal -->
+<div class="modal-bg" id="attendanceModal">
+  <div class="card" style="max-width:440px">
+    <div class="modal-title">✏️ EDIT ATTENDANCE</div>
+    <div style="font-family:monospace;font-size:12px;color:var(--muted);margin-bottom:14px" id="att-worker-name"></div>
+    <div class="err-box" id="att-err" style="display:none;margin-bottom:12px"></div>
+    <div class="sf">
+      <label class="lbl" style="color:#2ecc71">▶ CHECK-IN TIME</label>
+      <input type="time" id="att-start" style="font-family:monospace;font-size:16px"/>
+    </div>
+    <div class="sf">
+      <label class="lbl" style="color:#f39c12">■ CHECK-OUT TIME <span style="color:var(--muted)">(leave blank if still working)</span></label>
+      <input type="time" id="att-end" style="font-family:monospace;font-size:16px"/>
+    </div>
+    <div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:14px;padding:8px;background:var(--bg2);border-radius:3px">
+      ⚠ Editing times will recalculate hours and earnings automatically.
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-dark" style="flex:1" onclick="closeAttendanceModal()">Cancel</button>
+      <button class="btn btn-gold" style="flex:1" onclick="saveAttendanceEdit()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════
 // CONSTANTS
@@ -656,7 +680,7 @@ input:focus{
 const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
 
-const SCHEMA_VERSION = '6';
+const SCHEMA_VERSION = '7';
 
 // ════════════════════════════════════════════════════════
 // SQL LAYER
@@ -825,7 +849,8 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS wf_locations(
         id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
         map_link TEXT, added_at BIGINT,
-        is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL
+        is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL,
+        start_time TEXT DEFAULT NULL
       );
       CREATE TABLE IF NOT EXISTS wf_assignments(
         worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
@@ -844,6 +869,7 @@ async function initDB() {
       sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
       sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
       sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
+      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
@@ -1497,6 +1523,21 @@ function buildTimeOptions(selected=''){
   return opts.join('');
 }
 
+function buildStartTimeOptions(selected=''){
+  const opts=[`<option value="">— No auto-start (manual) —</option>`];
+  for(let h=5;h<=12;h++){
+    for(const m of [0,15,30,45]){
+      if(h===12&&m>0)continue;
+      const v=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+      const ampm=(h>=12?'PM':'AM');
+      const hd=h>12?h-12:h;
+      const label=hd+':'+(String(m).padStart(2,'0'))+' '+ampm;
+      opts.push(`<option value="${v}"${selected===v?' selected':''}>${label} (${v})</option>`);
+    }
+  }
+  return opts.join('');
+}
+
 // ════════════════════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════════════════════
@@ -1869,10 +1910,25 @@ window.wAct=async action=>{
       }
 
       const nowD=new Date(now);
-      if(nowD.getHours()<7){
-        const minsUntil=(7*60)-(nowD.getHours()*60+nowD.getMinutes());
-        toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
-        await renderWorkerScreen();return;
+
+      // Per-site start time check
+      const siteStartTime = S.nearestLocation?.start_time || null;
+      const globalStartHour = 7; // fallback: 07:00
+      if(siteStartTime){
+        const [sh,sm]=siteStartTime.split(':').map(Number);
+        const nowMins=nowD.getHours()*60+nowD.getMinutes();
+        const startMins=sh*60+sm;
+        if(nowMins<startMins){
+          const minsUntil=startMins-nowMins;
+          toast(`⛔ ${esc(S.nearestLocation?.name||'This site')} opens at ${siteStartTime}. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
+          await renderWorkerScreen();return;
+        }
+      } else {
+        if(nowD.getHours()<globalStartHour){
+          const minsUntil=(globalStartHour*60)-(nowD.getHours()*60+nowD.getMinutes());
+          toast(`⛔ Shifts start at 07:00. ${minsUntil} minute${minsUntil===1?'':'s'} remaining.`,'error');
+          await renderWorkerScreen();return;
+        }
       }
 
       if(S.autoEndTime){
@@ -2089,37 +2145,57 @@ async function buildLive(forceRefresh=false, sharedData=null){
     <span style="font-family:monospace;font-size:10px;color:#444;letter-spacing:1px">${T.lastUpdated} ${updatedAt}</span>
     <button class="btn-sm" id="refresh-btn" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#f0c040;padding:7px 14px;font-size:11px;letter-spacing:1px" onclick="doRefresh()">${T.refresh}</button>
   </div>
-  <div class="worker-grid">${workers.map(w=>{
+  <div style="display:flex;flex-direction:column;gap:8px">${workers.map(w=>{
     const active=ts.find(s=>s.worker===w.username&&s.status==='working');
-    const done=ts.find(s=>s.worker===w.username&&s.status==='completed');
-    const st=active?'working':done?'ended':'absent';
+    const done=ts.filter(s=>s.worker===w.username&&s.status==='completed');
+    const latestDone=done.sort((a,b)=>Number(b.start_time)-Number(a.start_time))[0];
+    const st=active?'working':latestDone?'ended':'absent';
     const freshW=userMap[w.username]||w;
     const alreadyUnlocked=freshW.can_restart===true||freshW.can_restart==='true';
-    const todayCompleted=ts.filter(s=>s.worker===w.username&&s.status==='completed');
     let h=0,e=0;
     ts.filter(s=>s.worker===w.username).forEach(s=>{
       if(s.status==='completed'){h+=parseFloat(s.work_hours)||0;e+=parseFloat(s.earnings)||0;}
-      else{const wMs=Math.max(0,now-Number(s.start_time));h+=wMs/3600000;e+=wMs/3600000*(parseFloat(w.hourly_rate)||0);}
+      else if(s.status==='working'){const wMs=Math.max(0,now-Number(s.start_time));h+=wMs/3600000;e+=wMs/3600000*(parseFloat(w.hourly_rate)||0);}
     });
-    return`<div class="wcard ${st}">
-      <div class="wname">${esc(w.label||w.username)}</div>
-      <div class="wphone">${esc(w.phone||'—')}</div>
-      <div class="wbadges">
-        ${statusBadge(st)}
-        <span class="badge by">€${w.hourly_rate||0}/hr</span>
-        ${active?.location_name?`<span class="badge bb">📍 ${esc(active.location_name)}</span>`:''}
-        ${todayCompleted.length>0?`<span class="badge bb">${todayCompleted.length} ${T.shiftsDone}</span>`:''}
-        ${alreadyUnlocked?`<span class="badge bg">${T.restartPending}</span>`:''}
+    const stColor=st==='working'?'#2ecc71':st==='ended'?'#3498db':'#e74c3c';
+    const stIcon=st==='working'?'🟢':st==='ended'?'✅':'⭕';
+    const shiftForEdit=active||latestDone;
+    return`<div style="background:var(--bg1);border:1px solid var(--border2);border-left:4px solid ${stColor};border-radius:4px;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;transition:border-color .2s">
+      <div style="display:flex;flex-direction:column;min-width:180px;flex:2">
+        <div style="font-family:'Arial Narrow','Impact',Arial,sans-serif;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text)">${esc(w.label||w.username)}</div>
+        <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-top:2px">${esc(w.phone||'—')} · <span style="color:#f0c040">€${w.hourly_rate||0}/hr</span></div>
+        ${active?.location_name||latestDone?.location_name?`<div style="font-family:monospace;font-size:10px;color:#3498db;margin-top:2px">📍 ${esc(active?.location_name||latestDone?.location_name)}</div>`:''}
       </div>
-      <div class="wstats">
-        <div><div class="wsl">${T.hrsToday}</div><div class="wsv">${h.toFixed(2)}h</div></div>
-        <div><div class="wsl">${T.earnToday}</div><div class="wsv">€${e.toFixed(2)}</div></div>
-        <div><div class="wsl">${T.startedAt}</div><div class="wsv">${active?fmtTime(active.start_time):'—'}</div></div>
-        <div><div class="wsl">${T.site}</div><div class="wsv" style="color:#3498db;font-size:11px">${esc(active?.location_name||done?.location_name||'—')}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:90px">
+        <div style="font-size:18px">${stIcon}</div>
+        <div style="font-family:monospace;font-size:9px;letter-spacing:2px;color:${stColor};text-transform:uppercase;margin-top:2px">${st==='working'?T.wking:st==='ended'?'DONE':T.absent}</div>
       </div>
-      ${active?`<button class="btn-sm btn-red" style="width:100%;margin-top:12px;padding:8px;font-size:12px;letter-spacing:1px" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">${T.endShiftBtn}</button>`:''}
-      ${!active&&done&&!alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.allowNewShift}</button>`:''}
-      ${!active&&done&&alreadyUnlocked?`<button class="btn-sm" style="width:100%;margin-top:10px;padding:8px;font-size:11px;letter-spacing:1px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.revokeRestart}</button>`:''}
+      <div style="display:flex;gap:20px;flex-wrap:wrap;flex:3">
+        <div style="display:flex;flex-direction:column">
+          <div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.startedAt}</div>
+          <div style="font-family:monospace;font-size:14px;color:var(--text);font-weight:700;margin-top:3px">${active?fmtTime(active.start_time):latestDone?fmtTime(latestDone.start_time):'—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.end||'End'}</div>
+          <div style="font-family:monospace;font-size:14px;color:var(--text);font-weight:700;margin-top:3px">${active?'—':latestDone?fmtTime(latestDone.end_time):'—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.hrsToday}</div>
+          <div style="font-family:monospace;font-size:15px;color:#2ecc71;font-weight:700;margin-top:3px">${h.toFixed(2)}h</div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.earnToday}</div>
+          <div style="font-family:monospace;font-size:15px;color:#f0c040;font-weight:700;margin-top:3px">€${e.toFixed(2)}</div>
+        </div>
+        ${done.length>0?`<div style="display:flex;flex-direction:column"><div style="font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.shifts}</div><div style="font-family:monospace;font-size:14px;color:var(--text);margin-top:3px">${done.length}</div></div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end">
+        ${shiftForEdit?`<button class="btn-sm" style="background:rgba(52,152,219,.12);border:1px solid rgba(52,152,219,.35);color:#3498db;font-size:11px;white-space:nowrap" onclick="openAttendanceEdit('${esc(shiftForEdit.id)}','${esc(w.label||w.username)}')">✏️ Edit Times</button>`:''}
+        ${active?`<button class="btn-sm btn-red" style="font-size:11px;white-space:nowrap" onclick="mgrEndShift('${esc(active.id)}','${esc(w.label||w.username)}')">${T.endShiftBtn}</button>`:''}
+        ${!active&&latestDone&&!alreadyUnlocked?`<button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.35);color:#f39c12;font-size:11px;white-space:nowrap" onclick="allowRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.allowNewShift}</button>`:''}
+        ${!active&&latestDone&&alreadyUnlocked?`<button class="btn-sm" style="background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.25);color:#e74c3c;font-size:11px;white-space:nowrap" onclick="revokeRestart('${esc(w.username)}','${esc(w.label||w.username)}')">${T.revokeRestart}</button>`:''}
+        ${alreadyUnlocked?`<span style="font-family:monospace;font-size:9px;color:#2ecc71">🔓 ${T.restartPending}</span>`:''}
+      </div>
     </div>`;
   }).join('')}</div>`;
   return _liveCache;
@@ -2244,6 +2320,7 @@ async function buildLocations(){
         <div style="flex:1">
           <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px">📍 ${esc(l.name)}</div>
           <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
+          ${l.start_time?`<div style="font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:2px">▶ Auto-start: ${l.start_time}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:2px">▶ No auto-start</div>`}
           ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:4px">${T.noAutoEnd}</div>`}
           ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">${T.viewOnMap}</a>`:''}
         </div>
@@ -2257,6 +2334,13 @@ async function buildLocations(){
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <input id="loc-rename-${esc(l.id)}" value="${esc(l.name)}" style="flex:1;max-width:260px"/>
           <button class="btn-sm" style="background:rgba(0,208,132,.12);border:1px solid rgba(0,208,132,.3);color:#00d084" onclick="renameLocation('${esc(l.id)}')">💾 Save Name</button>
+        </div>
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#2ecc71;text-transform:uppercase;display:block;margin-bottom:6px">▶ AUTO-START TIME</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <select id="loc-st-${esc(l.id)}" style="max-width:220px">${buildStartTimeOptions(l.start_time||'')}</select>
+          <button class="btn-sm" style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.3);color:#2ecc71" onclick="saveLocStartTime('${esc(l.id)}')">💾 ${T.save}</button>
+          <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--muted)" onclick="clearLocStartTime('${esc(l.id)}')">✕ ${T.clear}</button>
+          <span style="font-family:monospace;font-size:10px;color:var(--muted)">Workers cannot sign in before this time</span>
         </div>
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2273,6 +2357,7 @@ async function buildLocations(){
       <div class="st">${T.addNewSite}</div>
       <div class="info-box" style="margin-bottom:16px">${T.locGpsInfo(GPS_RADIUS)}</div>
       <div class="sf"><label class="lbl">${T.siteName}</label><input id="loc-name" placeholder="${T.siteNamePh}"/></div>
+      <div class="sf"><label class="lbl">▶ Auto-Start Time <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-start" style="max-width:220px">${buildStartTimeOptions()}</select><div class="hint">Workers cannot sign in before this time at this site.</div></div>
       <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">${T.coordinates}</label>
@@ -2327,11 +2412,12 @@ window.addLocation=async()=>{
   const lat=parseFloat($('loc-lat')?.value);
   const lng=parseFloat($('loc-lng')?.value);
   const ml=val('loc-ml').trim();
+  const st=val('loc-start').trim();
   const et=val('loc-end').trim();
   if(!name){toast(T.enterSiteName,'error');return;}
   if(isNaN(lat)||isNaN(lng)){toast(T.enterValidCoords,'error');return;}
   const id='loc_'+Date.now();
-  await dbSetLocation(id,{name,lat,lng,map_link:ml||null,end_time:et||null,added_at:Date.now()});
+  await dbSetLocation(id,{name,lat,lng,map_link:ml||null,start_time:st||null,end_time:et||null,added_at:Date.now()});
   toast(T.locAdded(name,et),'success');
   mTab('locations');
 };
@@ -2387,6 +2473,22 @@ window.clearLocEndTime=async id=>{
   try{
     await sql('UPDATE wf_locations SET end_time=NULL WHERE id=$1',[id]);
     toast(T.autoEndCleared,'success');
+    mTab('locations');
+  }catch(e){toast(T.failed(e.message),'error');}
+};
+window.saveLocStartTime=async id=>{
+  const input=document.getElementById('loc-st-'+id);
+  const st=input?.value?.trim()||null;
+  try{
+    await sql('UPDATE wf_locations SET start_time=$2 WHERE id=$1',[id,st||null]);
+    toast(st?`▶ Auto-start set to ${st}`:'Auto-start cleared','success');
+    mTab('locations');
+  }catch(e){toast(T.failedToSave(e.message),'error');}
+};
+window.clearLocStartTime=async id=>{
+  try{
+    await sql('UPDATE wf_locations SET start_time=NULL WHERE id=$1',[id]);
+    toast('Auto-start cleared','success');
     mTab('locations');
   }catch(e){toast(T.failed(e.message),'error');}
 };
@@ -2959,6 +3061,90 @@ window.doExport=async()=>{
     toast('Exported as CSV (XLSX unavailable)','warning');
   };
   document.head.appendChild(script);
+};
+
+// ════════════════════════════════════════════════════════
+// ATTENDANCE EDIT (Admin)
+// ════════════════════════════════════════════════════════
+let _attendanceEditShiftId = null;
+let _attendanceEditHourlyRate = 0;
+
+window.openAttendanceEdit = async (shiftId, workerName) => {
+  _attendanceEditShiftId = shiftId;
+  const modal = $('attendanceModal');
+  const errEl = $('att-err');
+  errEl.style.display = 'none';
+  const nameEl = $('att-worker-name');
+  if(nameEl) nameEl.textContent = `Worker: ${workerName} · Shift ID: ${shiftId}`;
+  try {
+    const rows = await sql('SELECT * FROM wf_shifts WHERE id=$1 LIMIT 1', [shiftId]);
+    const shift = rows[0];
+    if(!shift){ toast('Shift not found','error'); return; }
+    _attendanceEditHourlyRate = parseFloat(shift.hourly_rate)||0;
+    const toTimeStr = ts => {
+      if(!ts) return '';
+      const d = new Date(Number(ts));
+      if(isNaN(d.getTime())) return '';
+      return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    };
+    $('att-start').value = toTimeStr(shift.start_time);
+    $('att-end').value = shift.end_time ? toTimeStr(shift.end_time) : '';
+  } catch(e) {
+    toast('Error loading shift: '+e.message, 'error'); return;
+  }
+  if(modal){ modal.classList.add('show'); modal.style.display=''; }
+};
+
+window.closeAttendanceModal = () => {
+  const modal = $('attendanceModal');
+  if(modal){ modal.classList.remove('show'); }
+  _attendanceEditShiftId = null;
+};
+
+window.saveAttendanceEdit = async () => {
+  const errEl = $('att-err');
+  errEl.style.display = 'none';
+  const showErr = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
+  if(!_attendanceEditShiftId){ showErr('No shift selected.'); return; }
+  const startStr = val('att-start').trim();
+  const endStr = val('att-end').trim();
+  if(!startStr){ showErr('Check-in time is required.'); return; }
+  try {
+    const rows = await sql('SELECT * FROM wf_shifts WHERE id=$1 LIMIT 1', [_attendanceEditShiftId]);
+    const shift = rows[0];
+    if(!shift){ showErr('Shift not found.'); return; }
+    const origDate = shift.date || todayStr();
+    const [sy,sm,sd] = origDate.split('-').map(Number);
+    const [sh,smin] = startStr.split(':').map(Number);
+    const startDate = new Date(sy,sm-1,sd,sh,smin,0,0);
+    const newStartMs = startDate.getTime();
+    let newEndMs = null;
+    let newWorkHours = null;
+    let newEarnings = null;
+    let newStatus = shift.status;
+    if(endStr){
+      const [eh,emin] = endStr.split(':').map(Number);
+      const endDate = new Date(sy,sm-1,sd,eh,emin,0,0);
+      newEndMs = endDate.getTime();
+      if(newEndMs <= newStartMs){ showErr('Check-out time must be after check-in time.'); return; }
+      newWorkHours = (newEndMs - newStartMs) / 3600000;
+      newEarnings = newWorkHours * (_attendanceEditHourlyRate||0);
+      newStatus = 'completed';
+    } else {
+      newStatus = 'working';
+    }
+    await sql(
+      `UPDATE wf_shifts SET start_time=$2, end_time=$3, work_hours=$4, earnings=$5, status=$6 WHERE id=$1`,
+      [_attendanceEditShiftId, newStartMs, newEndMs, newWorkHours, newEarnings, newStatus]
+    );
+    _liveCache = null;
+    toast(`✅ Attendance updated for shift`, 'success');
+    closeAttendanceModal();
+    await mTab('live');
+    loadSummary();
+  } catch(e) {
+    showErr('Error saving: '+e.message);
+  }
 };
 
 // ════════════════════════════════════════════════════════
