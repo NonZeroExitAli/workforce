@@ -1742,8 +1742,16 @@ window.doPhoneLogin=async()=>{
         S.nearestLocation=nearbyCandidate;
       } catch(gpsErr){
         const code=gpsErr.code;
-        if(code===1)showErr('📍 Location permission denied. Please allow location access.');
-        else if(code===3)showErr('📍 Location timed out. Try again.');
+        if(code===1){
+          const isAr=lang==='ar', isIt=lang==='it';
+          const msg=isAr
+            ?'📍 تم رفض إذن الموقع. كيفية الإصلاح: افتح إعدادات الهاتف ← ابحث عن المتصفح (Chrome/Safari) ← الموقع ← اسمح دائمًا ← ثم أعد تحميل الصفحة وحاول مجددًا.'
+            :isIt
+            ?'📍 Permesso posizione negato. Come risolvere: Apri Impostazioni ← Trova il browser (Chrome/Safari) ← Posizione → Sempre ← Ricarica e riprova.'
+            :'📍 Location permission denied. How to fix: Open phone Settings → find your browser (Chrome/Safari) → Location → Allow Always → then reload this page and try again.';
+          showErr(msg);
+        }
+        else if(code===3) showErr(lang==='ar'?'📍 انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا.':lang==='it'?'📍 Timeout posizione. Assicurati che il GPS sia attivo e riprova.':'📍 Location timed out. Make sure GPS is enabled and try again.');
         else showErr(T.gpsLoginErr);
         return;
       }
