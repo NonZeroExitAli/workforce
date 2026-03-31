@@ -1882,9 +1882,7 @@ async function renderWorkerScreen(){
         if(autoEnd) banners+=`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:8px">
           ⏰ ${T.autoEndsAt?T.autoEndsAt(autoEnd):'Shift ends automatically at '+esc(autoEnd)}${S.autoEndSource==='location'?' ('+T.site+')':' (global)'}
         </div>`;
-        if(siteStart) banners+=`<div style="background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:8px">
-          ${T.billingSnapInfo?T.billingSnapInfo(siteStart):'⏱ Billing starts at '+siteStart+' — early clock-ins not paid before this time'}
-        </div>`;
+
         if(siteBreak>0) banners+=`<div style="background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#e67e22;margin-bottom:8px">
           ☕ ${T.breakLbl||'Break'}: ${siteBreak} ${lang==='ar'?'دقيقة':'min'} — ${T.breakHint||'deducted from billed hours'}
         </div>`;
