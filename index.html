@@ -680,7 +680,7 @@ input:focus{
 const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
 
-const SCHEMA_VERSION = '7';
+const SCHEMA_VERSION = '8';
 
 // ════════════════════════════════════════════════════════
 // SQL LAYER
@@ -839,7 +839,8 @@ async function initDB() {
         id TEXT PRIMARY KEY, worker TEXT, date TEXT,
         start_time BIGINT, end_time BIGINT, work_hours NUMERIC,
         earnings NUMERIC, hourly_rate NUMERIC,
-        location_name TEXT, location_id TEXT, status TEXT
+        location_name TEXT, location_id TEXT, status TEXT,
+        billing_start_time BIGINT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS wf_config(
         id INTEGER PRIMARY KEY DEFAULT 1,
@@ -850,7 +851,7 @@ async function initDB() {
         id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,
         map_link TEXT, added_at BIGINT,
         is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL,
-        start_time TEXT DEFAULT NULL
+        start_time TEXT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS wf_assignments(
         worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,
@@ -867,9 +868,12 @@ async function initDB() {
       sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
       sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"),
       sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
+      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL"),
+      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0"),
       sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
       sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
       sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL"),
+      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
       sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
@@ -1138,7 +1142,7 @@ const TR = {
     pwdChanged:'✓ Password changed!',pwdReset:'✓ Password reset to default',
     editWorkerTitle:'✏️ EDIT WORKER',editName:'Name',editPhone:'Phone',editRate:'💰 Hourly Rate (€)',
     fileAdded:(a,s)=>`✓ Added ${a}. ${s} skipped.`,
-    endMsg:(d,e)=>`Done! ${d} worked · €${e} earned.`,
+    endMsg:(d,e)=>`Done! ${d} worked.`,
     lateMsg:n=>`⚠ ${n} min late!`,
     editTimesBtn:'✏️ Edit Times',
     editAttendanceTitle:'✏️ EDIT ATTENDANCE',
@@ -1155,7 +1159,10 @@ const TR = {
     siteOpensAt:(site,time,mins)=>`⛔ ${site} opens at ${time}. ${mins} minute${mins===1?'':'s'} remaining.`,
     attUpdateSuccess:'✅ Attendance updated successfully',
     attCheckoutAfter:'Check-out time must be after check-in time.',
-    attCheckinRequired:'Check-in time is required.'
+    attCheckinRequired:'Check-in time is required.',
+    breakLbl:'☕ Break Duration',breakHint:'Automatically deducted from billed hours',
+    breakNone:'No break',breakMin:(m)=>`${m} min`,
+    billingSnapInfo:(t)=>`⏱ Billing starts at ${t} — early clock-ins are not paid before this time`
   },
 
   it:{
@@ -1291,7 +1298,7 @@ const TR = {
     pwdChanged:'✓ Password cambiata!',pwdReset:'✓ Password reimpostata al default',
     editWorkerTitle:'✏️ MODIFICA LAVORATORE',editName:'Nome',editPhone:'Telefono',editRate:'💰 Tariffa Oraria (€)',
     fileAdded:(a,s)=>`✓ ${a} aggiunti. ${s} saltati.`,
-    endMsg:(d,e)=>`Fatto! ${d} lavorato · €${e} guadagnati.`,
+    endMsg:(d,e)=>`Fatto! ${d} lavorato.`,
     lateMsg:n=>`⚠ ${n} min di ritardo!`,
     editTimesBtn:'✏️ Modifica Orari',
     editAttendanceTitle:'✏️ MODIFICA PRESENZE',
@@ -1307,7 +1314,10 @@ const TR = {
     siteOpensAt:(site,time,mins)=>`⛔ ${site} apre alle ${time}. ${mins} minut${mins===1?'o':'i'} rimanent${mins===1?'e':'i'}.`,
     attUpdateSuccess:'✅ Presenze aggiornate con successo',
     attCheckoutAfter:"L'ora di uscita deve essere successiva all'ora di entrata.",
-    attCheckinRequired:"L'ora di entrata è obbligatoria."
+    attCheckinRequired:"L'ora di entrata è obbligatoria.",
+    breakLbl:'☕ Pausa',breakHint:'Dedotta automaticamente dalle ore pagate',
+    breakNone:'Nessuna pausa',breakMin:(m)=>`${m} min`,
+    billingSnapInfo:(t)=>`⏱ Fatturazione inizia alle ${t} — gli ingressi anticipati non vengono pagati prima di quest'ora`
   },
 
   ar:{
@@ -1443,7 +1453,7 @@ const TR = {
     pwdChanged:'✓ تم تغيير كلمة المرور!',pwdReset:'✓ تمت إعادة تعيين كلمة المرور للافتراضي',
     editWorkerTitle:'✏️ تعديل الموظف',editName:'الاسم',editPhone:'الهاتف',editRate:'💰 الأجر الساعي (€)',
     fileAdded:(a,s)=>`✓ تمت إضافة ${a}. تم تخطي ${s}.`,
-    endMsg:(d,e)=>`انتهت! ${d} عمل · €${e} أرباح.`,
+    endMsg:(d,e)=>`انتهت! ${d} عمل.`,
     lateMsg:n=>`⚠ متأخر ${n} دقيقة!`,
     editTimesBtn:'✏️ تعديل الأوقات',
     editAttendanceTitle:'✏️ تعديل الحضور',
@@ -1459,7 +1469,10 @@ const TR = {
     siteOpensAt:(site,time,mins)=>`⛔ ${site} يفتح في ${time}. ${mins} دقيقة متبقية.`,
     attUpdateSuccess:'✅ تم تحديث الحضور بنجاح',
     attCheckoutAfter:'يجب أن يكون وقت الانصراف بعد وقت الحضور.',
-    attCheckinRequired:'وقت الحضور مطلوب.'
+    attCheckinRequired:'وقت الحضور مطلوب.',
+    breakLbl:'☕ فترة الراحة',breakHint:'تُخصم تلقائياً من الساعات المدفوعة',
+    breakNone:'بدون راحة',breakMin:(m)=>`${m} دقيقة`,
+    billingSnapInfo:(t)=>`⏱ يبدأ احتساب الأجر من ${t} — الدخول المبكر لا يُحتسب قبل هذا الوقت`
   }
 };
 
@@ -1588,6 +1601,15 @@ function buildStartTimeOptions(selected=''){
       const label=hd+':'+(String(m).padStart(2,'0'))+' '+ampm;
       opts.push(`<option value="${v}"${selected===v?' selected':''}>${label} (${v})</option>`);
     }
+  }
+  return opts.join('');
+}
+
+function buildBreakOptions(selected=''){
+  const sel=parseInt(selected)||0;
+  const opts=[`<option value="0"${sel===0?' selected':''}>— ${T.breakNone||'No break'} —</option>`];
+  for(const m of [15,20,30,45,60,90]){
+    opts.push(`<option value="${m}"${sel===m?' selected':''}>${T.breakMin?T.breakMin(m):m+' min'}</option>`);
   }
   return opts.join('');
 }
@@ -1725,12 +1747,7 @@ window.doPhoneLogin=async()=>{
           .filter(l=>l.dist<=GPS_RADIUS)
           .sort((a,b)=>a.dist-b.dist)[0];
         if(!nearbyCandidate){
-          const closestAssigned = candidateLocs.sort((a,b)=>a.dist-b.dist)[0];
-          if(closestAssigned){
-            showErr(`⛔ You are ${closestAssigned.dist}m from your nearest site (${closestAssigned.name}). Must be within ${GPS_RADIUS}m.`);
-          } else {
-            showErr(`⛔ You are not near any assigned site. Must be within ${GPS_RADIUS}m.`);
-          }
+          showErr(`⛔ You are away from your work site. Please go to your assigned location to sign in.`);
           return;
         }
         const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== 'false';
@@ -1847,7 +1864,7 @@ async function renderWorkerScreen(){
       <div class="info-card"><div class="il">📋 ${T.shiftsC} (${T.month})</div><div class="iv" style="color:#f0c040">${myMonthShifts.length}</div></div>
       <div class="info-card"><div class="il">📍 ${T.site}</div><div class="iv" style="color:#3498db;font-size:14px" id="wi-site">${esc(locName)}</div></div>
     </div>
-    ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong> (${S.gpsDist||'?'}m)</span></div>`:''}
+    ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${esc(S.nearestLocation?.name||locName)}</strong></span></div>`:''}
     ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ ${lang==='ar'?'لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.':lang==='it'?"Hai già completato un turno oggi. Se c'è un problema contatta il manager.":'You already finished a shift today. If there is a problem contact your manager.'}</div>`:''}
     ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px">🔓 ${T.allowNewShift}</div>`:''}
     <div class="stat-card ${active?'working':''}" id="scard">
@@ -1858,9 +1875,22 @@ async function renderWorkerScreen(){
       </div>
       <div class="timer-big" id="tbig">00:00:00</div>
       <div style="font-family:'Consolas','Courier New',monospace;font-size:9px;letter-spacing:3px;color:#3a6080;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>
-      ${autoEnd?`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:14px">
-        ⏰ ${T.autoEndsAt?T.autoEndsAt(autoEnd):'Shift ends automatically at '+esc(autoEnd)}${S.autoEndSource==='location'?' ('+T.site+')':' (global)'}
-      </div>`:`<div style="margin-bottom:14px"></div>`}
+      ${(()=>{
+        const siteStart = curLoc?.start_time || null;
+        const siteBreak = parseInt(curLoc?.break_minutes||0)||0;
+        let banners = '';
+        if(autoEnd) banners+=`<div style="background:rgba(243,156,18,.08);border:1px solid rgba(243,156,18,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:8px">
+          ⏰ ${T.autoEndsAt?T.autoEndsAt(autoEnd):'Shift ends automatically at '+esc(autoEnd)}${S.autoEndSource==='location'?' ('+T.site+')':' (global)'}
+        </div>`;
+        if(siteStart) banners+=`<div style="background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:8px">
+          ${T.billingSnapInfo?T.billingSnapInfo(siteStart):'⏱ Billing starts at '+siteStart+' — early clock-ins not paid before this time'}
+        </div>`;
+        if(siteBreak>0) banners+=`<div style="background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.2);border-radius:4px;padding:8px 12px;font-family:monospace;font-size:11px;color:#e67e22;margin-bottom:8px">
+          ☕ ${T.breakLbl||'Break'}: ${siteBreak} ${lang==='ar'?'دقيقة':'min'} — ${T.breakHint||'deducted from billed hours'}
+        </div>`;
+        if(!banners) banners=`<div style="margin-bottom:14px"></div>`;
+        return banners;
+      })()}
       <div class="act-grid">
         <button class="act-btn" id="bst"
           style="border:2px solid ${startDisabled?'#333':'#2ecc71'};color:${startDisabled?'#333':'#2ecc71'};opacity:${startDisabled?'0.3':'1'};cursor:${startDisabled?'not-allowed':'pointer'}"
@@ -1913,7 +1943,12 @@ function startTimer(){
       const todayBase=new Date(); todayBase.setHours(eh,em,0,0);
       const endMs=todayBase.getTime();
       const useMs=(endMs>startMs&&endMs<=now)?endMs:now;
-      const workHours=Math.max(0,useMs-startMs)/3600000;
+      // Use billing_start_time for pay calculation, subtract break
+      const billingStart=Number(S.shift.billing_start_time)||startMs;
+      const billedMs=Math.max(0,useMs-billingStart);
+      const breakMs=(parseFloat(S.shift.break_minutes)||0)*60000;
+      const netMs=Math.max(0,billedMs-breakMs);
+      const workHours=netMs/3600000;
       const earnings=workHours*(parseFloat(S.user?.hourly_rate)||0);
       await sql(
         `UPDATE wf_shifts SET status='completed',end_time=$2,work_hours=$3,earnings=$4
@@ -2005,10 +2040,33 @@ window.wAct=async action=>{
 
       const locationName = S.nearestLocation?.name || '—';
       const id='s'+now+'_'+username.slice(0,6);
+
+      // ── Billing start snap ──────────────────────────────
+      // If worker clocks in BEFORE site start_time → bill from start_time
+      // If worker clocks in AFTER  site start_time → bill from actual clock-in (lateness recorded)
+      let billingStartMs = now; // default: bill from actual clock-in
+      const siteStartForBilling = S.nearestLocation?.start_time || null;
+      if(siteStartForBilling){
+        const [bsh,bsm] = siteStartForBilling.split(':').map(Number);
+        const billingBase = new Date(now);
+        billingBase.setHours(bsh, bsm, 0, 0);
+        const billingBaseMs = billingBase.getTime();
+        if(now < billingBaseMs){
+          // Clocked in early → bill only from official start time
+          billingStartMs = billingBaseMs;
+        }
+        // If now >= billingBaseMs: clocked in late → bill from actual (now), lateness is natural
+      }
+
+      // Break minutes for this location
+      const locBreakMins = parseFloat(S.nearestLocation?.break_minutes||0)||0;
+
       await dbSetShift(id,{
         worker:username,
         date:todayStr(),
         start_time:now,
+        billing_start_time:billingStartMs,
+        break_minutes:locBreakMins,
         end_time:null,
         work_hours:null,
         earnings:null,
@@ -2018,7 +2076,7 @@ window.wAct=async action=>{
         status:'working'
       });
 
-      S.shift={id,worker:username,date:todayStr(),start_time:now,status:'working',location_name:locationName,location_id:S.nearestLocation?.id||null,hourly_rate:parseFloat(S.user.hourly_rate)||0};
+      S.shift={id,worker:username,date:todayStr(),start_time:now,billing_start_time:billingStartMs,break_minutes:locBreakMins,status:'working',location_name:locationName,location_id:S.nearestLocation?.id||null,hourly_rate:parseFloat(S.user.hourly_rate)||0};
       toast(`✅ ${T.shiftStarted}`,'success');
       await renderWorkerScreen();
 
@@ -2038,12 +2096,16 @@ window.wAct=async action=>{
         const confirmEnd=async()=>{
           if(confirmed)return;confirmed=true;
           window._confirmEnd=null;
-          const wMs2=Math.max(0,Date.now()-startMs);
-          const workHours=wMs2/3600000;
-          const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
-          await dbSetShift(activeShift.id,{end_time:Date.now(),work_hours:workHours,earnings,status:'completed'});
+          const nowC=Date.now();
+          const billingStartC=Number(activeShift.billing_start_time)||Number(activeShift.start_time);
+          const billedMsC=Math.max(0,nowC-billingStartC);
+          const breakMsC=(parseFloat(activeShift.break_minutes)||0)*60000;
+          const netMsC=Math.max(0,billedMsC-breakMsC);
+          const netWorkHoursC=netMsC/3600000;
+          const earnings=netWorkHoursC*(parseFloat(activeShift.hourly_rate)||0);
+          await dbSetShift(activeShift.id,{end_time:nowC,work_hours:netWorkHoursC,earnings,status:'completed'});
           S.shift=null;clearInterval(S.timerInt);
-          toast(`✅ ${T.endMsg?T.endMsg(fmtDur(wMs2),earnings.toFixed(2)):'Done!'}`, 'success');
+          toast(`✅ ${T.endMsg?T.endMsg(fmtDur(netMsC),earnings.toFixed(2)):'Done!'}`, 'success');
           await renderWorkerScreen();
         };
         window._confirmEnd=confirmEnd;
@@ -2067,11 +2129,15 @@ window.wAct=async action=>{
         return;
       }
 
-      const workHours=wMs/3600000;
-      const earnings=workHours*(parseFloat(activeShift.hourly_rate)||0);
-      await dbSetShift(activeShift.id,{end_time:now,work_hours:workHours,earnings,status:'completed'});
+      const billingStartMs2 = Number(activeShift.billing_start_time) || Number(activeShift.start_time);
+      const billedMs = Math.max(0, now - billingStartMs2);
+      const breakMs = (parseFloat(activeShift.break_minutes)||0) * 60000;
+      const netMs = Math.max(0, billedMs - breakMs);
+      const netWorkHours = netMs / 3600000;
+      const earnings=netWorkHours*(parseFloat(activeShift.hourly_rate)||0);
+      await dbSetShift(activeShift.id,{end_time:now,work_hours:netWorkHours,earnings,status:'completed'});
       S.shift=null;clearInterval(S.timerInt);
-      toast(`✅ ${T.endMsg?T.endMsg(fmtDur(wMs),earnings.toFixed(2)):'Done!'}`, 'success');
+      toast(`✅ ${T.endMsg?T.endMsg(fmtDur(netMs),earnings.toFixed(2)):'Done!'}`, 'success');
       await renderWorkerScreen();
     }
   }catch(err){
@@ -2384,6 +2450,7 @@ async function buildLocations(){
           <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:4px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
           ${l.start_time?`<div style="font-family:monospace;font-size:11px;color:#2ecc71;margin-bottom:2px">▶ ${T.autoStartLabel||'Auto-start'}: ${l.start_time}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:2px">${T.noAutoStart||'▶ No auto-start'}</div>`}
           ${l.end_time?`<div style="font-family:monospace;font-size:11px;color:#f39c12;margin-bottom:4px">${T.autoEndsAt(l.end_time)}</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:4px">${T.noAutoEnd}</div>`}
+          ${parseInt(l.break_minutes||0)>0?`<div style="font-family:monospace;font-size:11px;color:#e67e22;margin-bottom:4px">☕ ${T.breakLbl||'Break'}: ${parseInt(l.break_minutes)} min</div>`:`<div style="font-family:monospace;font-size:10px;color:var(--muted);margin-bottom:4px">☕ ${T.breakNone||'No break'}</div>`}
           ${l.map_link?`<a href="${esc(l.map_link)}" target="_blank" style="color:#3498db;font-family:monospace;font-size:10px">${T.viewOnMap}</a>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -2405,11 +2472,17 @@ async function buildLocations(){
           <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.autoStartHint||'Workers cannot sign in before this time'}</span>
         </div>
         <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">${T.autoEndTimeLabel}</label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <select id="loc-et-${esc(l.id)}" style="max-width:220px">${buildTimeOptions(l.end_time||'')}</select>
           <button class="btn-sm" style="background:rgba(243,156,18,.12);border:1px solid rgba(243,156,18,.3);color:#f39c12" onclick="saveLocEndTime('${esc(l.id)}')">💾 ${T.save}</button>
           <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--muted)" onclick="clearLocEndTime('${esc(l.id)}')">✕ ${T.clear}</button>
           <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.leaveBlank}</span>
+        </div>
+        <label style="font-family:monospace;font-size:10px;letter-spacing:2px;color:#e67e22;text-transform:uppercase;display:block;margin-bottom:6px">☕ ${T.breakLbl||'BREAK DURATION'}</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="loc-brk-${esc(l.id)}" style="max-width:220px">${buildBreakOptions(l.break_minutes||'0')}</select>
+          <button class="btn-sm" style="background:rgba(230,126,34,.12);border:1px solid rgba(230,126,34,.3);color:#e67e22" onclick="saveLocBreak('${esc(l.id)}')">💾 ${T.save}</button>
+          <span style="font-family:monospace;font-size:10px;color:var(--muted)">${T.breakHint||'Deducted from billed hours'}</span>
         </div>
       </div>
     </div>`).join('');
@@ -2421,6 +2494,7 @@ async function buildLocations(){
       <div class="sf"><label class="lbl">${T.siteName}</label><input id="loc-name" placeholder="${T.siteNamePh}"/></div>
       <div class="sf"><label class="lbl">${T.autoStartLabel||'▶ Auto-Start Time'} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-start" style="max-width:220px">${buildStartTimeOptions()}</select><div class="hint">${T.autoStartHint||'Workers cannot sign in before this time at this site.'}</div></div>
       <div class="sf"><label class="lbl">${T.autoEndTime} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-end" style="max-width:220px">${buildTimeOptions()}</select><div class="hint">${T.autoEndHint}</div></div>
+      <div class="sf"><label class="lbl" style="color:#e67e22">☕ ${T.breakLbl||'Break Duration'} <span style="color:var(--muted)">${T.autoEndOptional}</span></label><select id="loc-break" style="max-width:220px">${buildBreakOptions()}</select><div class="hint">${T.breakHint||'Automatically deducted from billed hours'}</div></div>
       <div class="sf gh">
         <label class="lbl" style="color:#2ecc71">${T.coordinates}</label>
         <div style="margin-bottom:10px">
@@ -2476,10 +2550,11 @@ window.addLocation=async()=>{
   const ml=val('loc-ml').trim();
   const st=val('loc-start').trim();
   const et=val('loc-end').trim();
+  const brk=parseInt(val('loc-break'))||0;
   if(!name){toast(T.enterSiteName,'error');return;}
   if(isNaN(lat)||isNaN(lng)){toast(T.enterValidCoords,'error');return;}
   const id='loc_'+Date.now();
-  await dbSetLocation(id,{name,lat,lng,map_link:ml||null,start_time:st||null,end_time:et||null,added_at:Date.now()});
+  await dbSetLocation(id,{name,lat,lng,map_link:ml||null,start_time:st||null,end_time:et||null,break_minutes:brk,added_at:Date.now()});
   toast(T.locAdded(name,et),'success');
   mTab('locations');
 };
@@ -2553,6 +2628,18 @@ window.clearLocStartTime=async id=>{
     toast(T.autoStartCleared,'success');
     mTab('locations');
   }catch(e){toast(T.failed(e.message),'error');}
+};
+window.saveLocBreak=async id=>{
+  const input=document.getElementById('loc-brk-'+id);
+  const brk=parseInt(input?.value)||0;
+  try{
+    await sql('UPDATE wf_locations SET break_minutes=$2 WHERE id=$1',[id,brk]);
+    const msg=brk>0
+      ? `☕ ${T.breakLbl||'Break'} set to ${brk} min`
+      : `☕ ${T.breakNone||'No break set'}`;
+    toast(msg,'success');
+    mTab('locations');
+  }catch(e){toast(T.failedToSave(e.message),'error');}
 };
 
 // ════════════════════════════════════════════════════════
@@ -3189,7 +3276,11 @@ window.saveAttendanceEdit = async () => {
       const endDate = new Date(sy,sm-1,sd,eh,emin,0,0);
       newEndMs = endDate.getTime();
       if(newEndMs <= newStartMs){ showErr(T.attCheckoutAfter); return; }
-      newWorkHours = (newEndMs - newStartMs) / 3600000;
+      // Use billing_start_time (the snapped start) for hour calculation, subtract break
+      const billingStart = shift.billing_start_time ? Number(shift.billing_start_time) : newStartMs;
+      const billedMs = Math.max(0, newEndMs - billingStart);
+      const breakMs = (parseFloat(shift.break_minutes)||0) * 60000;
+      newWorkHours = Math.max(0, billedMs - breakMs) / 3600000;
       newEarnings = newWorkHours * (_attendanceEditHourlyRate||0);
       newStatus = 'completed';
     } else {
