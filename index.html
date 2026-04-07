@@ -1928,38 +1928,7 @@ function startTimer(){
     const e=$('tbig');if(e)e.textContent=fmtMs(wMs);
     const wt=$('wt');if(wt)wt.textContent=fmtDur(wMs);
 
-    if(S._autoEndFired||!S.autoEndTime||!S.shift) return;
-    const [eh,em]=S.autoEndTime.split(':').map(Number);
-    if(isNaN(eh)||isNaN(em)) return;
-    const nowD=new Date(now);
-    const nowMins=nowD.getHours()*60+nowD.getMinutes();
-    const endMins=eh*60+em;
-    if(nowMins<endMins) return;
-    S._autoEndFired=true;
-    clearInterval(S.timerInt);
-    try{
-      const todayBase=new Date(); todayBase.setHours(eh,em,0,0);
-      const endMs=todayBase.getTime();
-      const useMs=(endMs>startMs&&endMs<=now)?endMs:now;
-      // Use billing_start_time for pay calculation, subtract break
-      const billingStart=Number(S.shift.billing_start_time)||startMs;
-      const billedMs=Math.max(0,useMs-billingStart);
-      const breakMs=(parseFloat(S.shift.break_minutes)||0)*60000;
-      const netMs=Math.max(0,billedMs-breakMs);
-      const workHours=netMs/3600000;
-      const earnings=workHours*(parseFloat(S.user?.hourly_rate)||0);
-      await sql(
-        `UPDATE wf_shifts SET status='completed',end_time=$2,work_hours=$3,earnings=$4
-         WHERE id=$1 AND status='working'`,
-        [S.shift.id,useMs,workHours,earnings]
-      );
-      S.shift=null;
-      toast(`⏰ ${S.autoEndTime} — `+(lang==='ar'?'انتهت الوردية تلقائياً':lang==='it'?'Turno terminato automaticamente':'Shift auto-ended'),'info');
-      await renderWorkerScreen();
-    }catch(err){
-      console.error('[AutoEnd]',err.message);
-      S._autoEndFired=false;
-    }
+    // auto-end removed: workers must manually clock out
   },1000);
 }
 
@@ -2082,8 +2051,22 @@ window.wAct=async action=>{
 
       const wMs=Math.max(0,now-startMs);
 
+      // If a configured end time exists and worker clocks out after it,
+      // cap the billing end to that end time — salary only counts up to the set end.
+      let billingEndMs = now;
+      if(S.autoEndTime){
+        const [ceh,cem]=S.autoEndTime.split(':').map(Number);
+        if(!isNaN(ceh)&&!isNaN(cem)){
+          const configuredEnd=new Date(now); configuredEnd.setHours(ceh,cem,0,0);
+          const configuredEndMs=configuredEnd.getTime();
+          if(now > configuredEndMs && configuredEndMs > startMs){
+            billingEndMs = configuredEndMs;
+          }
+        }
+      }
+
       const billingStartMs2 = Number(activeShift.billing_start_time) || Number(activeShift.start_time);
-      const billedMs = Math.max(0, now - billingStartMs2);
+      const billedMs = Math.max(0, billingEndMs - billingStartMs2);
       const breakMs = (parseFloat(activeShift.break_minutes)||0) * 60000;
       const netMs = Math.max(0, billedMs - breakMs);
       const netWorkHours = netMs / 3600000;
