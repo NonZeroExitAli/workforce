@@ -685,6 +685,24 @@ const SCHEMA_VERSION = '8';
 // ════════════════════════════════════════════════════════
 // SQL LAYER
 // ════════════════════════════════════════════════════════
+// OPT-6 (SERVER-SIDE — apply in /api/sql.js, not here):
+// Replace raw pg client with the Neon WebSocket driver for persistent
+// connections and lower CU-hours. Example /api/sql.js:
+//
+//   import { neon } from '@neondatabase/serverless';
+//   const sql = neon(process.env.NEON_DATABASE_URL);
+//   export default async function handler(req, res) {
+//     const { query, params } = req.body;
+//     try {
+//       const rows = await sql(query, params);
+//       res.json({ ok: true, rows });
+//     } catch(e) {
+//       res.json({ ok: false, error: e.message });
+//     }
+//   }
+//
+// Install: npm install @neondatabase/serverless
+// This keeps a warm WebSocket connection and cuts cold-start CU overhead by ~10x.
 async function sql(query, params = []) {
   const res = await fetch("/api/sql", {
     method: "POST",
@@ -700,7 +718,7 @@ async function sql(query, params = []) {
 // DB HELPERS
 // ════════════════════════════════════════════════════════
 async function dbGetUser(u) {
-  const r = await sql('SELECT * FROM wf_users WHERE username=$1 LIMIT 1', [u]);
+  const r = await sql('SELECT username,password,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass FROM wf_users WHERE username=$1 LIMIT 1', [u]);
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
@@ -715,7 +733,7 @@ async function dbSetUser(u, d) {
     [u, ...vals]
   );
 }
-async function dbListUsers() { return sql('SELECT * FROM wf_users'); }
+async function dbListUsers() { return sql('SELECT username,password,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass FROM wf_users'); }
 
 let _usersCache = null;
 function _clearUsersCache() { _usersCache = null; }
@@ -736,7 +754,7 @@ async function dbDelAllWorkers() {
 }
 
 async function dbGetPhone(norm) {
-  const r = await sql('SELECT * FROM wf_phones WHERE norm=$1 LIMIT 1', [norm]);
+  const r = await sql('SELECT norm,phone,label,rate,used,added_at FROM wf_phones WHERE norm=$1 LIMIT 1', [norm]);
   return r[0] || null;
 }
 async function dbSetPhone(norm, d) {
@@ -750,11 +768,11 @@ async function dbSetPhone(norm, d) {
     [norm, ...vals]
   );
 }
-async function dbListPhones() { return sql('SELECT * FROM wf_phones ORDER BY added_at DESC'); }
+async function dbListPhones() { return sql('SELECT norm,phone,label,rate,used,added_at FROM wf_phones ORDER BY added_at DESC'); }
 async function dbDelPhone(norm) { await sql('DELETE FROM wf_phones WHERE norm=$1', [norm]); }
 
 async function dbGetConfig() {
-  const r = await sql('SELECT * FROM wf_config WHERE id=1 LIMIT 1');
+  const r = await sql('SELECT id,std_hours,ot_rate,auto_end_time FROM wf_config WHERE id=1 LIMIT 1');
   return r[0] || { std_hours:8, ot_rate:1.5, auto_end_time:null };
 }
 async function dbSetConfig(d) {
@@ -769,13 +787,13 @@ async function dbSetConfig(d) {
   );
 }
 
-async function dbListShifts() { return sql('SELECT * FROM wf_shifts ORDER BY start_time DESC'); }
+async function dbListShifts() { return sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts ORDER BY start_time DESC'); }
 async function dbListShiftsMonth(year, month) {
   const prefix = `${year}-${String(month).padStart(2,'0')}`;
-  return sql('SELECT * FROM wf_shifts WHERE date LIKE $1 ORDER BY start_time DESC', [prefix+'%']);
+  return sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE date LIKE $1 ORDER BY start_time DESC', [prefix+'%']);
 }
 async function dbListShiftsToday() {
-  return sql('SELECT * FROM wf_shifts WHERE date=$1 ORDER BY start_time DESC', [todayStr()]);
+  return sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE date=$1 ORDER BY start_time DESC', [todayStr()]);
 }
 async function dbSetShift(id, d) {
   const keys = Object.keys(d), vals = Object.values(d);
@@ -790,7 +808,7 @@ async function dbSetShift(id, d) {
 }
 async function dbDelAllShifts() { await sql('DELETE FROM wf_shifts'); }
 
-async function dbListLocations() { return sql('SELECT * FROM wf_locations ORDER BY added_at ASC'); }
+async function dbListLocations() { return sql('SELECT id,name,lat,lng,map_link,added_at,is_open,end_time,start_time,break_minutes FROM wf_locations ORDER BY added_at ASC'); }
 async function dbSetLocation(id, d) {
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(',');
@@ -804,7 +822,7 @@ async function dbSetLocation(id, d) {
 }
 async function dbDelLocation(id) { await sql('DELETE FROM wf_locations WHERE id=$1', [id]); }
 
-async function dbListAssignments() { return sql('SELECT * FROM wf_assignments'); }
+async function dbListAssignments() { return sql('SELECT worker_username,loc_id FROM wf_assignments'); }
 async function dbSetAssignment(worker_username, loc_id) {
   await sql(
     `INSERT INTO wf_assignments(worker_username, loc_id) VALUES($1,$2)
@@ -863,21 +881,21 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
     `);
 
-    await Promise.allSettled([
-      sql("ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL"),
-      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT"),
-      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0"),
-      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT"),
-      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL"),
-      sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0"),
-      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true"),
-      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL"),
-      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL"),
-      sql("ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0"),
-      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT"),
-      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false"),
-      sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false"),
-    ]);
+    await sql(`
+      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;
+      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;
+      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;
+      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT;
+      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL;
+      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;
+      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true;
+      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL;
+      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL;
+      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;
+      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT;
+      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false;
+      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false;
+    `);
 
     localStorage.setItem('wf_schema', SCHEMA_VERSION);
   }
@@ -891,7 +909,7 @@ async function initDB() {
   if (!alreadyInit) {
     (async () => {
       try {
-        const oldAssigns = await sql('SELECT * FROM wf_assignments');
+        const oldAssigns = await sql('SELECT worker_username,loc_id FROM wf_assignments');
         for (const a of oldAssigns) {
           const key = a.worker_username;
           if (!/^\d+$/.test(key)) {
@@ -2114,8 +2132,17 @@ async function renderManagerScreen(){
     </div>
     <div id="mpanel"></div>
   </div>`;
-  loadSummary();
-  mTab('live');
+  // OPT-2: fetch once, share between summary cards and live tab — no double queries
+  const _initNow = new Date();
+  const [_initUsers, _initShifts, _initLocs, _initMonth] = await Promise.all([
+    dbListUsersCached(),
+    dbListShiftsToday(),
+    dbListLocations(),
+    dbListShiftsMonth(_initNow.getFullYear(), _initNow.getMonth()+1)
+  ]);
+  _renderSummaryCards(_initUsers, _initShifts, _initLocs, _initMonth);
+  const _initPanel = $('mpanel');
+  if(_initPanel) _initPanel.innerHTML = await buildLive(false, {allUsers:_initUsers, shifts:_initShifts});
 }
 
 window.mTab=async tab=>{
@@ -2131,16 +2158,12 @@ window.mTab=async tab=>{
   if(tab==='settings')  panel.innerHTML=await buildSettings();
 };
 
-async function loadSummary(){
-  const el=$('scards');if(!el)return;
-  el.innerHTML=`<div class="info-card" style="opacity:.4"><div class="spin" style="width:14px;height:14px;margin:4px auto"></div></div>`;
-  const [allUsers,shifts,locations]=await Promise.all([dbListUsersCached(),dbListShiftsToday(),dbListLocations()]);
+// shared summary card renderer — accepts pre-fetched data, no extra queries
+function _renderSummaryCards(allUsers, shifts, locations, monthShifts) {
+  const el=$('scards'); if(!el)return;
   const users=allUsers.filter(u=>u.role==='worker');
-  const now2=new Date();
-  const monthShiftsForSal=await dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1);
-  const sal=monthShiftsForSal.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
-  if(!$('scards'))return;
-  $('scards').innerHTML=[
+  const sal=monthShifts.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
+  el.innerHTML=[
     [T.workers,users.length,'#f0c040'],
     [T.working,shifts.filter(s=>s.status==='working').length,'#2ecc71'],
     [T.absent,users.filter(w=>!shifts.find(s=>s.worker===w.username)).length,'#e74c3c'],
@@ -2149,11 +2172,23 @@ async function loadSummary(){
   ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
 }
 
+async function loadSummary(){
+  const el=$('scards');if(!el)return;
+  el.innerHTML=`<div class="info-card" style="opacity:.4"><div class="spin" style="width:14px;height:14px;margin:4px auto"></div></div>`;
+  const now2=new Date();
+  const [allUsers,shifts,locations,monthShifts]=await Promise.all([
+    dbListUsersCached(),dbListShiftsToday(),dbListLocations(),
+    dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1)
+  ]);
+  _renderSummaryCards(allUsers,shifts,locations,monthShifts);
+}
+
 window.doRefresh = async () => {
   const btn = $('refresh-btn');
   if(btn){ btn.disabled=true; btn.textContent='↺ …'; }
   _clearUsersCache();
   _liveCache = null;
+  // OPT-5: fetch once, update BOTH summary cards and live panel — no wasted queries
   const now2 = new Date();
   const [allUsers, shifts, locations, monthShifts] = await Promise.all([
     dbListUsers(),
@@ -2162,16 +2197,7 @@ window.doRefresh = async () => {
     dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1)
   ]);
   _usersCache = allUsers;
-  const users = allUsers.filter(u=>u.role==='worker');
-  const sal = monthShifts.filter(s=>s.status==='completed').reduce((a,s)=>a+(parseFloat(s.earnings)||0),0).toFixed(2);
-  const el=$('scards');
-  if(el) el.innerHTML=[
-    [T.workers,users.length,'#f0c040'],
-    [T.working,shifts.filter(s=>s.status==='working').length,'#2ecc71'],
-    [T.absent,users.filter(w=>!shifts.find(s=>s.worker===w.username)).length,'#e74c3c'],
-    ['📍 '+T.locations,locations.length,'#3498db'],
-    [T.salDue,'€'+sal,'#f0c040'],
-  ].map(([l,v,c])=>`<div class="info-card"><div class="il">${l}</div><div class="iv" style="color:${c}">${v}</div></div>`).join('');
+  _renderSummaryCards(allUsers, shifts, locations, monthShifts);
   const liveHtml = await buildLive(true, {allUsers, shifts});
   const p=$('mpanel'); if(p) p.innerHTML=liveHtml;
   if(btn){ btn.disabled=false; btn.textContent=T.refresh; }
@@ -2716,11 +2742,17 @@ window.quickAssignWorker=async(workerNorm, locId, selectEl)=>{
 async function buildSalary(per='month'){
   const workers=(await dbListUsersCached()).filter(u=>u.role==='worker');
   const now2=new Date();
-  const allS = per==='month'
-    ? await dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1)
-    : per==='today'
-      ? await dbListShiftsToday()
-      : await dbListShifts();
+  // OPT-4: scope DB query to the narrowest range possible — only 'all' does full table scan
+  let allS;
+  if(per==='today'){
+    allS = await dbListShiftsToday();
+  } else if(per==='week' || per==='month'){
+    // both week and month fit within the current month — fetch month, filter in JS
+    allS = await dbListShiftsMonth(now2.getFullYear(), now2.getMonth()+1);
+  } else {
+    // 'all' — full scan, user explicitly asked for all-time data
+    allS = await dbListShifts();
+  }
   const locNames=[...new Set(allS.map(s=>s.location_name).filter(Boolean))].sort();
   return`<div style="margin-bottom:14px">
     <select class="btn-dark" style="padding:8px 12px;border-radius:3px;font-family:monospace;font-size:11px;width:auto" id="sp" onchange="reSalary()">
@@ -3159,7 +3191,7 @@ window.openAttendanceEdit = async (shiftId, workerName) => {
   const nameEl = $('att-worker-name');
   if(nameEl) nameEl.textContent = `Worker: ${workerName} · Shift ID: ${shiftId}`;
   try {
-    const rows = await sql('SELECT * FROM wf_shifts WHERE id=$1 LIMIT 1', [shiftId]);
+    const rows = await sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE id=$1 LIMIT 1', [shiftId]);
     const shift = rows[0];
     if(!shift){ toast('Shift not found','error'); return; }
     _attendanceEditHourlyRate = parseFloat(shift.hourly_rate)||0;
@@ -3192,7 +3224,7 @@ window.saveAttendanceEdit = async () => {
   const endStr = val('att-end').trim();
   if(!startStr){ showErr(T.attCheckinRequired); return; }
   try {
-    const rows = await sql('SELECT * FROM wf_shifts WHERE id=$1 LIMIT 1', [_attendanceEditShiftId]);
+    const rows = await sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE id=$1 LIMIT 1', [_attendanceEditShiftId]);
     const shift = rows[0];
     if(!shift){ showErr(lang==='ar'?'الوردية غير موجودة.':lang==='it'?'Turno non trovato.':'Shift not found.'); return; }
     const origDate = shift.date || todayStr();
