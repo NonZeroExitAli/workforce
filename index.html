@@ -1740,19 +1740,19 @@ window.doPhoneLogin=async()=>{
         const allAssignments=await dbListAssignments();
         const myAssignments=allAssignments.filter(a=>a.worker_username===norm||a.worker_username===workerUser.username);
         if(myAssignments.length===0){
-          showErr('⛔ You are not assigned to any site. Contact your manager.');return;
+          showErr(lang==='ar'?'⛔ لم يتم تعيينك في أي موقع. تواصل مع المدير.':'⛔ Non sei assegnato ad alcun cantiere. Contatta il tuo manager.');return;
         }
         const candidateLocs=locsWithDist.filter(l=>myAssignments.some(a=>a.loc_id===l.id));
         const nearbyCandidate = candidateLocs
           .filter(l=>l.dist<=GPS_RADIUS)
           .sort((a,b)=>a.dist-b.dist)[0];
         if(!nearbyCandidate){
-          showErr(`⛔ You are away from your work site. Please go to your assigned location to sign in.`);
+          showErr(lang==='ar'?'⛔ أنت بعيد عن موقع عملك. يرجى التوجه إلى موقعك المعيّن لتسجيل الدخول.':'⛔ Sei lontano dal tuo cantiere. Recati nella tua sede assegnata per accedere.');
           return;
         }
         const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== 'false';
         if(!isOpen){
-          showErr(`⛔ ${nearbyCandidate.name} is currently closed. Contact your manager.`);return;
+          showErr(lang==='ar'?`⛔ ${nearbyCandidate.name} مغلق حالياً. تواصل مع المدير.`:`⛔ ${nearbyCandidate.name} è attualmente chiuso. Contatta il tuo manager.`);return;
         }
         S.gps='ok';
         S.gpsDist=nearbyCandidate.dist;
@@ -1760,15 +1760,13 @@ window.doPhoneLogin=async()=>{
       } catch(gpsErr){
         const code=gpsErr.code;
         if(code===1){
-          const isAr=lang==='ar', isIt=lang==='it';
+          const isAr=lang==='ar';
           const msg=isAr
             ?'📍 تم رفض إذن الموقع. كيفية الإصلاح: افتح إعدادات الهاتف ← ابحث عن المتصفح (Chrome/Safari) ← الموقع ← اسمح دائمًا ← ثم أعد تحميل الصفحة وحاول مجددًا.'
-            :isIt
-            ?'📍 Permesso posizione negato. Come risolvere: Apri Impostazioni ← Trova il browser (Chrome/Safari) ← Posizione → Sempre ← Ricarica e riprova.'
-            :'📍 Location permission denied. How to fix: Open phone Settings → find your browser (Chrome/Safari) → Location → Allow Always → then reload this page and try again.';
+            :'📍 Permesso posizione negato. Come risolvere: Apri Impostazioni ← Trova il browser (Chrome/Safari) ← Posizione → Sempre ← Ricarica e riprova.';
           showErr(msg);
         }
-        else if(code===3) showErr(lang==='ar'?'📍 انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا.':lang==='it'?'📍 Timeout posizione. Assicurati che il GPS sia attivo e riprova.':'📍 Location timed out. Make sure GPS is enabled and try again.');
+        else if(code===3) showErr(lang==='ar'?'📍 انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا.':'📍 Timeout posizione. Assicurati che il GPS sia attivo e riprova.');
         else showErr(T.gpsLoginErr);
         return;
       }
@@ -1963,9 +1961,7 @@ window.wAct=async action=>{
         if(!freshUser?.can_restart){
           const alreadyDoneMsg = lang==='ar'
             ? '⚠ لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
-            : lang==='it'
-            ? "⚠ Hai già completato un turno oggi. Se c'è un problema contatta il manager."
-            : '⚠ You already finished a shift today. If there is a problem contact your manager.';
+            : "⚠ Hai già completato un turno oggi. Se c'è un problema contatta il manager.";
           toast(alreadyDoneMsg,'warning');
           await renderWorkerScreen();return;
         }
@@ -2001,7 +1997,7 @@ window.wAct=async action=>{
         const nowMins=nowD.getHours()*60+nowD.getMinutes();
         const endMins=eh*60+em;
         if(nowMins>=endMins){
-          toast(`⛔ Shifts for today have ended at ${S.autoEndTime}. See you tomorrow!`,'error');
+          toast(lang==='ar'?`⛔ انتهت ورديات اليوم في ${S.autoEndTime}. إلى اللقاء غداً!`:`⛔ I turni di oggi sono terminati alle ${S.autoEndTime}. A domani!`,'error');
           await renderWorkerScreen();return;
         }
       }
