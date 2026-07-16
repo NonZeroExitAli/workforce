@@ -2100,6 +2100,8 @@ const TR = {
     noLocations:'No locations yet.',
     siteOpen:' OPEN',siteClosed:' CLOSED',
     siteNowOpen:' Site is now OPEN',siteNowClosed:' Site CLOSED',
+    archiveSite:' Archive',showSite:' Show',archives:'Archives',
+    noArchivedSites:'No archived sites.',siteArchived:' Site archived',siteRestored:' Site restored',
     workerCol:'Worker',phoneCol:'Phone',rateCol:'Rate',
     totalHrsCol:'Total Hrs',totalSalaryCol:'TOTAL SALARY',shiftsCol:'Shifts',
     lastSite:'Last Site',deviceCol:'Device',actionsCol:'Actions',
@@ -2280,6 +2282,8 @@ const TR = {
     noLocations:'Nessuna sede ancora.',
     siteOpen:' APERTA',siteClosed:' CHIUSA',
     siteNowOpen:' Sede ora APERTA',siteNowClosed:' Sede CHIUSA',
+    archiveSite:' Archivia',showSite:' Mostra',archives:'Archivio',
+    noArchivedSites:'Nessuna sede archiviata.',siteArchived:' Sede archiviata',siteRestored:' Sede ripristinata',
     workerCol:'Lavoratore',phoneCol:'Telefono',rateCol:'Tariffa',
     totalHrsCol:'Ore Totali',totalSalaryCol:'STIPENDIO TOTALE',shiftsCol:'Turni',
     lastSite:'Ultima Sede',deviceCol:'Dispositivo',actionsCol:'Azioni',
@@ -2459,6 +2463,8 @@ const TR = {
     noLocations:'لا توجد مواقع بعد.',
     siteOpen:' مفتوح',siteClosed:' مغلق',
     siteNowOpen:' الموقع مفتوح الآن',siteNowClosed:' الموقع مغلق',
+    archiveSite:' أرشفة',showSite:' إظهار',archives:'الأرشيف',
+    noArchivedSites:'لا توجد مواقع مؤرشفة.',siteArchived:' تم أرشفة الموقع',siteRestored:' تمت استعادة الموقع',
     workerCol:'الموظف',phoneCol:'الهاتف',rateCol:'الأجر',
     totalHrsCol:'إجمالي الساعات',totalSalaryCol:'إجمالي الراتب',shiftsCol:'ورديات',
     lastSite:'آخر موقع',deviceCol:'الجهاز',actionsCol:'الإجراءات',
@@ -3950,25 +3956,20 @@ window.flyToLoc=(id)=>{
 };
 
 async function buildLocations(){
-  const [locs, _locAssigns, _locUsers, _spentRows]=await Promise.all([dbListLocationsCached(), dbListAssignmentsCached(), dbListUsersCached(), dbSpentByLocation()]);
+  const [allLocs, _locAssigns, _locUsers, _spentRows]=await Promise.all([dbListLocationsCached(), dbListAssignmentsCached(), dbListUsersCached(), dbSpentByLocation()]);
+  // Archived sites are hidden from the main list/map — they live under the Archives view.
+  const locs = allLocs.filter(l=>l.is_open!==false && l.is_open!=='false');
+  const archivedN = allLocs.length - locs.length;
   window.__locData={locs,assignments:_locAssigns,users:_locUsers};
   const _spentByLoc={};
   _spentRows.forEach(r=>{ if(r.location_id!=null) _spentByLoc[r.location_id]=parseFloat(r.spent)||0; });
   const _LL=_locLabels();
-  const _openN=locs.filter(l=>l.is_open!==false&&l.is_open!=='false').length;
-  const _closedN=locs.length-_openN;
   const _mapCard=`
   <div class="panel-card loc-map-card">
     <div class="pc-title"> ${T.locations} <span style="color:var(--muted);font-weight:400">(${locs.length})</span></div>
     <div class="loc-toolbar">
       <div class="loc-search"><input id="loc-map-search" type="text" placeholder="${_LL.search}" oninput="locMapSearch()"/></div>
-      <div class="loc-filter">
-        <button class="loc-chip active" data-f="all" onclick="locMapFilter('all')">${_LL.all} (${locs.length})</button>
-        <button class="loc-chip" data-f="open" onclick="locMapFilter('open')"> ${_LL.open} (${_openN})</button>
-        <button class="loc-chip" data-f="closed" onclick="locMapFilter('closed')"> ${_LL.closed} (${_closedN})</button>
-      </div>
     </div>
-    <div class="loc-legend"><span class="lg-item"><span class="lg-dot open"></span>${_LL.open}</span><span class="lg-item"><span class="lg-dot closed"></span>${_LL.closed}</span></div>
     <div id="loc-map" class="loc-map"></div>
   </div>`;
   const locList=!locs.length?`<div class="empty">${T.noLocationsYet}</div>`:locs.map(l=>`
@@ -3988,6 +3989,7 @@ async function buildLocations(){
           <button class="btn-sm" style="background:rgba(232,128,28,.1);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink);padding:6px 10px;font-size:12px" onclick="flyToLoc('${esc(l.id)}')" title="${_LL.showOnMap}">${_LL.mapBtn}</button>
           <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--orange);padding:6px 10px;font-size:12px" onclick="openSiteDetail('${esc(l.id)}')" title="${T.siteDetail}">${_LL.editBtn}</button>
           <button class="btn-sm" style="background:${(l.finished===true||l.finished==='true')?'var(--green-soft)':'var(--red-soft)'};border:1px solid ${(l.finished===true||l.finished==='true')?'rgba(46,160,67,.35)':'rgba(231,76,60,.3)'};color:${(l.finished===true||l.finished==='true')?'var(--green)':'var(--red)'};padding:6px 10px;font-size:12px" onclick="siteToggleFinished('${esc(l.id)}',${!(l.finished===true||l.finished==='true')})">${(l.finished===true||l.finished==='true')?PL().markActive:PL().markFinished}</button>
+          <button class="btn-sm" style="background:rgba(232,128,28,.1);border:1px solid rgba(232,128,28,.3);color:var(--orange);padding:6px 10px;font-size:12px" onclick="archiveLocationFromList('${esc(l.id)}')">${T.archiveSite}</button>
           <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="padding:6px 10px;font-size:14px">✕</button>
         </div>
       </div>
@@ -4023,12 +4025,59 @@ async function buildLocations(){
   return _mapCard + `
     <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px">
       <div class="st" style="margin-bottom:0">${T.registeredSites(locs.length)}</div>
-      <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openAddSite()">+ ${PL().addSite}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:9px 16px" onclick="openArchivedLocations()"> ${T.archives} (${archivedN})</button>
+        <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openAddSite()">+ ${PL().addSite}</button>
+      </div>
     </div>
     <div class="sc" style="margin-top:14px">
       <div>${locList}</div>
     </div>`;
 }
+
+// ── Archived sites: hidden from the main list/map/assign board until restored ──
+async function buildArchivedLocations(){
+  const allLocs = await dbListLocationsCached();
+  const archived = allLocs.filter(l=>l.is_open===false || l.is_open==='false');
+  const rows = !archived.length
+    ? `<div class="empty">${T.noArchivedSites}</div>`
+    : archived.map(l=>`
+      <div class="phone-row" data-search="${disp(l.name||'')}">
+        <div style="display:flex;align-items:center;gap:12px;width:100%">
+          ${_avatarHtml(l.name, 44)}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:16px;color:var(--text)">${disp(l.name)}</div>
+            <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:2px">${parseFloat(l.lat).toFixed(6)}, ${parseFloat(l.lng).toFixed(6)}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn-sm" style="background:var(--green-soft);border:1px solid rgba(46,160,67,.35);color:var(--green);padding:6px 10px;font-size:12px" onclick="restoreLocationFromArchive('${esc(l.id)}')">${T.showSite}</button>
+            <button class="btn-sm btn-red" onclick="delLocation('${esc(l.id)}')" style="padding:6px 10px;font-size:14px">✕</button>
+          </div>
+        </div>
+      </div>`).join('');
+  return `
+    <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div class="st" style="margin-bottom:0"> ${T.archives} (${archived.length})</div>
+      <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 16px" onclick="mTab('locations')">${T.backToList}</button>
+    </div>
+    <div class="sc" style="margin-top:14px"><div>${rows}</div></div>`;
+}
+window.openArchivedLocations = async ()=>{
+  const panel=$('mpanel'); if(!panel) return;
+  toggleSidebar(false);
+  const titleEl=$('mgrPageTitle'); if(titleEl){ const L=mgrNav(); titleEl.innerHTML=`${T.archives}<small>${L.sub_locations}</small>`; }
+  panel.innerHTML = _sklPanel();
+  try{ panel.innerHTML = await buildArchivedLocations(); }
+  catch(e){ panel.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`; }
+};
+window.archiveLocationFromList = async (locId)=>{
+  try{ await dbSetLocationOpen(locId, false); toast(T.siteArchived,'warning'); await mTab('locations'); }
+  catch(e){ toast('Error: '+e.message,'error'); }
+};
+window.restoreLocationFromArchive = async (locId)=>{
+  try{ await dbSetLocationOpen(locId, true); toast(T.siteRestored,'success'); await openArchivedLocations(); }
+  catch(e){ toast('Error: '+e.message,'error'); }
+};
 
 function _siteFormHtml(){
   return `
@@ -4230,22 +4279,24 @@ async function buildAssign(){
     ? unassigned.map(p=>workerChip(p,null)).join('')
     : `<div class="assign-empty-drop">${T.allAssigned}</div>`;
 
-  const locCols = !locs.length
+  // Archived sites don't need team assignment — keep the board to active sites only.
+  const activeLocs = locs.filter(l=>l.is_open!==false && l.is_open!=='false');
+  const locCols = !activeLocs.length
     ? `<div style="color:var(--muted);font-family:var(--font);font-size:11px;padding:20px">${T.noLocations}</div>`
-    : locs.map(l=>{
+    : activeLocs.map(l=>{
         const isOpen = l.is_open !== false && l.is_open !== 'false';
         const assignedPhones = uniqueWorkers.filter(p=>assignedMap[p.norm]?.has(l.id));
         const chips = assignedPhones.length
           ? assignedPhones.map(p=>workerChip(p,l.id)).join('')
           : `<div class="assign-empty-drop">${T.dropHere}</div>`;
-        return `<div class="assign-col ${isOpen?'':'loc-closed'}" data-locid="${esc(l.id)}">
+        return `<div class="assign-col" data-locid="${esc(l.id)}">
           <div class="assign-col-head">
             <div>
               <div class="assign-col-title"> ${disp(l.name)}</div>
               <div style="font-family:var(--font);font-size:10px;color:var(--muted);margin-top:2px">${T.workerCount(assignedPhones.length)}</div>
             </div>
-            <button class="loc-toggle ${isOpen?'open':'closed'}" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
-              ${isOpen?T.siteOpen:T.siteClosed}
+            <button class="loc-toggle" onclick="toggleLocOpen('${esc(l.id)}',${!isOpen})">
+              ${T.archiveSite}
             </button>
           </div>
           <div class="assign-col-body" data-locid="${esc(l.id)}">${chips}</div>
@@ -4312,7 +4363,7 @@ window.removeAssignment=async(worker_username, loc_id)=>{
 };
 window.toggleLocOpen=async(loc_id, is_open)=>{
   await dbSetLocationOpen(loc_id, is_open);
-  toast(is_open?T.siteNowOpen:T.siteNowClosed, is_open?'success':'warning');
+  toast(is_open?T.siteRestored:T.siteArchived, is_open?'success':'warning');
   const panel=$('mpanel');
   if(panel){ panel.innerHTML=await buildAssign(); initAssignBoard(); }
 };
@@ -4852,7 +4903,7 @@ async function buildSiteDetail(locId){
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn-sm" style="background:rgba(232,128,28,.12);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink)" onclick="profileTab('sdset')">${PL().editDetails}</button>
-      <button class="btn-sm" style="background:${isOpen?'var(--green-soft)':'var(--red-soft)'};border:1px solid ${isOpen?'rgba(46,160,67,.35)':'rgba(231,76,60,.35)'};color:${isOpen?'var(--green)':'var(--red)'}" onclick="siteToggleOpen('${esc(locId)}',${!isOpen})">${isOpen?T.siteOpen:T.siteClosed}</button>
+      <button class="btn-sm" style="background:${isOpen?'rgba(232,128,28,.12)':'var(--green-soft)'};border:1px solid ${isOpen?'rgba(232,128,28,.3)':'rgba(46,160,67,.35)'};color:${isOpen?'var(--orange)':'var(--green)'}" onclick="siteToggleOpen('${esc(locId)}',${!isOpen})">${isOpen?T.archiveSite:T.showSite}</button>
     </div>
   </div>
 
@@ -4894,7 +4945,7 @@ async function buildSiteDetail(locId){
     <div class="panel-card">
       <div class="pc-title">${PL().status}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn-sm" style="background:${isOpen?'var(--green-soft)':'var(--red-soft)'};border:1px solid ${isOpen?'rgba(46,160,67,.35)':'rgba(231,76,60,.35)'};color:${isOpen?'var(--green)':'var(--red)'}" onclick="siteToggleOpen('${esc(locId)}',${!isOpen})">${isOpen?T.siteOpen:T.siteClosed}</button>
+        <button class="btn-sm" style="background:${isOpen?'rgba(232,128,28,.12)':'var(--green-soft)'};border:1px solid ${isOpen?'rgba(232,128,28,.3)':'rgba(46,160,67,.35)'};color:${isOpen?'var(--orange)':'var(--green)'}" onclick="siteToggleOpen('${esc(locId)}',${!isOpen})">${isOpen?T.archiveSite:T.showSite}</button>
         <button class="btn-sm" style="background:${isFinished?'var(--green-soft)':'var(--red-soft)'};border:1px solid ${isFinished?'rgba(46,160,67,.35)':'rgba(231,76,60,.3)'};color:${isFinished?'var(--green)':'var(--red)'}" onclick="siteToggleFinished('${esc(locId)}',${!isFinished})">${isFinished?PL().markActive:PL().markFinished}</button>
       </div>
     </div>
@@ -4943,7 +4994,7 @@ async function buildSiteDetail(locId){
 
 // ── Site detail action handlers ──
 window.siteToggleOpen = async (locId, isOpen)=>{
-  try{ await dbSetLocationOpen(locId, isOpen); toast(isOpen?T.siteNowOpen:T.siteNowClosed, isOpen?'success':'warning'); await openSiteDetail(locId); }
+  try{ await dbSetLocationOpen(locId, isOpen); toast(isOpen?T.siteRestored:T.siteArchived, isOpen?'success':'warning'); await openSiteDetail(locId); }
   catch(e){ toast('Error: '+e.message,'error'); }
 };
 window.siteSaveLeader = async (locId, username)=>{
