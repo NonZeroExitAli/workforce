@@ -4498,7 +4498,7 @@ async function buildWorkerProfile(username, editInfo){
           ${d?`<button class="btn-sm" style="background:rgba(232,128,28,.12);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink)" onclick="openDocFile('${esc(d.id)}',this)">${P.view}</button>`:''}
           <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text)" onclick="pickFile('${fileId}')">${d?P.slotReplace:P.slotUpload}</button>
           ${d?`<button class="btn-sm btn-red" onclick="delNamedDoc('${esc(username)}','${esc(d.id)}')">${P.delete}</button>`:''}
-          <input id="${fileId}" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onSlotPicked('${esc(username)}','${sl.k}',this,'document')"/>
+          <input id="${fileId}" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none" onchange="onSlotPicked('${esc(username)}','${sl.k}',this,'document')"/>
         </div>
       </div>`;
     }).join('');
@@ -5577,7 +5577,7 @@ window.onSlotPicked = async (username, slotKey, input, category, label)=>{
     const isPdf  = type==='application/pdf' || /\.pdf$/.test(name);
     const isImage= (type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)) && !isHeic;
     if(isHeic){ toast(P.heicUnsupported,'error'); input.value=''; return; }
-    if(isPdf || !isImage){ toast(P.imagesOnly,'error'); input.value=''; return; }
+    if(!isImage && !isPdf){ toast(P.badType,'error'); input.value=''; return; }
     if(file.size > 8*1024*1024){ toast(P.tooBigPre,'error'); input.value=''; return; }
 
     if(isImage) toast(P.compressing,'info');
@@ -5646,11 +5646,14 @@ window.onDocPicked = async (username, category, titleId, input)=>{  const P=PL()
     console.log('[upload] preparing payload… isImage=', isImage, 'isPdf=', isPdf);
     // Images are downscaled + JPEG-encoded (big saving); PDFs stored as-is.
     const dataUrl = isImage ? await _compressImage(file, 1600, 0.72) : await _fileToDataURL(file);
-    // Pre-upload storage guard against the Neon budget.
-    const used = await dbDocsStorageBytes();
-    if(used + dataUrl.length > DOC_STORAGE_SOFT){ toast(P.storageFull,'error'); input.value=''; return; }
+    // Pre-upload storage guard against the Neon budget (only relevant when files stay in Postgres).
+    if(STORAGE_PROVIDER === 'db'){
+      const used = await dbDocsStorageBytes();
+      if(used + dataUrl.length > DOC_STORAGE_SOFT){ toast(P.storageFull,'error'); input.value=''; return; }
+    }
+    const stored = await storagePut(dataUrl, { name: file.name, owner: username });
     const id='doc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-    await dbAddDoc(id, username, category, title, dataUrl, Date.now());
+    await dbAddDoc(id, username, category, title, stored, Date.now());
     toast(P.docAdded,'success');
     await openWorkerProfile(username);
     profileTab(category==='payslip'?'payslips':'docs');
@@ -5691,7 +5694,7 @@ window.openDocFile = async (id, btn)=>{
     if(!url){ toast(lang==='ar'?'تعذّر فتح الملف':'Impossibile aprire il file','error'); return; }
     // Past an await the user-gesture is gone (popup blockers), and file:// pages
     // refuse data: navigation — so always offer a download fallback.
-    const isPdf = d.file_url.indexOf('application/pdf') >= 0;
+    const isPdf = d.file_url.indexOf('application/pdf') >= 0 || /\.pdf$/i.test(d.file_url);
     const w = window.open(url, '_blank', 'noopener');
     if(!w || w.closed || typeof w.closed==='undefined'){
       const a=document.createElement('a');
@@ -5997,7 +6000,7 @@ async function buildPropertyProfile(id, edit){
         ${contract?`<button class="btn-sm" style="background:rgba(232,128,28,.12);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink)" onclick="openDocFile('${esc(contract.id)}',this)">${P.view}</button>`:''}
         <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text)" onclick="pickFile('${fileId}')">${contract?P.slotReplace:P.slotUpload}</button>
         ${contract?`<button class="btn-sm btn-red" onclick="delPropertyContract('${esc(id)}','${esc(contract.id)}')">${P.delete}</button>`:''}
-        <input id="${fileId}" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onSlotPicked('${esc(PROP_OWNER(id))}','${PROP_CONTRACT_SLOT}',this,'property','${esc(P.rentContract)}')"/>
+        <input id="${fileId}" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none" onchange="onSlotPicked('${esc(PROP_OWNER(id))}','${PROP_CONTRACT_SLOT}',this,'property','${esc(P.rentContract)}')"/>
       </div>
     </div>`;
 
