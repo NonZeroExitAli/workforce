@@ -1684,9 +1684,13 @@ async function _runMigrationBatch(block){
 }
 
 async function initDB() {
-  const alreadyInit = localStorage.getItem('wf_schema') === SCHEMA_VERSION;
-
-  if (!alreadyInit) {
+  // Every statement below is IF NOT EXISTS / idempotent, so it's always safe to
+  // re-run on every page load. This used to be gated behind a localStorage flag
+  // to skip re-running it on repeat visits, but a stale or incorrectly-set flag
+  // meant migrations could silently never run at all on some browsers — the
+  // reliability of "always try" outweighs the minor cost of a few dozen no-op
+  // checks per load.
+  {
     let migrationFailures = 0;
     migrationFailures += await _runMigrationBatch(`
       CREATE TABLE IF NOT EXISTS wf_users(
@@ -1815,10 +1819,8 @@ async function initDB() {
       );
     `);
 
-    if (migrationFailures === 0) {
-      localStorage.setItem('wf_schema', SCHEMA_VERSION);
-    } else {
-      console.warn('[migration] schema not fully applied ('+migrationFailures+' statement(s) failed) — will retry on next load.');
+    if (migrationFailures > 0) {
+      console.warn('[migration] '+migrationFailures+' statement(s) failed this run — will retry next load.');
     }
   }
 
@@ -1828,7 +1830,10 @@ async function initDB() {
     [MGR_DEFAULT_PASS]
   );
 
-  if (!alreadyInit) {
+  {
+    // Self-limiting: only rows with a non-numeric worker_username ever match,
+    // so once they're fixed this becomes a cheap no-op on every later run —
+    // safe to run unconditionally rather than gate behind a flag.
     (async () => {
       try {
         const oldAssigns = await sql('SELECT worker_username,loc_id FROM wf_assignments');
