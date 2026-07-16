@@ -1675,17 +1675,20 @@ async function dbDelVehicle(id) {
 // one bad line can only skip itself, never take down the rest of the schema.
 async function _runMigrationBatch(block){
   const stmts = block.split(';').map(s => s.trim()).filter(Boolean);
+  let failures = 0;
   for (const stmt of stmts) {
     try { await sql(stmt); }
-    catch (e) { console.warn('[migration] statement failed (continuing):', stmt.slice(0, 90), '—', e.message); }
+    catch (e) { failures++; console.warn('[migration] statement failed (continuing):', stmt.slice(0, 90), '—', e.message); }
   }
+  return failures;
 }
 
 async function initDB() {
   const alreadyInit = localStorage.getItem('wf_schema') === SCHEMA_VERSION;
 
   if (!alreadyInit) {
-    await _runMigrationBatch(`
+    let migrationFailures = 0;
+    migrationFailures += await _runMigrationBatch(`
       CREATE TABLE IF NOT EXISTS wf_users(
         username TEXT PRIMARY KEY, password TEXT, role TEXT,
         phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT
@@ -1747,7 +1750,7 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);
     `);
 
-    await _runMigrationBatch(`
+    migrationFailures += await _runMigrationBatch(`
       ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;
       ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;
       ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;
@@ -1812,7 +1815,11 @@ async function initDB() {
       );
     `);
 
-    localStorage.setItem('wf_schema', SCHEMA_VERSION);
+    if (migrationFailures === 0) {
+      localStorage.setItem('wf_schema', SCHEMA_VERSION);
+    } else {
+      console.warn('[migration] schema not fully applied ('+migrationFailures+' statement(s) failed) — will retry on next load.');
+    }
   }
 
   await sql(
