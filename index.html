@@ -1258,20 +1258,23 @@ async function dbDelUser(username) {
 // Completely remove a worker and everything attached to him, and unlink him
 // from anything else that references him (vehicles, site leadership).
 async function dbPurgeWorker(username, norm) {
-  // 1) his own records
-  await sql('DELETE FROM wf_documents WHERE worker_username=$1', [username]);   // frees stored files
-  await sql('DELETE FROM wf_career    WHERE worker_username=$1', [username]);
-  await sql('DELETE FROM wf_shifts    WHERE worker=$1',          [username]);
-  // 2) site assignments (keyed by phone-norm, and historically by username)
-  await sql('DELETE FROM wf_assignments WHERE worker_username=$1', [username]);
-  if (norm) await sql('DELETE FROM wf_assignments WHERE worker_username=$1', [norm]);
-  // 3) unlink from anything that points at him
-  await sql('UPDATE wf_vehicles   SET assigned_user=NULL        WHERE assigned_user=$1',        [username]);
-  await sql('UPDATE wf_locations  SET leader_username=NULL      WHERE leader_username=$1',      [username]);
-  await sql('UPDATE wf_properties SET responsible_username=NULL WHERE responsible_username=$1', [username]);
-  // 4) the account itself + his approved phone entry
-  await sql('DELETE FROM wf_users  WHERE username=$1', [username]);
-  if (norm) await sql('DELETE FROM wf_phones WHERE norm=$1', [norm]);
+  // All of these touch different tables and none depends on another's result,
+  // so run them together instead of paying for 8-10 sequential round trips.
+  const jobs = [
+    sql('DELETE FROM wf_documents WHERE worker_username=$1', [username]),   // frees stored files
+    sql('DELETE FROM wf_career    WHERE worker_username=$1', [username]),
+    sql('DELETE FROM wf_shifts    WHERE worker=$1',          [username]),
+    sql('DELETE FROM wf_assignments WHERE worker_username=$1', [username]),
+    sql('UPDATE wf_vehicles   SET assigned_user=NULL        WHERE assigned_user=$1',        [username]),
+    sql('UPDATE wf_locations  SET leader_username=NULL      WHERE leader_username=$1',      [username]),
+    sql('UPDATE wf_properties SET responsible_username=NULL WHERE responsible_username=$1', [username]),
+    sql('DELETE FROM wf_users  WHERE username=$1', [username]),
+  ];
+  if (norm) {
+    jobs.push(sql('DELETE FROM wf_assignments WHERE worker_username=$1', [norm]));
+    jobs.push(sql('DELETE FROM wf_phones WHERE norm=$1', [norm]));
+  }
+  await Promise.all(jobs);
   _clearAllCaches();
   _clearPhonesCache();
   _clearPropsCache();
@@ -4913,6 +4916,28 @@ async function buildSiteDetail(locId){
         <button class="btn-sm" style="background:rgba(180,100,0,.12);border:1px solid rgba(180,100,0,.3);color:#c07800" onclick="siteSaveBreak('${esc(locId)}')">${T.save}</button>
       </div>
     </div>
+    <div class="panel-card">
+      <div class="pc-title">${T.coordinates}</div>
+      <div style="margin-bottom:10px">
+        <label class="lbl" style="color:var(--muted)">${T.pasteMapLink}</label>
+        <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">
+          <input id="sd-ml" placeholder="https://maps.google.com/maps?q=45.46,9.19" style="flex:1" value="${esc(loc.map_link||'')}" oninput="onSiteLinkChange()"/>
+          <button class="btn btn-dark" style="width:auto;padding:8px 14px;font-size:11px;flex-shrink:0;border-color:var(--brand-ink)55;color:var(--brand-ink)" onclick="extractSiteCoords()">${T.getCoords}</button>
+        </div>
+        <div id="sd-ml-status" class="hint" style="margin-top:5px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
+        <div style="flex:1;height:1px;background:var(--border2)"></div><span style="font-family:var(--font);font-size:10px;color:var(--muted)">${T.orManual}</span><div style="flex:1;height:1px;background:var(--border2)"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label class="lbl" style="color:var(--muted)">${T.latitude}</label><input type="number" id="sd-lat" step="0.000001" value="${loc.lat!=null?esc(String(loc.lat)):''}"/></div>
+        <div><label class="lbl" style="color:var(--muted)">${T.longitude}</label><input type="number" id="sd-lng" step="0.000001" value="${loc.lng!=null?esc(String(loc.lng)):''}"/></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text)" onclick="useMyLocForSiteDetail()">${T.useMyLoc}</button>
+        <button class="btn-sm" style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.3);color:var(--brand-ink)" onclick="siteSaveCoords('${esc(locId)}')">${T.save}</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -4949,6 +4974,36 @@ window.siteSaveBreak = async (locId)=>{
   const brk=parseInt(val('sd-brk'))||0;
   try{ await sql('UPDATE wf_locations SET break_minutes=$2 WHERE id=$1',[locId, brk]); toast((brk>0?(T.breakLbl||'Break')+': '+brk+' min':(T.breakNone||'No break')),'success'); await openSiteDetail(locId); }
   catch(e){ toast('Error: '+e.message,'error'); }
+};
+// ── Edit an existing site's map link / coordinates (Dati / Settings tab) ──
+window.onSiteLinkChange=()=>{
+  const url=val('sd-ml').trim(); const st=$('sd-ml-status'); if(!st)return;
+  if(!url){st.textContent='';return;}
+  const c=extractCoordsFromMapsLink(url);
+  if(c){st.textContent=T.linkReady;st.style.color='#e8801c';}
+  else if(/goo\.gl|maps\.app/.test(url)){st.innerHTML=T.shortUrl;st.style.color='#e8801c';}
+  else{st.textContent=T.pasteGmap;st.style.color='var(--red)';}
+};
+window.extractSiteCoords=()=>{
+  const url=val('sd-ml').trim();
+  const c=extractCoordsFromMapsLink(url);
+  if(c){$('sd-lat').value=c.lat.toFixed(6);$('sd-lng').value=c.lng.toFixed(6);const st=$('sd-ml-status');if(st){st.textContent=`✓ ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;st.style.color='#e8801c';}toast(T.coordsExtracted,'success');}
+  else toast(T.noCoordsInLink,'error');
+};
+window.useMyLocForSiteDetail=async()=>{
+  try{const pos=await geoPos();$('sd-lat').value=pos.coords.latitude.toFixed(6);$('sd-lng').value=pos.coords.longitude.toFixed(6);toast(T.locCaptured,'success');}
+  catch{toast(T.couldNotGetLoc,'error');}
+};
+window.siteSaveCoords=async(locId)=>{
+  const lat=parseFloat($('sd-lat')?.value);
+  const lng=parseFloat($('sd-lng')?.value);
+  const ml=val('sd-ml').trim();
+  if(isNaN(lat)||isNaN(lng)){ toast(T.enterValidCoords,'error'); return; }
+  try{
+    await dbSetLocation(locId, {lat, lng, map_link: ml||null});
+    toast(PL().detailsSaved,'success');
+    await openSiteDetail(locId);
+  }catch(e){ toast('Error: '+e.message,'error'); }
 };
 window.siteToggleFinished = async (locId, finished)=>{
   try{
@@ -5610,14 +5665,17 @@ window.onSlotPicked = async (username, slotKey, input, category, label)=>{
     const slot = DOC_SLOTS.find(s=>s.k===slotKey);
     const title = label || (slot ? _slotLabel(slot) : slotKey);
     const newId = 'doc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-    // Insert FIRST, then remove the previous file(s) — never lose the old one.
-    await sql('INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES($1,$2,$3,$4,$5,$6,$7)',
-      [newId, username, slotKey, stored, Date.now(), title, cat]);
-    if(cat==='payslip'){
-      await sql("DELETE FROM wf_documents WHERE worker_username=$1 AND category='payslip' AND id<>$2", [username, newId]);
-    }else{
-      await sql('DELETE FROM wf_documents WHERE worker_username=$1 AND doc_type=$2 AND id<>$3', [username, slotKey, newId]);
-    }
+    // The insert and the old-file cleanup don't depend on each other's result —
+    // run them together instead of waiting on one before starting the next.
+    // (The new row lands first in practice since it's the simpler statement,
+    // so there's no window where a viewer sees zero docs for this slot.)
+    await Promise.all([
+      sql('INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES($1,$2,$3,$4,$5,$6,$7)',
+        [newId, username, slotKey, stored, Date.now(), title, cat]),
+      cat==='payslip'
+        ? sql("DELETE FROM wf_documents WHERE worker_username=$1 AND category='payslip' AND id<>$2", [username, newId])
+        : sql('DELETE FROM wf_documents WHERE worker_username=$1 AND doc_type=$2 AND id<>$3', [username, slotKey, newId])
+    ]);
     console.log('[upload] saved OK:', newId);
     toast(P.docAdded,'success');
     if(cat==='property'){
@@ -6300,15 +6358,20 @@ window.updRate=async(norm,rate)=>{
 window.clearPhones=async()=>{
   if(!confirm(T.confirmClear))return;
   try{
-    // purge everything belonging to workers, and unlink them from vehicles/sites
-    await sql("DELETE FROM wf_documents WHERE worker_username IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql("DELETE FROM wf_career    WHERE worker_username IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql("DELETE FROM wf_shifts    WHERE worker         IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql("UPDATE wf_vehicles  SET assigned_user=NULL   WHERE assigned_user   IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql("UPDATE wf_locations SET leader_username=NULL WHERE leader_username IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql("UPDATE wf_properties SET responsible_username=NULL WHERE responsible_username IN (SELECT username FROM wf_users WHERE role='worker')");
-    await sql('DELETE FROM wf_assignments');
-    await sql('DELETE FROM wf_phones');
+    // purge everything belonging to workers, and unlink them from vehicles/sites.
+    // Independent statements — run together instead of one at a time.
+    await Promise.all([
+      sql("DELETE FROM wf_documents WHERE worker_username IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql("DELETE FROM wf_career    WHERE worker_username IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql("DELETE FROM wf_shifts    WHERE worker         IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql("UPDATE wf_vehicles  SET assigned_user=NULL   WHERE assigned_user   IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql("UPDATE wf_locations SET leader_username=NULL WHERE leader_username IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql("UPDATE wf_properties SET responsible_username=NULL WHERE responsible_username IN (SELECT username FROM wf_users WHERE role='worker')"),
+      sql('DELETE FROM wf_assignments'),
+      sql('DELETE FROM wf_phones'),
+    ]);
+    // Must come after the above: it deletes the wf_users rows that the
+    // subqueries above still need to identify "workers" by.
     await dbDelAllWorkers();
     _clearAllCaches(); _clearPhonesCache(); _liveCache=null;
     updateNotifyBadge();
