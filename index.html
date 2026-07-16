@@ -1335,6 +1335,11 @@ async function dbListShiftsMonth(year, month) {
 async function dbListShiftsToday() {
   return sql('SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE date=$1 ORDER BY start_time DESC', [todayStr()]);
 }
+// Shifts left open by a forgotten clock-out, flagged by reconcileStaleShifts()
+// for a manager to fix — no hours/earnings are calculated until they do.
+async function dbListNeedsReview() {
+  return sql("SELECT id,worker,date,start_time,location_name,hourly_rate FROM wf_shifts WHERE status='needs_review' ORDER BY date DESC");
+}
 async function dbSetShift(id, d) {
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(',');
@@ -2007,7 +2012,7 @@ const TR = {
     gpsLoginErr:' Could not get your location. Enable GPS and try again.',
     logout:'Logout',
     workTime:' On The Job',todayEarn:"Today's Earnings",
-    waiting:' Ready to Deploy',wking:'Working',
+    waiting:' Ready to Deploy',wking:'Working',needsReview:'Needs Review',
     startWork:'▶ START WORK',endWork:'■ END SHIFT',
     shiftHist:'My Shift History',
     date:'Date',start:'Start',end:'End',worked:'Worked',earn:'Earnings',stat:'Status',
@@ -2187,7 +2192,7 @@ const TR = {
     gpsLoginErr:' Impossibile ottenere la posizione. Abilita il GPS e riprova.',
     logout:'Esci',
     workTime:' Sul Lavoro',todayEarn:'Guadagni Oggi',
-    waiting:' Pronto al Lavoro',wking:'In Lavoro',
+    waiting:' Pronto al Lavoro',wking:'In Lavoro',needsReview:'Da Verificare',
     startWork:'▶ INIZIA',endWork:'■ FINE TURNO',
     shiftHist:'Storico Turni',
     date:'Data',start:'Inizio',end:'Fine',worked:'Lavorato',earn:'Guadagni',stat:'Stato',
@@ -2366,7 +2371,7 @@ const TR = {
     gpsLoginErr:' تعذر الحصول على موقعك. فعّل GPS وأعد المحاولة.',
     logout:'خروج',
     workTime:' وقت العمل',todayEarn:'أرباح اليوم',
-    waiting:' جاهز للعمل',wking:'يعمل',
+    waiting:' جاهز للعمل',wking:'يعمل',needsReview:'يحتاج مراجعة',
     startWork:'▶ بدء العمل',endWork:'■ إنهاء الوردية',
     shiftHist:'سجل الورديات',
     date:'التاريخ',start:'البداية',end:'النهاية',worked:'المدة',earn:'الأرباح',stat:'الحالة',
@@ -2612,8 +2617,8 @@ function niTopbarLogo() {
 }
 
 function statusBadge(st){
-  const c={working:'bg',completed:'bb',ended:'bb',absent:'bgr'};
-  const l={working:T.wking,completed:'DONE',ended:'DONE',absent:(T.absent||'ABSENT').toUpperCase()};
+  const c={working:'bg',completed:'bb',ended:'bb',absent:'bgr',needs_review:'by'};
+  const l={working:T.wking,completed:'DONE',ended:'DONE',absent:(T.absent||'ABSENT').toUpperCase(),needs_review:'⚠ '+(T.needsReview||'NEEDS REVIEW').toUpperCase()};
   return `<span class="badge ${c[st]||'bgr'}">${l[st]||String(st||'?').toUpperCase()}</span>`;
 }
 
@@ -3025,14 +3030,24 @@ function _finalizeShift(billingStartMs, rawEndMs, autoEndTimeStr, breakMinutes, 
   return {billingEndMs, netMs, netWorkHours, earnings};
 }
 
-// Auto-closes shifts left open ("working") from a PREVIOUS day — i.e. a worker
+// Closes out shifts left open ("working") from a PREVIOUS day — i.e. a worker
 // forgot to clock out. There is no server-side scheduler in this app, so this
 // runs as a best-effort check every time anyone (worker or manager) opens the
-// app, rather than at an exact midnight instant. Each stale shift is finalized
-// using the exact same _finalizeShift() criteria as a normal clock-out, capped
-// at that shift's OWN site's end time; if the site has no end time configured,
-// it falls back to 23:59 of the day the shift started (never spills into the
-// next day, never balloons in length).
+// app, rather than at an exact midnight instant. This never blocks the worker
+// from starting a new shift the next day either way — the start-shift check
+// only looks at today's shifts, not old ones.
+//
+// The site's configured end_time is a deliberate, known cutoff a manager set
+// on purpose, so when one exists we trust it and auto-close + calculate pay
+// through the normal _finalizeShift() path, same as any other clock-out.
+//
+// When the site has NO end_time configured, there is nothing reliable to
+// calculate from — guessing (an earlier version of this function fell back to
+// 23:59) turned out to badly overpay anyone who simply forgot to clock out, by
+// assuming they worked all the way to midnight. So in that case we don't guess
+// at all: the shift is marked 'needs_review' with no end_time/hours/earnings
+// set, and shows up (highlighted) in the worker's Ore/hours history for a
+// manager to open via "Edit Times" and enter the real end time.
 async function reconcileStaleShifts(){
   const today = todayStr();
   const stale = await sql("SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE status='working' AND date<$1", [today]);
@@ -3040,15 +3055,26 @@ async function reconcileStaleShifts(){
   const locs = await dbListLocationsCached();
   for(const shift of stale){
     try{
-      const [sy,sm,sd] = (shift.date||'').split('-').map(Number);
-      if(!sy||!sm||!sd) continue;
-      const dayAnchor = new Date(sy, sm-1, sd, 12, 0, 0, 0).getTime(); // noon of that day, safe anchor
       const loc = shift.location_id ? locs.find(l=>l.id===shift.location_id) : null;
-      const cutoffStr = (loc && loc.end_time) || '23:59';
+      const cutoffStr = loc && loc.end_time;
+      if(!cutoffStr){
+        await dbSetShift(shift.id, {status:'needs_review'});
+        continue;
+      }
       const [ch,cm] = cutoffStr.split(':').map(Number);
-      const cutoff = new Date(sy, sm-1, sd, isNaN(ch)?23:ch, isNaN(cm)?59:cm, 0, 0).getTime();
+      if(isNaN(ch) || isNaN(cm)){
+        await dbSetShift(shift.id, {status:'needs_review'});
+        continue;
+      }
+      const [sy,sm,sd] = (shift.date||'').split('-').map(Number);
+      if(!sy||!sm||!sd){
+        await dbSetShift(shift.id, {status:'needs_review'});
+        continue;
+      }
+      const dayAnchor = new Date(sy, sm-1, sd, 12, 0, 0, 0).getTime(); // noon of that day, safe anchor
+      const cutoff = new Date(sy, sm-1, sd, ch, cm, 0, 0).getTime();
       const billingStartMs = Number(shift.billing_start_time) || Number(shift.start_time);
-      // There's no real click-time to cap against — the cutoff itself IS the end.
+      // There's no real click-time to cap against — the site's end time itself IS the end.
       const r = _finalizeShift(billingStartMs, cutoff, null, shift.break_minutes, shift.hourly_rate, dayAnchor);
       await dbSetShift(shift.id, {end_time:r.billingEndMs, work_hours:r.netWorkHours, earnings:r.earnings, status:'completed'});
     }catch(e){ /* best-effort: skip this one, don't block the rest */ }
@@ -4431,7 +4457,12 @@ async function buildWorkerProfile(username, editInfo){
   const allMine=allShifts.filter(s=>s.worker===username).sort((a,b)=>(Number(b.start_time)||0)-(Number(a.start_time)||0));
   const oreWorkerName = disp(u.label||u.username||username);
   const oreRows = allMine.length
-    ? allMine.map(s=>`<tr><td>${esc(s.date||'—')}</td><td>${disp(s.location_name||'—')}</td><td class="num">${fmtTime(s.start_time)}</td><td class="num">${s.end_time?fmtTime(s.end_time):'—'}</td><td class="num">${(parseFloat(s.work_hours)||0).toFixed(2)}</td><td class="num" style="color:var(--brand-ink);font-weight:700">€${(parseFloat(s.earnings)||0).toFixed(2)}</td><td>${statusBadge(s.status)}</td><td><button class="btn-sm" style="background:rgba(47,115,184,.12);border:1px solid rgba(47,115,184,.35);color:#f59a44;font-size:11px;white-space:nowrap;padding:5px 10px" onclick="openAttendanceEdit('${esc(s.id)}','${esc(oreWorkerName)}')">${T.editTimesBtn}</button></td></tr>`).join('')
+    ? allMine.map(s=>{
+        const pending = s.status==='needs_review';
+        const hoursCell = pending ? '—' : (parseFloat(s.work_hours)||0).toFixed(2);
+        const earnCell = pending ? '—' : '€'+(parseFloat(s.earnings)||0).toFixed(2);
+        return `<tr${pending?' style="background:rgba(210,120,0,.06)"':''}><td>${esc(s.date||'—')}</td><td>${disp(s.location_name||'—')}</td><td class="num">${fmtTime(s.start_time)}</td><td class="num">${s.end_time?fmtTime(s.end_time):'—'}</td><td class="num">${hoursCell}</td><td class="num" style="color:var(--brand-ink);font-weight:700">${earnCell}</td><td>${statusBadge(s.status)}</td><td><button class="btn-sm" style="background:rgba(47,115,184,.12);border:1px solid rgba(47,115,184,.35);color:#f59a44;font-size:11px;white-space:nowrap;padding:5px 10px" onclick="openAttendanceEdit('${esc(s.id)}','${esc(oreWorkerName)}')">${T.editTimesBtn}</button></td></tr>`;
+      }).join('')
     : `<tr><td colspan="8"><div class="empty" style="padding:18px">${P.noShifts}</div></td></tr>`;
 
   // ── Career timeline ──
@@ -6690,7 +6721,9 @@ window.saveAttendanceEdit = async () => {
       newEarnings = r.earnings;
       newStatus = 'completed';
     } else {
-      newStatus = 'working';
+      // No end time given: if this was flagged needs_review, keep it flagged
+      // (it's still unresolved) rather than silently marking it "working" again.
+      newStatus = shift.status === 'needs_review' ? 'needs_review' : 'working';
     }
     await sql(
       `UPDATE wf_shifts SET start_time=$2, end_time=$3, work_hours=$4, earnings=$5, status=$6 WHERE id=$1`,
