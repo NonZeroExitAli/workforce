@@ -1457,7 +1457,7 @@ const DOC_STORAGE_SOFT  = 450*1024*1024;   // block new uploads beyond this (lea
 //   'obj' → file lives in object storage (R2/S3).   Needs /api/upload + /api/file. Effectively unlimited.
 //
 // Switch by setting STORAGE_PROVIDER = 'obj' once your endpoints are deployed.
-const STORAGE_PROVIDER = 'db';
+const STORAGE_PROVIDER = 'obj';
 
 // Save a file, return the string to persist in file_url.
 async function storagePut(blobOrDataUrl, meta){
@@ -4676,6 +4676,7 @@ async function buildWorkerProfile(username, editInfo){
 
   <div id="pf-docs" class="pf-pane" style="display:none">
     <div class="panel-card">${_cardHead(P.docSlots)}${docSlotsPane()}</div>
+    <div class="panel-card">${_cardHead(P.otherDocsTitle)}${docPane('other', P.addDoc, P.noDocs)}</div>
     ${coursesPane()}
   </div>
 
@@ -5082,7 +5083,8 @@ function PL(){
     compressing: ar?'جارٍ ضغط الصورة…':'Compressione immagine…',
     docStorage: ar?'مساحة الوثائق':'Spazio documenti',
     ofLimit: ar?'من 500 ميغابايت':'di 500 MB',
-    docHint: ar?'صور فقط (JPG/PNG). يتم ضغط الصور تلقائياً لتوفير المساحة.':'Solo immagini (JPG/PNG). Le immagini vengono compresse automaticamente per risparmiare spazio.',
+    docHint: ar?'صور (JPG/PNG) أو PDF. يتم ضغط الصور تلقائياً لتوفير المساحة. أضف أي عدد من الملفات، كل واحد باسمه الخاص.':'Immagini (JPG/PNG) o PDF. Le immagini vengono compresse automaticamente per risparmiare spazio. Aggiungi quanti file vuoi, ognuno con il proprio nome.',
+    otherDocsTitle: ar?'وثائق أخرى':'Altri documenti',
     // new worker fields
     idoneitaExpiry: ar?'انتهاء الملاءمة للمهمة':'Scadenza Idoneità alla Mansione',
     patenteExpiry: ar?'انتهاء رخصة القيادة':'Scadenza Patente',
@@ -5767,7 +5769,7 @@ async function buildVehicleProfile(id, edit){
   if(!isCreate && !v){ return `<div class="empty">${P.noVehicles}</div>`; }
   const editing=isCreate||!!edit;
   const uByName={}; users.forEach(u=>uByName[u.username]=u);
-  const workers=users.filter(u=>u.role==='worker');
+  const workers=users.filter(u=>u.role==='worker').sort(byName);
   const stColor=v.status==='maintenance'?'var(--orange)':v.status==='inactive'?'var(--red)':'var(--green)';
   const assigned=v.assigned_user&&uByName[v.assigned_user]?disp(uByName[v.assigned_user].label||uByName[v.assigned_user].username):(v.assigned_user?esc(v.assigned_user):P.none);
 
@@ -5928,7 +5930,7 @@ async function buildPropertyProfile(id, edit){
   const p = isCreate ? {} : (props.find(x=>x.id===id) || null);
   if(!isCreate && !p) return `<div class="empty">${P.noProperties}</div>`;
   const editing = isCreate || !!edit;
-  const workers = users.filter(u=>u.role==='worker');
+  const workers = users.filter(u=>u.role==='worker').sort(byName);
   const uByName={}; users.forEach(u=>uByName[u.username]=u);
   const respName = p.responsible_username && uByName[p.responsible_username]
     ? disp(uByName[p.responsible_username].label||uByName[p.responsible_username].username) : '';
