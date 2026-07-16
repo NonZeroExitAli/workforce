@@ -1667,11 +1667,25 @@ async function dbSetVehicle(id, d) {
 async function dbDelVehicle(id) {
   _clearVehCache(); await sql('DELETE FROM wf_vehicles WHERE id=$1', [id]); }
 
+// Runs each statement in a migration block as its own independent call instead
+// of one big multi-statement string. Postgres treats a multi-statement string
+// sent in a single call as ONE implicit transaction — if any single statement
+// fails (e.g. an old/irrelevant one), the whole batch rolls back, silently
+// undoing every other ALTER/CREATE in it too. Isolating each statement means
+// one bad line can only skip itself, never take down the rest of the schema.
+async function _runMigrationBatch(block){
+  const stmts = block.split(';').map(s => s.trim()).filter(Boolean);
+  for (const stmt of stmts) {
+    try { await sql(stmt); }
+    catch (e) { console.warn('[migration] statement failed (continuing):', stmt.slice(0, 90), '—', e.message); }
+  }
+}
+
 async function initDB() {
   const alreadyInit = localStorage.getItem('wf_schema') === SCHEMA_VERSION;
 
   if (!alreadyInit) {
-    await sql(`
+    await _runMigrationBatch(`
       CREATE TABLE IF NOT EXISTS wf_users(
         username TEXT PRIMARY KEY, password TEXT, role TEXT,
         phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT
@@ -1733,7 +1747,7 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);
     `);
 
-    await sql(`
+    await _runMigrationBatch(`
       ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;
       ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;
       ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;
