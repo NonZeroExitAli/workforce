@@ -1172,6 +1172,90 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
 <script>
 // ════════════════════════════════════════════════════════
+// DEMO MOCK DATABASE  —  in-browser SQLite via sql.js
+// ════════════════════════════════════════════════════════
+window.__mockReady = (async function () {
+  function loadScript(src){ return new Promise((res, rej)=>{ const sc=document.createElement('script'); sc.src=src; sc.onload=res; sc.onerror=()=>rej(new Error('Failed to load '+src)); document.head.appendChild(sc); }); }
+  const CDN='https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/';
+  await loadScript(CDN+'sql-wasm.js');
+  const SQL = await initSqlJs({ locateFile: f => CDN+f });
+  const db = new SQL.Database();
+  db.run(`
+    CREATE TABLE wf_users(username TEXT PRIMARY KEY,password TEXT,role TEXT,phone TEXT,hourly_rate NUMERIC,device_id TEXT,label TEXT,can_restart INTEGER DEFAULT 0,gps_bypass INTEGER DEFAULT 0,worker_status TEXT DEFAULT 'confirmed',dob TEXT,email TEXT,tax_code TEXT,residence_permit TEXT,doc_expiry TEXT,iban TEXT,address TEXT,start_date TEXT,job_title TEXT,contract_type TEXT,contract_date TEXT,contract_expiry TEXT,permit_expiry TEXT,idoneita_expiry TEXT,patente_expiry TEXT,courses TEXT);
+    CREATE TABLE wf_phones(norm TEXT PRIMARY KEY,phone TEXT,label TEXT,rate NUMERIC,used INTEGER DEFAULT 0,added_at INTEGER);
+    CREATE TABLE wf_shifts(id TEXT PRIMARY KEY,worker TEXT,date TEXT,start_time INTEGER,end_time INTEGER,work_hours NUMERIC,earnings NUMERIC,hourly_rate NUMERIC,location_name TEXT,location_id TEXT,status TEXT,billing_start_time INTEGER,break_minutes NUMERIC DEFAULT 0);
+    CREATE TABLE wf_config(id INTEGER PRIMARY KEY DEFAULT 1,std_hours NUMERIC DEFAULT 8,ot_rate NUMERIC DEFAULT 1.5,auto_end_time TEXT);
+    CREATE TABLE wf_locations(id TEXT PRIMARY KEY,name TEXT,lat NUMERIC,lng NUMERIC,map_link TEXT,added_at INTEGER,is_open INTEGER DEFAULT 1,end_time TEXT,start_time TEXT,break_minutes NUMERIC DEFAULT 0,leader_username TEXT,finished INTEGER DEFAULT 0);
+    CREATE TABLE wf_assignments(worker_username TEXT NOT NULL,loc_id TEXT NOT NULL,PRIMARY KEY(worker_username,loc_id));
+    CREATE TABLE wf_career(id TEXT PRIMARY KEY,worker_username TEXT,event_date TEXT,event_type TEXT,description TEXT);
+    CREATE TABLE wf_documents(id TEXT PRIMARY KEY,worker_username TEXT,doc_type TEXT,file_url TEXT,uploaded_at INTEGER,title TEXT,category TEXT DEFAULT 'document');
+    CREATE TABLE wf_vehicles(id TEXT PRIMARY KEY,plate TEXT,model TEXT,assigned_user TEXT,inspection_date TEXT,insurance_expiry TEXT,road_tax_expiry TEXT,last_oil_change TEXT,mileage NUMERIC,status TEXT);
+    CREATE TABLE wf_properties(id TEXT PRIMARY KEY,kind TEXT,kind_other TEXT,name TEXT,address TEXT,rent_day INTEGER,rent_amount NUMERIC,contract_start TEXT,contract_end TEXT,responsible_username TEXT,notes TEXT);
+    CREATE TABLE wf_payslip_amounts(worker_username TEXT,year INTEGER,month INTEGER,amount NUMERIC,PRIMARY KEY(worker_username,year,month));
+  `);
+  const now=Date.now(), dayMs=86400000;
+  const dstr=d=>new Date(now-d*dayMs).toISOString().slice(0,10);
+  const fdate=d=>new Date(now+d*dayMs).toISOString().slice(0,10);
+  const norm=p=>p.replace(/\D/g,'').replace(/^0+/,'');
+  const IMG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  db.run(`INSERT INTO wf_users(username,password,role,worker_status) VALUES('mohamed','mohamed123321','manager','confirmed')`);
+  const workers=[
+    {u:'ahmed',ph:'0501111111',rate:18,st:'confirmed',label:'Ahmed Ali',dob:'1990-04-12',email:'ahmed@example.com',tax:'HMDLA90D12Z336K',permit:'PS-887541',pexp:fdate(40),docexp:fdate(5),iban:'IT60X0542811101000000123456',addr:'Via Roma 12, Milano',start:'2023-02-01',job:'Idraulico Senior',ctype:'Indeterminato',cdate:'2023-02-01',cexp:fdate(180),idexp:fdate(9),ptexp:fdate(200),courses:'["form_generale","form_specifica","antincendio","ple","Corso Ponteggi"]'},
+    {u:'youssef',ph:'0502222222',rate:16,st:'confirmed',label:'Youssef Omar',dob:'1994-09-30',email:'youssef@example.com',tax:'YSFMR94P30Z336H',permit:'PS-771203',pexp:fdate(3),docexp:fdate(60),iban:'IT60X0542811101000000654321',addr:'Via Torino 5, Milano',start:'2024-01-15',job:'Idraulico',ctype:'Determinato',cdate:'2024-01-15',cexp:fdate(8),idexp:fdate(120),ptexp:fdate(-4),courses:'["form_generale","primo_soccorso","cqc"]'},
+    {u:'karim',ph:'0503333333',rate:15,st:'paused',label:'Karim Hassan',dob:'1998-12-03',email:'karim@example.com',tax:'KRMHN98T03Z336B',permit:'PS-665009',pexp:fdate(-1),docexp:fdate(-3),iban:'IT60X0542811101000000999000',addr:'Via Dante 9, Bergamo',start:'2024-06-01',job:'Apprendista',ctype:'Apprendistato',cdate:'2024-06-01',cexp:fdate(300),idexp:fdate(300),ptexp:fdate(400),courses:'["form_generale"]'},
+  ];
+  workers.forEach(w=>{
+    db.run(`INSERT INTO wf_users(username,password,role,phone,hourly_rate,label,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses) VALUES(?,?,'worker',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [w.u,w.u+'123',w.ph,w.rate,w.label,w.st,w.dob,w.email,w.tax,w.permit,w.docexp,w.iban,w.addr,w.start,w.job,w.ctype,w.cdate,w.cexp,w.pexp,w.idexp,w.ptexp,w.courses]);
+    db.run(`INSERT INTO wf_phones(norm,phone,label,rate,used,added_at) VALUES(?,?,?,?,1,?)`,[norm(w.ph),w.ph,w.label,w.rate,now]);
+  });
+  // fixed document slots (images)
+  db.run(`INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES('s1','ahmed','carta_identita',?,?,'Carta d''Identità','document')`,[IMG,now-100*dayMs]);
+  db.run(`INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES('s2','ahmed','contratto',?,?,'Contratto di Lavoro','document')`,[IMG,now-90*dayMs]);
+  db.run(`INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES('p1','ahmed','Busta Paga Maggio',?,?,'Busta Paga Maggio','payslip')`,[IMG,now-30*dayMs]);
+  db.run(`INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES('c1','ahmed','Attestato Sicurezza',?,?,'Attestato Sicurezza','certificate')`,[IMG,now-200*dayMs]);
+  db.run(`INSERT INTO wf_locations(id,name,lat,lng,map_link,added_at,is_open,start_time,end_time,break_minutes,leader_username,finished) VALUES('loc_demo_1','Cantiere Milano Centro',45.4642,9.19,'https://maps.google.com/?q=45.4642,9.19',?,1,'08:00','18:00',30,'ahmed',0)`,[now]);
+  db.run(`INSERT INTO wf_locations(id,name,lat,lng,map_link,added_at,is_open,start_time,end_time,break_minutes,leader_username,finished) VALUES('loc_demo_2','Cantiere Bergamo',45.6983,9.6773,'https://maps.google.com/?q=45.6983,9.6773',?,1,NULL,NULL,0,'karim',0)`,[now]);
+  db.run(`INSERT INTO wf_locations(id,name,lat,lng,map_link,added_at,is_open,start_time,end_time,break_minutes,leader_username,finished) VALUES('loc_demo_3','Cantiere Monza',45.5845,9.2744,'https://maps.google.com/?q=45.5845,9.2744',?,0,NULL,NULL,0,NULL,1)`,[now]);
+  [['ahmed','loc_demo_1'],['ahmed','loc_demo_2'],['youssef','loc_demo_1'],['karim','loc_demo_2']]
+    .forEach(([u,l])=>{ const w=workers.find(x=>x.u===u); db.run(`INSERT INTO wf_assignments(worker_username,loc_id) VALUES(?,?)`,[norm(w.ph),l]); });
+  let cid=1; const addC=(u,date,type,desc)=>db.run(`INSERT INTO wf_career(id,worker_username,event_date,event_type,description) VALUES(?,?,?,?,?)`,['car_'+(cid++),u,date,type,desc]);
+  addC('ahmed',dstr(400),'Assunzione','Assunto come idraulico senior');
+  addC('ahmed',dstr(120),'Promozione','Nominato caposquadra del Cantiere Milano Centro');
+  addC('youssef',dstr(220),'Assunzione','Assunto come idraulico');
+  addC('karim',dstr(90),'Assunzione','Periodo di prova');
+  let sid=1; const addS=(u,loc,locName,rate,daysAgo)=>{ const start=new Date(now-daysAgo*dayMs); start.setHours(8,0,0,0); const st=start.getTime(), et=st+8*3600000, hours=8, earn=hours*rate; db.run(`INSERT INTO wf_shifts(id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes) VALUES(?,?,?,?,?,?,?,?,?,?,'completed',?,30)`,['shf_'+(sid++),u,dstr(daysAgo),st,et,hours,earn,rate,locName,loc,st]); };
+  [2,5,9,12,35,40,65].forEach(d=>addS('ahmed','loc_demo_1','Cantiere Milano Centro',18,d));
+  [3,15].forEach(d=>addS('ahmed','loc_demo_2','Cantiere Bergamo',18,d));
+  [2,6,11,38,42].forEach(d=>addS('youssef','loc_demo_1','Cantiere Milano Centro',16,d));
+  [4,8,36,68].forEach(d=>addS('karim','loc_demo_2','Cantiere Bergamo',15,d));
+  db.run(`INSERT INTO wf_vehicles(id,plate,model,assigned_user,inspection_date,insurance_expiry,road_tax_expiry,last_oil_change,mileage,status) VALUES('veh_1','AB123CD','Fiat Ducato','ahmed',?,?,?,?,?,'active')`,[fdate(40),fdate(6),fdate(120),dstr(40),84500]);
+  db.run(`INSERT INTO wf_vehicles(id,plate,model,assigned_user,inspection_date,insurance_expiry,road_tax_expiry,last_oil_change,mileage,status) VALUES('veh_2','EF456GH','Renault Master','youssef',?,?,?,?,?,'maintenance')`,[fdate(200),fdate(95),fdate(-2),dstr(120),142300]);
+
+  // properties (apartments & warehouses) — one contract expiring soon
+  const _rentSoon = new Date(now + 4*dayMs).getDate();   // rent due in ~4 days
+  db.run(`INSERT INTO wf_properties(id,kind,name,address,rent_day,rent_amount,contract_start,contract_end,responsible_username) VALUES('prop_1','apartment','Appartamento Via Roma','Via Roma 12, Milano',?,850,'2025-01-01',?,'ahmed')`,[_rentSoon, fdate(9)]);
+  db.run(`INSERT INTO wf_properties(id,kind,name,address,rent_day,rent_amount,contract_start,contract_end,responsible_username) VALUES('prop_2','warehouse','Magazzino Bergamo','Via Industria 40, Bergamo',15,1200,'2024-06-01',?,'youssef')`,[fdate(400)]);
+  db.run(`INSERT INTO wf_documents(id,worker_username,doc_type,file_url,uploaded_at,title,category) VALUES('pd1','prop_prop_1','contratto_affitto',?,?,'Contratto di affitto','property')`,[IMG, now-60*dayMs]);
+  const BOOLCOLS={is_open:1,can_restart:1,gps_bypass:1,used:1,finished:1};
+  const coerce=v=> v===true?1 : v===false?0 : v===undefined?null : v;
+  window.__mockSql=function(query, params){
+    params=(params||[]).map(coerce);
+    const trimmed=query.trim();
+    const isDDL=/^(CREATE|ALTER|DROP|BEGIN|COMMIT|PRAGMA)/i.test(trimmed);
+    if(isDDL){ trimmed.split(';').map(x=>x.trim()).filter(Boolean).forEach(stmt=>{ try{ db.run(stmt); }catch(e){} }); return []; }
+    const out=[]; const q=query.replace(/\$(\d+)/g,(m,n)=>{ out.push(params[parseInt(n,10)-1]); return '?'; });
+    if(/^\s*(SELECT|WITH)/i.test(query)){
+      const stmt=db.prepare(q); stmt.bind(out); const rows=[];
+      while(stmt.step()){ const r=stmt.getAsObject(); for(const k in r){ if(BOOLCOLS[k]) r[k]=(r[k]===1||r[k]==='1'||r[k]===true); } rows.push(r); }
+      stmt.free(); return rows;
+    }
+    db.run(q,out); return [];
+  };
+  return true;
+})();
+
+// ════════════════════════════════════════════════════════
 // CONSTANTS
 // ════════════════════════════════════════════════════════
 const GPS_RADIUS       = 500;
@@ -1202,14 +1286,8 @@ const APP_VERSION    = '2.2';         // public app version shown in the UI
 // Install: npm install @neondatabase/serverless
 // This keeps a warm WebSocket connection and cuts cold-start CU overhead by ~10x.
 async function sql(query, params = []) {
-  const res = await fetch("/api/sql", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, params })
-  });
-  const data = await res.json().catch(() => null);
-  if (!data || !data.ok) throw new Error(data?.error || `SQL failed (${res.status})`);
-  return data.rows || [];
+  await window.__mockReady;
+  return window.__mockSql(query, params);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1454,6 +1532,14 @@ const DOC_STORAGE_SOFT  = 450*1024*1024;   // block new uploads beyond this (lea
 // Switch by setting STORAGE_PROVIDER = 'obj' once your endpoints are deployed.
 const STORAGE_PROVIDER = 'db';
 
+// Sent as a header on every call to /api/upload-url and /api/file so those
+// endpoints can reject requests that didn't come from this app. Must match
+// the APP_SHARED_SECRET environment variable set on the server (Vercel).
+// This is NOT real per-user authentication (anyone who reads this file's
+// source can see it) — it only blocks casual/automated discovery of the
+// endpoints. CHANGE THIS to your own long random string before deploying.
+const APP_SHARED_SECRET = 'CHANGE_ME_TO_A_LONG_RANDOM_STRING';
+
 // Save a file, return the string to persist in file_url.
 async function storagePut(blobOrDataUrl, meta){
   if(STORAGE_PROVIDER === 'obj'){
@@ -1461,7 +1547,7 @@ async function storagePut(blobOrDataUrl, meta){
     // 1. ask our backend for a temporary permission slip
     const r = await fetch('/api/upload-url', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json', 'X-App-Secret': APP_SHARED_SECRET},
       body: JSON.stringify({ contentType: blob.type || 'image/jpeg', owner: (meta && meta.owner) || 'misc' })
     });
     if(!r.ok) throw new Error('Upload not authorised ('+r.status+')');
@@ -1480,7 +1566,7 @@ async function storagePut(blobOrDataUrl, meta){
 async function storageUrl(ref){
   if(typeof ref === 'string' && ref.indexOf('obj:') === 0){
     // Ask the backend for a short-lived signed URL — files stay private (GDPR).
-    const res = await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)));
+    const res = await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { headers:{'X-App-Secret': APP_SHARED_SECRET} });
     if(!res.ok) throw new Error('Could not fetch file ('+res.status+')');
     const j = await res.json();
     if(!j || !j.url) throw new Error('No URL returned');
@@ -1569,7 +1655,7 @@ async function dbDelDocById(id) {
     const r = await sql('SELECT file_url FROM wf_documents WHERE id=$1 LIMIT 1', [id]);
     const ref = r[0] && r[0].file_url;
     if(typeof ref === 'string' && ref.indexOf('obj:') === 0){
-      await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { method:'DELETE' }).catch(()=>{});
+      await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { method:'DELETE', headers:{'X-App-Secret': APP_SHARED_SECRET} }).catch(()=>{});
     }
   }catch(_){ /* best effort — never block the row deletion */ }
   await sql('DELETE FROM wf_documents WHERE id=$1', [id]);
@@ -1731,7 +1817,6 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
       CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
       CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);
-      CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);
     `);
 
     await sql(`
@@ -1772,6 +1857,7 @@ async function initDB() {
       UPDATE wf_documents SET category='document'       WHERE category IS NULL;
       ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS title TEXT;
       ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'document';
+      CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);
       ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS finished BOOLEAN DEFAULT false;
       ALTER TABLE wf_properties ADD COLUMN IF NOT EXISTS kind_other TEXT;
       CREATE TABLE IF NOT EXISTS wf_career(
@@ -3144,9 +3230,6 @@ window.wAct=async action=>{
 
       const billingStartMs2 = Number(activeShift.billing_start_time) || Number(activeShift.start_time);
       const r = _finalizeShift(billingStartMs2, now, S.autoEndTime, activeShift.break_minutes, activeShift.hourly_rate, now);
-      // end_time records the real moment the worker clocked out (may be later
-      // than the paid/capped hours if an auto-end applied) — work_hours/earnings
-      // reflect the (possibly capped, possibly break-adjusted) billed amount.
       await dbSetShift(activeShift.id,{end_time:now,work_hours:r.netWorkHours,earnings:r.earnings,status:'completed'});
       S.shift=null;clearInterval(S.timerInt);
       toast(` ${T.endMsg?T.endMsg(fmtDur(r.netMs),r.earnings.toFixed(2)):'Done!'}`, 'success');
@@ -6681,9 +6764,28 @@ window.saveAttendanceEdit = async () => {
 };
 
 // ════════════════════════════════════════════════════════
-// BOOT
+// BOOT  (DEMO)
 // ════════════════════════════════════════════════════════
-init();
+window.__mockReady
+  .then(()=>init())
+  .then(async ()=>{
+    try{ const m=await dbGetUser('mohamed'); if(m){ S.user={...m}; S.screen='manager'; renderManagerScreen(); } }
+    catch(e){ console.error('demo auto-login failed', e); }
+    __demoBanner();
+  })
+  .catch(e=>{
+    console.error('Demo init error', e);
+    const r=document.getElementById('root');
+    if(r) r.innerHTML='<div style="max-width:520px;margin:60px auto;text-align:center;font-family:Inter,system-ui,sans-serif;color:#2b2b2b"><div style="font-size:15px;font-weight:700;margin-bottom:10px">Demo non caricata</div><div style="font-size:12px;color:#888;line-height:1.8">Il database in-browser richiede una connessione internet per scaricare sql.js.</div></div>';
+  });
+function __demoBanner(){
+  if(document.getElementById('__demoBanner')) return;
+  const b=document.createElement('div'); b.id='__demoBanner';
+  b.style.cssText='position:fixed;bottom:12px;'+(document.documentElement.dir==='rtl'?'left':'right')+':12px;z-index:99999;background:#1c1c1c;color:#f0e6da;font-family:Inter,system-ui,sans-serif;font-size:11px;line-height:1.55;padding:10px 12px;border:1px solid #e8801c;border-radius:8px;max-width:240px;box-shadow:0 4px 18px rgba(0,0,0,.35)';
+  b.innerHTML='<b style="color:#e8801c">DEMO</b> — SQLite in-browser<br>Accesso automatico come manager.<br>Manager: <b>mohamed / mohamed123321</b><br><span style="opacity:.7">I dati si azzerano ad ogni ricarica.</span> <span id="__demoClose" style="cursor:pointer;color:#e8801c;font-weight:700">[chiudi]</span>';
+  document.body.appendChild(b);
+  document.getElementById('__demoClose').onclick=()=>b.remove();
+}
 </script>
 </body>
 </html>
