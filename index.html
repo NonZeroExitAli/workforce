@@ -1768,9 +1768,9 @@ async function initDB() {
       UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';
       UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';
       UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';
-      UPDATE wf_documents SET category='document'       WHERE category IS NULL;
       ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS title TEXT;
       ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'document';
+      UPDATE wf_documents SET category='document'       WHERE category IS NULL;
       CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);
       ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS finished BOOLEAN DEFAULT false;
       ALTER TABLE wf_properties ADD COLUMN IF NOT EXISTS kind_other TEXT;
