@@ -5880,6 +5880,16 @@ window.openDocFile = async (id, btn)=>{
     catch(err){ console.error('could not resolve file', err); }
     if(!url){ toast(lang==='ar'?'تعذّر فتح الملف':'Impossibile aprire il file','error'); return; }
     const isPdf = d.file_url.indexOf('application/pdf') >= 0 || /\.pdf$/i.test(d.file_url);
+    // Chrome's built-in PDF viewer streams a directly-linked PDF using dozens/hundreds
+    // of small HTTP Range requests (it jumps around to resolve the file's internal
+    // structure). Fetching it once as a blob and handing the iframe a blob: URL
+    // collapses that into a single request — matters a lot for R2's per-request pricing.
+    if(isPdf && !revoke){
+      try{
+        const resp = await fetch(url);
+        if(resp.ok){ url = URL.createObjectURL(await resp.blob()); revoke = true; }
+      }catch(err){ console.error('pdf blob fetch failed, falling back to direct url', err); }
+    }
     openDocViewer(url, d.title || 'documento', isPdf, revoke);
   }catch(e){ console.error(e); toast('Error: '+e.message,'error'); }
   finally{ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent=orig; } }
