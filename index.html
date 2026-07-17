@@ -335,19 +335,29 @@ body.rtl .stat-card.working{border-right-color:var(--green)}
 
 .act-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px}
 .act-btn{
-  display:flex;flex-direction:column;align-items:center;gap:8px;
-  padding:26px 10px;
-  border-radius:4px;
-  background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:24px 10px;
+  min-height:96px;
+  border-radius:12px;
   font-family:var(--font);
-  font-size:13px;letter-spacing:3px;
+  font-size:14px;letter-spacing:3px;
   cursor:pointer;font-weight:800;
   text-transform:uppercase;
-  transition:all .25s;border:2px solid;
+  transition:transform .2s,box-shadow .2s,filter .2s;
+  border:none;color:#fff;
 }
+/* Filled, high-contrast colors so Start/End are unmistakable at a glance. */
+.act-btn.start{ background:linear-gradient(135deg,#1fa855,var(--green)); box-shadow:0 6px 18px rgba(21,127,59,.4); }
+.act-btn.end{ background:linear-gradient(135deg,#e0483a,var(--red)); box-shadow:0 6px 18px rgba(192,57,43,.4); }
+.act-btn.end.pulse{ animation:pulse-end 2.2s infinite; }
 .act-btn:disabled{opacity:.25;cursor:not-allowed}
-.act-btn:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.15)}
+.act-btn:not(:disabled):hover{transform:translateY(-3px);filter:brightness(1.1);box-shadow:0 10px 26px rgba(0,0,0,.3)}
+.act-btn:not(:disabled):active{transform:translateY(0)}
 .act-btn .ico{font-size:32px;line-height:1}
+@keyframes pulse-end{
+  0%,100%{ box-shadow:0 6px 18px rgba(192,57,43,.4); }
+  50%{ box-shadow:0 6px 30px rgba(192,57,43,.65); }
+}
 
 .table-wrap{
   background:var(--bg1);
@@ -478,6 +488,37 @@ body.rtl .toast{right:auto;left:24px}
 
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 .modal-bg.show{display:flex}
+
+/* In-app document viewer — shows the file inline instead of navigating the tab. */
+.doc-viewer-card{
+  width:min(94vw,900px); height:min(92vh,900px);
+  background:var(--bg1); border-radius:8px; border:1px solid var(--border2);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.doc-viewer-head{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--border2);
+  font-family:var(--font); font-weight:800; font-size:13px; letter-spacing:1px; color:var(--text);
+  flex-shrink:0;
+}
+.doc-viewer-dl{
+  color:var(--brand-ink); font-family:var(--font); font-size:11px; letter-spacing:1px;
+  text-decoration:none; border:1px solid var(--border2); padding:6px 12px;
+  border-radius:4px; white-space:nowrap; transition:border-color .15s;
+}
+.doc-viewer-dl:hover{ border-color:var(--brand-ink); }
+.doc-viewer-close{ background:none; border:none; color:var(--muted); font-size:26px; cursor:pointer; line-height:1; }
+.doc-viewer-close:hover{ color:var(--red); }
+.doc-viewer-body{
+  flex:1; min-height:0; overflow:auto;
+  display:flex; align-items:center; justify-content:center;
+  background:#1a1a1a; padding:10px;
+}
+.doc-viewer-body img{ max-width:100%; max-height:100%; object-fit:contain; }
+.doc-viewer-body iframe{ width:100%; height:100%; border:none; background:#fff; }
+@media(max-width:600px){
+  .doc-viewer-card{ width:100vw; height:100vh; border-radius:0; }
+}
 .modal-title{
   font-family:var(--font);
   font-weight:900;font-size:22px;
@@ -516,10 +557,20 @@ body.rtl .toast{right:auto;left:24px}
 .pipe-heading::before{background:linear-gradient(90deg,transparent,var(--copper))}
 
 @media(max-width:600px){
-  .act-grid{grid-template-columns:1fr 1fr}
+  .act-grid{grid-template-columns:1fr 1fr;gap:10px}
   .info-grid{grid-template-columns:1fr 1fr}
   .topbar{padding:8px 14px}
   .timer-big{font-size:48px}
+  .body{padding:14px}
+  .stat-card{padding:18px 14px}
+  .act-btn{padding:16px 6px;font-size:12px;letter-spacing:1.5px;min-height:80px}
+  .act-btn .ico{font-size:26px}
+  .top-right .info-card{padding:10px 12px}
+  .top-right .info-card .iv{font-size:18px}
+  .table-wrap table{font-size:11px}
+}
+@media(max-width:380px){
+  .act-btn{font-size:10.5px;letter-spacing:1px}
 }
 
 /* Dark mode toggle button */
@@ -857,9 +908,15 @@ body.rtl .app-main{ margin-left:0; margin-right:var(--side-w); }
 .hamburger{ display:none; background:transparent; border:1px solid var(--border2); color:var(--text); border-radius:6px; width:38px; height:38px; font-size:18px; cursor:pointer; }
 .hamburger:hover{ border-color:var(--brand-ink); color:var(--brand-ink); }
 .app-content{ padding:22px; max-width:1280px; width:100%; margin:0 auto; }
+/* Give wider desktop monitors more breathing room instead of leaving the
+   sidebar-adjacent area capped at a laptop-sized column. */
+@media(min-width:1440px){ .app-content{ max-width:1480px; padding:26px 30px; } }
+@media(min-width:1800px){ .app-content{ max-width:1720px; padding:30px 40px; } }
 
 /* ---- Modern KPI cards ---- */
-.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:22px; }
+/* minmax has a real upper bound (not 1fr) so KPI cards gain more columns on
+   wide screens instead of stretching into oversized, sparse-looking blocks. */
+.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,260px)); gap:16px; margin-bottom:22px; justify-content:start; }
 .kpi{
   background:var(--bg1); border:1px solid var(--border2);
   border-radius:12px; padding:18px 20px; position:relative; overflow:hidden;
@@ -884,7 +941,7 @@ body.rtl .app-main{ margin-left:0; margin-right:var(--side-w); }
 .bar-row .bv{ flex:0 0 auto; font-family:var(--font); font-size:11px; color:var(--muted); min-width:54px; text-align:right; }
 
 /* quick-link tiles */
-.quick-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+.quick-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,220px)); gap:12px; justify-content:start; }
 .quick-tile{ background:var(--bg2); border:1px solid var(--border2); border-radius:10px; padding:16px; cursor:pointer; transition:all .15s; text-align:left; }
 .quick-tile:hover{ border-color:var(--brand-ink); transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,.08); }
 .quick-tile .qt-ico{ font-size:22px; margin-bottom:8px; }
@@ -1170,6 +1227,19 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   </div>
 </div>
 
+<div class="modal-bg" id="docViewerModal" onclick="if(event.target===this) closeDocViewer()">
+  <div class="doc-viewer-card">
+    <div class="doc-viewer-head">
+      <span id="doc-viewer-heading"></span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <a id="doc-viewer-download" class="doc-viewer-dl" href="#" download></a>
+        <button class="doc-viewer-close" onclick="closeDocViewer()">×</button>
+      </div>
+    </div>
+    <div class="doc-viewer-body" id="doc-viewer-body"></div>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════
 // CONSTANTS
@@ -1177,7 +1247,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 const GPS_RADIUS       = 500;
 const MGR_DEFAULT_PASS = 'mohamed123321';
 
-const SCHEMA_VERSION = '16';          // internal DB schema (migrations only) — bumped to force one clean re-run past any browser stuck on the old broken flag
+const SCHEMA_VERSION = '17';          // internal DB schema (migrations only) — bumped to add the missing wf_assignments indexes
 const APP_VERSION    = '2.2';         // public app version shown in the UI
 
 // ════════════════════════════════════════════════════════
@@ -1761,6 +1831,8 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);
       CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);
       CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);
+      CREATE INDEX IF NOT EXISTS idx_assign_worker ON wf_assignments(worker_username);
+      CREATE INDEX IF NOT EXISTS idx_assign_loc ON wf_assignments(loc_id);
     `);
 
     migrationFailures += await _runMigrationBatch(`
@@ -2958,11 +3030,11 @@ async function renderWorkerScreen(){
         return banners;
       })()}
       <div class="act-grid">
-        <button class="act-btn" id="bst"
-          style="border:2px solid ${startDisabled?'#333':'#e8801c'};color:${startDisabled?'#333':'#e8801c'};opacity:${startDisabled?'0.3':'1'};cursor:${startDisabled?'not-allowed':'pointer'}"
+        <button class="act-btn start" id="bst"
+          style="${startDisabled?'opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed':''}"
           onclick="wAct('start')">${T.startWork}</button>
-        <button class="act-btn" id="ben"
-          style="border:2px solid ${active?'var(--red)':'#333'};color:${active?'var(--red)':'#333'};opacity:${active?'1':'0.3'};cursor:${active?'pointer':'not-allowed'}"
+        <button class="act-btn end${active?' pulse':''}" id="ben"
+          style="${active?'':'opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed'}"
           onclick="wAct('end')">${T.endWork}</button>
       </div>
     </div>
@@ -3062,23 +3134,27 @@ async function reconcileStaleShifts(){
   const stale = await sql("SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE status='working' AND date<$1", [today]);
   if(!stale.length) return;
   const locs = await dbListLocationsCached();
-  for(const shift of stale){
+  // Each stale shift's fix-up is independent of the others — run them together
+  // instead of one at a time. This matters most right after a backlog piles up
+  // (e.g. a long weekend), where a sequential loop would mean N round trips
+  // before the app finishes loading for whoever opens it next.
+  await Promise.all(stale.map(async (shift)=>{
     try{
       const loc = shift.location_id ? locs.find(l=>l.id===shift.location_id) : null;
       const cutoffStr = loc && loc.end_time;
       if(!cutoffStr){
         await dbSetShift(shift.id, {status:'needs_review'});
-        continue;
+        return;
       }
       const [ch,cm] = cutoffStr.split(':').map(Number);
       if(isNaN(ch) || isNaN(cm)){
         await dbSetShift(shift.id, {status:'needs_review'});
-        continue;
+        return;
       }
       const [sy,sm,sd] = (shift.date||'').split('-').map(Number);
       if(!sy||!sm||!sd){
         await dbSetShift(shift.id, {status:'needs_review'});
-        continue;
+        return;
       }
       const dayAnchor = new Date(sy, sm-1, sd, 12, 0, 0, 0).getTime(); // noon of that day, safe anchor
       const cutoff = new Date(sy, sm-1, sd, ch, cm, 0, 0).getTime();
@@ -3087,7 +3163,7 @@ async function reconcileStaleShifts(){
       const r = _finalizeShift(billingStartMs, cutoff, null, shift.break_minutes, shift.hourly_rate, dayAnchor);
       await dbSetShift(shift.id, {end_time:r.billingEndMs, work_hours:r.netWorkHours, earnings:r.earnings, status:'completed'});
     }catch(e){ /* best-effort: skip this one, don't block the rest */ }
-  }
+  }));
   _liveCache=null;
 }
 
@@ -5255,6 +5331,8 @@ function PL(){
     titleRequired: ar?'أدخل عنواناً أولاً':'Inserisci prima un titolo',
     docAdded: ar?'تمت إضافة الوثيقة':'Documento aggiunto',
     docRemoved: ar?'تم حذف الوثيقة':'Documento eliminato',
+    docDownload: ar?'⬇ تنزيل':'⬇ Scarica',
+    docPreviewFailed: ar?'تعذّر عرض هذا الملف. جرّب التنزيل.':'Impossibile visualizzare il file. Prova a scaricarlo.',
     // location tab
     siteTimeline: ar?'سجل المواقع':'Cronologia cantieri',
     noSiteHistory: ar?'لا يوجد سجل مواقع بعد':'Nessuna cronologia cantieri',
@@ -5801,19 +5879,38 @@ window.openDocFile = async (id, btn)=>{
     try{ const r = await storageUrl(d.file_url); url=r.url; revoke=r.revoke; }
     catch(err){ console.error('could not resolve file', err); }
     if(!url){ toast(lang==='ar'?'تعذّر فتح الملف':'Impossibile aprire il file','error'); return; }
-    // Past an await the user-gesture is gone (popup blockers), and file:// pages
-    // refuse data: navigation — so always offer a download fallback.
     const isPdf = d.file_url.indexOf('application/pdf') >= 0 || /\.pdf$/i.test(d.file_url);
-    const w = window.open(url, '_blank', 'noopener');
-    if(!w || w.closed || typeof w.closed==='undefined'){
-      const a=document.createElement('a');
-      a.href=url;
-      a.download=((d.title||'documento').replace(/[^\w\s.-]/g,'_').trim()||'documento') + (isPdf?'.pdf':'.jpg');
-      document.body.appendChild(a); a.click(); a.remove();
-    }
-    if(revoke) setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    openDocViewer(url, d.title || 'documento', isPdf, revoke);
   }catch(e){ console.error(e); toast('Error: '+e.message,'error'); }
   finally{ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent=orig; } }
+};
+
+// Shows the file inline in an overlay — never navigates or opens a new tab,
+// so the app itself is never left or replaced.
+let _docViewerRevokeUrl = null;
+window.openDocViewer = (url, title, isPdf, revoke)=>{
+  const P=PL();
+  _docViewerRevokeUrl = revoke ? url : null;
+  const heading = $('doc-viewer-heading');
+  if(heading) heading.textContent = disp(title || 'Documento');
+  const body = $('doc-viewer-body');
+  if(body){
+    body.innerHTML = isPdf
+      ? `<iframe src="${esc(url)}"></iframe>`
+      : `<img src="${esc(url)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'empty',textContent:${JSON.stringify(P.docPreviewFailed)}}))"/>`;
+  }
+  const dl = $('doc-viewer-download');
+  if(dl){
+    dl.href = url;
+    dl.download = (String(title||'documento').replace(/[^\w\s.-]/g,'_').trim()||'documento') + (isPdf?'.pdf':'.jpg');
+    dl.textContent = P.docDownload;
+  }
+  const m = $('docViewerModal'); if(m) m.classList.add('show');
+};
+window.closeDocViewer = ()=>{
+  const m = $('docViewerModal'); if(m) m.classList.remove('show');
+  const body = $('doc-viewer-body'); if(body) body.innerHTML='';
+  if(_docViewerRevokeUrl){ URL.revokeObjectURL(_docViewerRevokeUrl); _docViewerRevokeUrl=null; }
 };
 
 // ════════════════════════════════════════════════════════
@@ -6387,7 +6484,7 @@ window.delPhone=async norm=>{
   if(!confirm(P.deleteWorkerConfirm(who))) return;
   try{
     if(linked.length){
-      for(const u of linked){ await dbPurgeWorker(u.username, norm); }
+      await Promise.all(linked.map(u=>dbPurgeWorker(u.username, norm)));
     }else{
       // no account was ever created — just drop the approved phone + any assignments
       await dbDelAllAssignmentsForWorker(norm);
@@ -6403,7 +6500,8 @@ window.delPhone=async norm=>{
 window.updRate=async(norm,rate)=>{
   await dbSetPhone(norm,{rate:parseFloat(rate)||15});
   const users=await dbListUsers();
-  for(const u of users){if(u.role==='worker'&&normPhone(u.phone||'')===norm)await dbSetUser(u.username,{hourly_rate:parseFloat(rate)||15});}
+  const matching=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
+  await Promise.all(matching.map(u=>dbSetUser(u.username,{hourly_rate:parseFloat(rate)||15})));
   toast(T.rateUpdated,'success');
 };
 window.clearPhones=async()=>{
