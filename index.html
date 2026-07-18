@@ -260,6 +260,57 @@ input:disabled{background:var(--bg2);border-color:var(--border);color:var(--mute
 .logout-btn:hover{border-color:var(--red);color:var(--red)}
 .clock{font-family:var(--font);font-size:14px;color:var(--copper2);letter-spacing:2px}
 
+/* ---- Worker full-screen drawer: shift history + logout, tucked out of the
+   main clock-in view instead of dumped inline below it ---- */
+.wk-menu-btn{
+  width:36px;height:36px;flex-shrink:0;
+  background:transparent;border:1px solid var(--border2);color:var(--muted);
+  border-radius:4px;cursor:pointer;font-size:15px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.wk-menu-btn:hover{border-color:var(--brand-ink);color:var(--brand-ink)}
+.wk-drawer{
+  position:fixed;inset:0;width:100%;height:100%;
+  background:var(--bg0,var(--bg1));
+  z-index:220;display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+}
+body.rtl .wk-drawer{transform:translateX(-100%)}
+body.wk-drawer-open .wk-drawer{transform:translateX(0)}
+.wk-drawer-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:16px 18px;flex-shrink:0;
+  background:linear-gradient(135deg,rgba(232,128,28,.16),rgba(41,142,226,.08));
+  border-bottom:1px solid var(--border2);
+  position:relative;overflow:hidden;
+}
+.wk-drawer-head::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#cc6e12,#f5a44a,transparent);pointer-events:none}
+.wk-drawer-title{font-family:var(--font);font-size:14px;letter-spacing:2px;text-transform:uppercase;color:var(--text);font-weight:900}
+.wk-drawer-title small{display:block;font-size:9px;letter-spacing:1.5px;color:var(--muted);font-weight:600;margin-top:4px;text-transform:none}
+.wk-drawer-close{width:34px;height:34px;flex-shrink:0;border-radius:8px;background:rgba(0,0,0,.06);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.wk-drawer-close:hover{border-color:var(--red);color:var(--red);background:rgba(200,40,40,.08)}
+.wk-drawer-body{flex:1 1 auto;overflow-y:auto;padding:14px 16px}
+.wk-drawer-stats{display:flex;gap:8px;margin-bottom:14px}
+.wk-drawer-stat{flex:1;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:10px 8px;text-align:center}
+.wk-drawer-stat .n{font-family:var(--font);font-size:19px;font-weight:900;color:var(--brand-ink);line-height:1}
+.wk-drawer-stat .l{font-family:var(--font);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:5px;font-weight:700}
+.wk-shift-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 12px;border-radius:10px;background:var(--bg2);
+  border:1px solid var(--border2);margin-bottom:7px;
+  transition:border-color .15s;
+}
+.wk-shift-row:hover{border-color:var(--brand-ink)}
+.wk-shift-left{min-width:0}
+.wk-shift-date{font-family:var(--font);font-size:12px;font-weight:800;color:var(--text);letter-spacing:.3px}
+.wk-shift-site{font-family:var(--font);font-size:10px;font-weight:700;color:#f59a44;margin-top:3px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-shift-times{font-family:var(--font);font-size:10.5px;color:var(--muted);margin-top:3px}
+.wk-shift-right{text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.wk-shift-dur{font-family:var(--font);font-size:13px;font-weight:900;color:var(--brand-ink)}
+.wk-drawer-foot{padding:12px 16px;border-top:1px solid var(--border2);display:flex;flex-direction:column;gap:9px;flex-shrink:0}
+.wk-drawer-foot .lang-bar{margin-bottom:0;justify-content:center}
+
 .body{padding:24px;max-width:1200px;margin:0 auto}
 .sec-title{
   font-family:var(--font);
@@ -3014,6 +3065,11 @@ window.doLogout=()=>{
 // offline render still has real (if slightly stale) data instead of blanks.
 let _wsCache={};
 
+window.toggleWorkerDrawer=(force)=>{
+  const open = (force===undefined) ? !document.body.classList.contains('wk-drawer-open') : !!force;
+  document.body.classList.toggle('wk-drawer-open', open);
+};
+
 async function renderWorkerScreen(){
   S.screen='worker';
   const u=S.user;
@@ -3089,7 +3145,7 @@ async function renderWorkerScreen(){
         <span class="clock" id="clock"></span>
         <span>${disp(u.label||u.username)}</span>
         <span class="role-pill pill-wkr">WORKER</span>
-        <button class="logout-btn" onclick="doLogout()">${T.logout}</button>
+        <button class="wk-menu-btn" onclick="toggleWorkerDrawer()" aria-label="${T.shiftHist}">☰</button>
       </div>
       <div class="top-right-stats">
         <div class="info-card"><div class="il"> ${T.shiftsC} (${T.month})</div><div class="iv" style="color:var(--brand-ink)">${myMonthShifts.length}</div></div>
@@ -3131,19 +3187,35 @@ async function renderWorkerScreen(){
           onclick="wAct('end')">${T.endWork}</button>
       </div>
     </div>
-    <div class="table-wrap">
-      <div class="table-head">${T.shiftHist}</div>
-      <table><thead><tr>${[T.date,' '+T.site,T.start,T.end,T.worked,T.stat].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${!myMonthShifts.length
-        ?`<tr><td colspan="6"><div class="empty">${T.noShifts}</div></td></tr>`
-        :myMonthShifts.map(sh=>`<tr>
-          <td>${sh.date}</td>
-          <td style="color:#f59a44;font-family:var(--font);font-size:11px">${disp(sh.location_name||'—')}</td>
-          <td>${fmtTime(sh.start_time)}</td><td>${fmtTime(sh.end_time)}</td>
-          <td>${fmtDur((parseFloat(sh.work_hours)||0)*3600000)}</td>
-          <td>${statusBadge(sh.status)}</td>
-        </tr>`).join('')}
-      </tbody></table>
+  </div>
+  <div class="wk-drawer">
+    <div class="wk-drawer-head">
+      <div class="wk-drawer-title">${T.shiftHist}<small>${disp(u.label||u.username)}</small></div>
+      <button class="wk-drawer-close" onclick="toggleWorkerDrawer(false)" aria-label="Close">✕</button>
+    </div>
+    <div class="wk-drawer-body">
+      <div class="wk-drawer-stats">
+        <div class="wk-drawer-stat"><div class="n">${myMonthShifts.length}</div><div class="l">${T.shiftsC} (${T.month})</div></div>
+        <div class="wk-drawer-stat"><div class="n">${fmtDur(myMonthShifts.reduce((a,sh)=>a+(parseFloat(sh.work_hours)||0),0)*3600000)}</div><div class="l">${T.worked} (${T.month})</div></div>
+      </div>
+      ${!myMonthShifts.length
+        ?`<div class="empty">${T.noShifts}</div>`
+        :myMonthShifts.map(sh=>`
+          <div class="wk-shift-row">
+            <div class="wk-shift-left">
+              <div class="wk-shift-date">${sh.date}</div>
+              <div class="wk-shift-site">${disp(sh.location_name||'—')}</div>
+              <div class="wk-shift-times">${fmtTime(sh.start_time)} → ${fmtTime(sh.end_time)}</div>
+            </div>
+            <div class="wk-shift-right">
+              <div class="wk-shift-dur">${fmtDur((parseFloat(sh.work_hours)||0)*3600000)}</div>
+              ${statusBadge(sh.status)}
+            </div>
+          </div>`).join('')}
+    </div>
+    <div class="wk-drawer-foot">
+      ${langBar(true)}
+      <button class="side-logout" onclick="doLogout()">${T.logout}</button>
     </div>
   </div>`;
 
