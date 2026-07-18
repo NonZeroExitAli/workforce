@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>New Idra — Plumbing Crew</title>
 <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/NonZeroExitAli/us/main/image%20(1).png"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>
+<meta name="theme-color" content="#e8801c"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Newidra"/>
 
 <style>
 :root{
@@ -465,6 +471,9 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .gh{background:rgba(232,128,28,.05);border:1px solid rgba(232,128,28,.2);border-radius:4px;padding:14px}
 .hint{font-family:var(--font);font-size:10px;color:var(--muted);margin-top:5px}
 
+.offline-banner{display:none;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:var(--font);font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:.5px;font-weight:700}
+.offline-banner.offline{background:rgba(210,120,0,.1);border:1px solid rgba(210,120,0,.3);color:var(--orange)}
+.offline-banner.syncing{background:rgba(58,96,128,.1);border:1px solid var(--border2);color:var(--steel)}
 .gps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:var(--font);font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:1px}
 .gps-bar.ok{background:rgba(232,128,28,.07);border:1px solid rgba(232,128,28,.2);color:var(--green)}
 .gps-bar.far{background:rgba(232,128,28,.07);border:1px solid rgba(232,128,28,.2);color:var(--red)}
@@ -2788,6 +2797,7 @@ async function init() {
   try {
     await initDB();
     reconcileStaleShifts().catch(()=>{}); // best-effort, never block boot on this
+    _trySyncOfflineQueue().catch(()=>{}); // flush anything queued from a previous offline session
   } catch(e) {
     $('root').innerHTML=`<div class="center"><div style="max-width:520px;text-align:center;padding:40px">
       <div style="font-size:36px;margin-bottom:16px"></div>
@@ -3000,17 +3010,44 @@ window.doLogout=()=>{
 // ════════════════════════════════════════════════════════
 // WORKER SCREEN
 // ════════════════════════════════════════════════════════
+// Last successfully-fetched config/locations/month-shifts — reused so an
+// offline render still has real (if slightly stale) data instead of blanks.
+let _wsCache={};
+
 async function renderWorkerScreen(){
   S.screen='worker';
   const u=S.user;
   const now2=new Date();
-  const [fresh,cfg,allLocs,allShifts,monthShifts]=await Promise.all([
-    dbGetUser(u.username),
-    dbGetConfig(),
-    dbListLocations(),
-    dbListShiftsToday(),
-    dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1)
-  ]);
+
+  // If S.shift hasn't been restored yet in memory (fresh page load) but the
+  // offline queue shows unsynced work for this worker, trust the queue —
+  // it's the only thing that survives a reload while offline.
+  if(S.shift===undefined || S.shift===null){
+    const pending=_pendingShiftFromQueue(u.username);
+    if(pending!==undefined) S.shift=pending;
+  }
+
+  let fresh,cfg,allLocs,allShifts,monthShifts,offlineFallback=false;
+  try{
+    [fresh,cfg,allLocs,allShifts,monthShifts]=await Promise.all([
+      dbGetUser(u.username),
+      dbGetConfig(),
+      dbListLocations(),
+      dbListShiftsToday(),
+      dbListShiftsMonth(now2.getFullYear(),now2.getMonth()+1)
+    ]);
+    _wsCache={cfg,allLocs,monthShifts}; // remembered for the next offline render
+  }catch(e){
+    if(!_isNetworkError(e)) throw e; // a real (non-connectivity) error should still surface normally
+    offlineFallback=true;
+    fresh=null;
+    cfg=_wsCache.cfg||{auto_end_time:null};
+    allLocs=_wsCache.allLocs||[];
+    monthShifts=_wsCache.monthShifts||[];
+    // Trust whatever S.shift already is (set by the caller, or reconstructed
+    // from the offline queue above) instead of a failed "today's shifts" fetch.
+    allShifts=S.shift?[S.shift]:[];
+  }
   if(fresh){S.user={...fresh};Object.assign(u,fresh);}
   const myMonthShifts=monthShifts.filter(x=>x.worker===u.username);
 
@@ -3026,13 +3063,18 @@ async function renderWorkerScreen(){
   S.autoEndSource=locAutoEnd?'location':'global';
 
   const myShifts=allShifts.filter(x=>x.worker===u.username).sort((a,b)=>Number(b.start_time)-Number(a.start_time));
-  const active=myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null;
+  const active = offlineFallback ? (S.shift||null) : (myShifts.find(x=>x.date===todayStr()&&x.status!=='completed')||null);
   S.shift=active;
   if(active) S._autoEndFired=false;
 
   const todayCompletedShifts=myShifts.filter(x=>x.date===todayStr()&&x.status==='completed');
   const hasCompletedToday=todayCompletedShifts.length>0;
   const canRestart=fresh?.can_restart===true||fresh?.can_restart==='true';
+  // Cache from real server data only — offlineFallback's shift list is just
+  // [S.shift], not a real "today's shifts" fetch, so it can't tell us this.
+  // This cached flag is what _wActOffline checks to keep the one-shift-per-
+  // day rule enforced with zero connection.
+  if(!offlineFallback) S._completedTodayFlag = hasCompletedToday ? todayStr() : null;
 
   const locName=active?.location_name||S.nearestLocation?.name||'—';
   const startDisabled=!!active;
@@ -3054,6 +3096,7 @@ async function renderWorkerScreen(){
         <div class="info-card"><div class="il"> ${T.site}</div><div class="iv" style="color:#f59a44;font-size:14px" id="wi-site">${disp(locName)}</div></div>
       </div>
     </div>
+    <div class="offline-banner" id="offline-banner" style="display:none"></div>
     ${S.gps==='ok'?`<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${disp(S.nearestLocation?.name||locName)}</strong></span></div>`:''}
     ${showRestartHint?`<div class="warn-box" style="margin-bottom:16px">⏸ ${lang==='ar'?'لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.':lang==='it'?"Hai già completato un turno oggi. Se c'è un problema contatta il manager.":'You already finished a shift today. If there is a problem contact your manager.'}</div>`:''}
     ${canRestart&&!active?`<div class="gps-bar ok" style="margin-bottom:16px"> ${T.allowNewShift}</div>`:''}
@@ -3105,6 +3148,7 @@ async function renderWorkerScreen(){
   </div>`;
 
   startTimer();
+  _updateOfflineBanner();
 }
 
 function startTimer(){
@@ -3227,6 +3271,28 @@ window.wAct=async action=>{
   if(btn){btn.style.opacity='0.5';btn.textContent='…';}
 
   try{
+    // No connection right now — go straight to the offline-safe path instead
+    // of firing a request we already know will fail.
+    if(!navigator.onLine){ await _wActOffline(action); return; }
+    await _wActOnline(action);
+  }catch(err){
+    // A request that failed because the connection dropped mid-flight (not a
+    // real server/validation error) — fall back to the same offline-safe
+    // path instead of just showing an error and losing the clock-in/out.
+    if(_isNetworkError(err)){
+      try{ await _wActOffline(action); return; }
+      catch(err2){ toast('Error: '+err2.message,'error'); console.error('wAct offline-fallback error:',err2); await renderWorkerScreen(); }
+    }else{
+      toast('Error: '+err.message,'error');
+      console.error('wAct error:',err);
+      await renderWorkerScreen();
+    }
+  }finally{
+    _shiftLock=false;
+  }
+};
+
+async function _wActOnline(action){
     const now=Date.now();
     const username=S.user.username;
 
@@ -3336,17 +3402,216 @@ window.wAct=async action=>{
       // reflect the (possibly capped, possibly break-adjusted) billed amount.
       await dbSetShift(activeShift.id,{end_time:now,work_hours:r.netWorkHours,earnings:r.earnings,status:'completed'});
       S.shift=null;clearInterval(S.timerInt);
+      S._completedTodayFlag=todayStr();
       toast(` ${T.endMsg?T.endMsg(fmtDur(r.netMs),r.earnings.toFixed(2)):'Done!'}`, 'success');
       await renderWorkerScreen();
     }
-  }catch(err){
-    toast('Error: '+err.message,'error');
-    console.error('wAct error:',err);
+}
+
+// ════════════════════════════════════════════════════════
+// OFFLINE CLOCK-IN QUEUE
+// ════════════════════════════════════════════════════════
+// Job sites often have poor or no signal. Instead of just failing when a
+// worker taps Start/End Work offline, the action is captured locally with
+// an accurate timestamp and replayed automatically the moment connectivity
+// returns — so nobody has to remember to clock in again once they get
+// signal, and nobody loses their real clock-in/out time.
+//
+// This intentionally uses only the state already cached in memory (S.shift,
+// S.nearestLocation, S.autoEndTime, S._completedTodayFlag — all populated
+// the last time the app was online) rather than trying to re-validate
+// against the server, since that's not reachable offline. The one-shift-
+// per-day rule is enforced offline too, from that cached flag (see
+// _wActOffline below) — a manager's one-time "allow restart" grant is
+// still honored and consumed offline, exactly like the online path.
+const OFFLINE_QUEUE_KEY='wf_offline_queue';
+
+function _isNetworkError(e){
+  return e instanceof TypeError || /fetch|network/i.test(e?.message||'');
+}
+function _loadOfflineQueue(){
+  try{ return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]'); }
+  catch(_){ return []; }
+}
+function _saveOfflineQueue(q){ localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q)); }
+function _queueOfflineAction(item){
+  const q=_loadOfflineQueue();
+  q.push({kind:'shift', ...item, queuedAt:Date.now()});
+  _saveOfflineQueue(q);
+  _updateOfflineBanner();
+}
+function _queueOfflineUserUpdate(username, fields){
+  const q=_loadOfflineQueue();
+  q.push({kind:'user', username, fields, queuedAt:Date.now()});
+  _saveOfflineQueue(q);
+  _updateOfflineBanner();
+}
+// Rebuilds "am I currently clocked in?" from the queue itself, for the case
+// where the app is closed/reloaded while offline BEFORE a queued action ever
+// synced — S.shift (in-memory only) resets on reload, but the queue
+// (persisted in localStorage) does not, so this is the source of truth
+// whenever there's unsynced work for the signed-in worker.
+function _pendingShiftFromQueue(username){
+  const mine=_loadOfflineQueue().filter(x=>x.kind==='shift' && x.username===username);
+  if(!mine.length) return undefined; // no opinion — caller should use its own fallback
+  const last=mine[mine.length-1];
+  if(last.fields.status==='completed') return null; // last known action was a clock-out
+  return {
+    id:last.id, worker:username, date:last.fields.date||todayStr(),
+    start_time:last.fields.start_time, billing_start_time:last.fields.billing_start_time,
+    break_minutes:last.fields.break_minutes, status:'working',
+    location_name:last.fields.location_name, location_id:last.fields.location_id,
+    hourly_rate:last.fields.hourly_rate
+  };
+}
+
+async function _wActOffline(action){
+  const now=Date.now();
+  const username=S.user.username;
+  const offlineMsg = lang==='ar'
+    ? ' تم الحفظ دون اتصال — سيتم المزامنة تلقائيًا عند عودة الشبكة'
+    : ' Salvato offline — verrà sincronizzato automaticamente alla riconnessione';
+
+  if(action==='start'){
+    if(S.shift && S.shift.status==='working'){
+      toast(' '+T.already,'warning'); await renderWorkerScreen(); return;
+    }
+    // One shift per day, enforced with zero connection: uses the flag cached
+    // from the last real server read (or set the moment a shift was ended
+    // this session), not a fresh fetch — see the note on _wsCache above.
+    const alreadyCompletedToday = S._completedTodayFlag===todayStr();
+    const canRestartNow = S.user?.can_restart===true || S.user?.can_restart==='true';
+    if(alreadyCompletedToday && !canRestartNow){
+      const alreadyDoneMsg = lang==='ar'
+        ? ' لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
+        : " Hai già completato un turno oggi. Se c'è un problema contatta il manager.";
+      toast(alreadyDoneMsg,'warning');
+      await renderWorkerScreen(); return;
+    }
+    if(alreadyCompletedToday && canRestartNow){
+      // Consume the one-time restart grant, same as the online path — queued
+      // so it's reflected server-side once back online, and applied locally
+      // right away so it can't be reused for a third shift this session.
+      _queueOfflineUserUpdate(username, {can_restart:false});
+      S.user.can_restart=false;
+    }
+    const nowD=new Date(now);
+    const siteStartTime = S.nearestLocation?.start_time || null;
+    const DEFAULT_START = '07:00';
+    const EARLY_WINDOW_MINS = 60;
+    const effectiveStartTime = siteStartTime || DEFAULT_START;
+    const [esh, esm] = effectiveStartTime.split(':').map(Number);
+    const officialStartMins = esh * 60 + esm;
+    const earliestAllowedMins = officialStartMins - EARLY_WINDOW_MINS;
+    const nowMinsForStart = nowD.getHours() * 60 + nowD.getMinutes();
+    if(nowMinsForStart < earliestAllowedMins){
+      const minsUntil = earliestAllowedMins - nowMinsForStart;
+      const allowedFromH = String(Math.floor(earliestAllowedMins / 60)).padStart(2,'0');
+      const allowedFromM = String(earliestAllowedMins % 60).padStart(2,'0');
+      const allowedFromStr = allowedFromH + ':' + allowedFromM;
+      const siteName = S.nearestLocation?.name || '';
+      toast(T.siteOpensAt(siteName, allowedFromStr, minsUntil), 'error');
+      await renderWorkerScreen(); return;
+    }
+    if(S.autoEndTime){
+      const [eh,em]=S.autoEndTime.split(':').map(Number);
+      const nowMins=nowD.getHours()*60+nowD.getMinutes();
+      const endMins=eh*60+em;
+      if(nowMins>=endMins){
+        toast(lang==='ar'?` انتهت ورديات اليوم في ${S.autoEndTime}. إلى اللقاء غداً!`:` I turni di oggi sono terminati alle ${S.autoEndTime}. A domani!`,'error');
+        await renderWorkerScreen();return;
+      }
+    }
+
+    const locationName = S.nearestLocation?.name || '—';
+    const id='s'+now+'_'+username.slice(0,6);
+    let billingStartMs = now;
+    const billingBase = new Date(now);
+    billingBase.setHours(esh, esm, 0, 0);
+    const billingBaseMs = billingBase.getTime();
+    if(now < billingBaseMs){ billingStartMs = billingBaseMs; }
+    const locBreakMins = parseFloat(S.nearestLocation?.break_minutes||0)||0;
+
+    const fields={
+      worker:username, date:todayStr(), start_time:now,
+      billing_start_time:billingStartMs, break_minutes:locBreakMins,
+      end_time:null, work_hours:null, earnings:null,
+      hourly_rate:parseFloat(S.user.hourly_rate)||0,
+      location_name:locationName, location_id:S.nearestLocation?.id||null,
+      status:'working'
+    };
+    _queueOfflineAction({id, username, fields});
+    S.shift={id,worker:username,date:todayStr(),start_time:now,billing_start_time:billingStartMs,break_minutes:locBreakMins,status:'working',location_name:locationName,location_id:S.nearestLocation?.id||null,hourly_rate:parseFloat(S.user.hourly_rate)||0};
+    toast(offlineMsg,'warning');
     await renderWorkerScreen();
-  }finally{
-    _shiftLock=false;
+
+  }else if(action==='end'){
+    const activeShift=S.shift;
+    if(!activeShift || activeShift.status!=='working'){
+      toast(' '+T.noActive,'warning'); await renderWorkerScreen(); return;
+    }
+    const startMs=Number(activeShift.start_time);
+    if(!startMs||startMs<=0||startMs>now){toast(' Invalid shift start time.','error');return;}
+    const billingStartMs2 = Number(activeShift.billing_start_time) || Number(activeShift.start_time);
+    const r = _finalizeShift(billingStartMs2, now, S.autoEndTime, activeShift.break_minutes, activeShift.hourly_rate, now);
+    _queueOfflineAction({id:activeShift.id, username, fields:{end_time:now,work_hours:r.netWorkHours,earnings:r.earnings,status:'completed'}});
+    S.shift=null; clearInterval(S.timerInt);
+    // One-shift-per-day is enforced offline too — mark today as "completed"
+    // right away so a second Start tap (this session, no reconnect needed)
+    // is correctly blocked instead of silently allowing a second shift.
+    S._completedTodayFlag=todayStr();
+    toast(offlineMsg,'warning');
+    await renderWorkerScreen();
   }
-};
+}
+
+let _syncingOffline=false;
+async function _trySyncOfflineQueue(){
+  if(_syncingOffline || !navigator.onLine) return;
+  const q0=_loadOfflineQueue();
+  if(!q0.length) return;
+  _syncingOffline=true;
+  try{
+    while(true){
+      const q=_loadOfflineQueue();
+      if(!q.length) break;
+      const item=q[0];
+      try{
+        if(item.kind==='user'){ await dbSetUser(item.username, item.fields); }
+        else{ await dbSetShift(item.id, item.fields); }
+        q.shift(); _saveOfflineQueue(q);
+      }catch(e){
+        if(_isNetworkError(e)) break; // still offline/flaky — stop, the next online/interval tick will retry
+        console.error('[offline-sync] could not sync queued action, dropping it to avoid blocking the queue:', item, e);
+        q.shift(); _saveOfflineQueue(q);
+      }
+    }
+  }finally{
+    _syncingOffline=false;
+    _updateOfflineBanner();
+    if(S.screen==='worker') await renderWorkerScreen();
+  }
+}
+
+function _updateOfflineBanner(){
+  const el=$('offline-banner');
+  if(!el) return;
+  const q=_loadOfflineQueue();
+  if(!navigator.onLine){
+    el.style.display='flex';
+    el.className='offline-banner offline';
+    el.textContent = lang==='ar' ? '📡 غير متصل — سيتم حفظ أي إجراء ومزامنته تلقائيًا عند عودة الاتصال' : '📡 Offline — le azioni verranno salvate e sincronizzate automaticamente alla riconnessione';
+  }else if(q.length){
+    el.style.display='flex';
+    el.className='offline-banner syncing';
+    el.textContent = lang==='ar' ? `⏳ مزامنة ${q.length} إجراء معلّق…` : `⏳ Sincronizzazione di ${q.length} azione/i in sospeso…`;
+  }else{
+    el.style.display='none';
+  }
+}
+window.addEventListener('online', _trySyncOfflineQueue);
+window.addEventListener('offline', _updateOfflineBanner);
+setInterval(_trySyncOfflineQueue, 30000);
 
 // ════════════════════════════════════════════════════════
 // MANAGER SCREEN
@@ -7035,6 +7300,11 @@ window.saveAttendanceEdit = async () => {
 // ════════════════════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════════════════════
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('[sw] registration failed', e));
+  });
+}
 init();
 </script>
 </body>
