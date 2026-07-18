@@ -6,9 +6,14 @@
 //             private: the bucket itself is never public.
 //   DELETE  → removes the file from storage.
 //
+// Both require a valid, signed-in manager session — only the manager
+// screens ever call this endpoint (workers never view/upload/delete
+// documents directly), so this is a full, non-bypassable gate rather
+// than a best-effort check.
 // ─────────────────────────────────────────────────────────────
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { setCors, verifySession } from './_lib.js';
 
 const s3 = new S3Client({
   region: 'auto',
@@ -20,8 +25,16 @@ const s3 = new S3Client({
 });
 
 export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') return res.status(200).send('');
+
   const key = req.query.key;
   if (!key) return res.status(400).json({ error: 'Missing key' });
+
+  const session = await verifySession(req);
+  if (!session || session.role !== 'manager') {
+    return res.status(401).json({ error: 'Not authorized' });
+  }
 
   try {
     if (req.method === 'DELETE') {
