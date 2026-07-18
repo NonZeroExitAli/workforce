@@ -1260,9 +1260,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // CONSTANTS
 // ════════════════════════════════════════════════════════
 const GPS_RADIUS       = 500;
-const MGR_DEFAULT_PASS = 'mohamed123321';
 
-const SCHEMA_VERSION = '17';          // internal DB schema (migrations only) — bumped to add the missing wf_assignments indexes
+const SCHEMA_VERSION = '18';          // internal DB schema (migrations only) — bumped to add wf_sessions (login tokens)
 const APP_VERSION    = '2.2';         // public app version shown in the UI
 
 // ════════════════════════════════════════════════════════
@@ -1286,10 +1285,16 @@ const APP_VERSION    = '2.2';         // public app version shown in the UI
 //
 // Install: npm install @neondatabase/serverless
 // This keeps a warm WebSocket connection and cuts cold-start CU overhead by ~10x.
+function _authHeaders(extra = {}) {
+  const h = { ...extra };
+  const token = (typeof S !== 'undefined' && S.authToken) || localStorage.getItem('wf_mgr_token');
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  return h;
+}
 async function sql(query, params = []) {
   const res = await fetch("/api/sql", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: _authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ query, params })
   });
   const data = await res.json().catch(() => null);
@@ -1301,7 +1306,9 @@ async function sql(query, params = []) {
 // DB HELPERS
 // ════════════════════════════════════════════════════════
 async function dbGetUser(u) {
-  const r = await sql('SELECT username,password,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users WHERE username=$1 LIMIT 1', [u]);
+  // Never selects `password` — logging in and changing passwords go through
+  // dedicated, authenticated endpoints instead (see /api/login.js).
+  const r = await sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users WHERE username=$1 LIMIT 1', [u]);
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
@@ -1316,7 +1323,7 @@ async function dbSetUser(u, d) {
     [u, ...vals]
   );
 }
-async function dbListUsers() { return sql('SELECT username,password,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users'); }
+async function dbListUsers() { return sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users'); }
 
 let _usersCache = null;
 function _clearUsersCache() { _usersCache = null; }
@@ -1554,7 +1561,7 @@ async function storagePut(blobOrDataUrl, meta){
     // 1. ask our backend for a temporary permission slip
     const r = await fetch('/api/upload-url', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:_authHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify({ contentType: blob.type || 'image/jpeg', owner: (meta && meta.owner) || 'misc' })
     });
     if(!r.ok) throw new Error('Upload not authorised ('+r.status+')');
@@ -1573,7 +1580,7 @@ async function storagePut(blobOrDataUrl, meta){
 async function storageUrl(ref){
   if(typeof ref === 'string' && ref.indexOf('obj:') === 0){
     // Ask the backend for a short-lived signed URL — files stay private (GDPR).
-    const res = await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)));
+    const res = await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { headers:_authHeaders() });
     if(!res.ok) throw new Error('Could not fetch file ('+res.status+')');
     const j = await res.json();
     if(!j || !j.url) throw new Error('No URL returned');
@@ -1662,7 +1669,7 @@ async function dbDelDocById(id) {
     const r = await sql('SELECT file_url FROM wf_documents WHERE id=$1 LIMIT 1', [id]);
     const ref = r[0] && r[0].file_url;
     if(typeof ref === 'string' && ref.indexOf('obj:') === 0){
-      await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { method:'DELETE' }).catch(()=>{});
+      await fetch('/api/file?key=' + encodeURIComponent(ref.slice(4)), { method:'DELETE', headers:_authHeaders() }).catch(()=>{});
     }
   }catch(_){ /* best effort — never block the row deletion */ }
   await sql('DELETE FROM wf_documents WHERE id=$1', [id]);
@@ -1848,6 +1855,11 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);
       CREATE INDEX IF NOT EXISTS idx_assign_worker ON wf_assignments(worker_username);
       CREATE INDEX IF NOT EXISTS idx_assign_loc ON wf_assignments(loc_id);
+      CREATE TABLE IF NOT EXISTS wf_sessions(
+        token TEXT PRIMARY KEY, username TEXT NOT NULL, role TEXT NOT NULL,
+        created_at BIGINT, expires_at BIGINT
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON wf_sessions(expires_at);
     `);
 
     migrationFailures += await _runMigrationBatch(`
@@ -1922,11 +1934,12 @@ async function initDB() {
     }
   }
 
-  await sql(
-    `INSERT INTO wf_users(username,password,role) VALUES('mohamed',$1,'manager')
-     ON CONFLICT(username) DO NOTHING`,
-    [MGR_DEFAULT_PASS]
-  );
+  // NOTE: the first-run bootstrap that used to create the 'mohamed' manager
+  // account here has been removed — that account already exists in
+  // production, and re-running an unauthenticated write on every page load
+  // was an unnecessary exposure. Manager accounts are now only ever
+  // created/reset through the authenticated /api/login + /api/reset-password
+  // endpoints.
 
   if (!alreadyInit) {
     (async () => {
@@ -2697,7 +2710,8 @@ const S = {
   timerInt:null, clockInt:null,
   mgrTab:'dashboard', authTab:'worker',
   editingWorker:null,
-  gps:'idle', gpsDist:null
+  gps:'idle', gpsDist:null,
+  authToken: localStorage.getItem('wf_mgr_token') || null
 };
 
 // ════════════════════════════════════════════════════════
@@ -2948,11 +2962,23 @@ window.doLogin=async()=>{
   const btn=document.querySelector('#lf .btn-dark');
   if(btn){btn.disabled=true;btn.textContent=T.loading||'Checking…';}
   try {
-    const user=await dbGetUser(u);
-    if(!user||user.password!==p||user.role!=='manager'){showErr(T.badLogin);return;}
-    S.user=user;
+    // Credentials are verified server-side now (hashed comparison) — the
+    // real password is never fetched into the browser. See /api/login.js.
+    const res = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username:u, password:p })
+    });
+    const data = await res.json().catch(()=>null);
+    if(!data || !data.ok){ showErr(T.badLogin); return; }
+    S.authToken = data.token;
+    localStorage.setItem('wf_mgr_token', data.token);
+    const fresh = await dbGetUser(data.user.username);
+    S.user = fresh || data.user;
     _resetInactiveTimer();
     renderManagerScreen();
+  } catch(e) {
+    showErr(T.badLogin);
   } finally {
     if(btn){btn.disabled=false;btn.textContent=T.signIn+' →';}
   }
@@ -2961,6 +2987,11 @@ window.doLogin=async()=>{
 window.doLogout=()=>{
   clearTimeout(_inactiveTimer);clearTimeout(_sleepTimer);
   clearInterval(S.timerInt);
+  if(S.authToken){
+    // Invalidate the token server-side too — best-effort, never blocks logout.
+    fetch('/api/logout',{method:'POST',headers:_authHeaders({'Content-Type':'application/json'})}).catch(()=>{});
+  }
+  S.authToken=null; localStorage.removeItem('wf_mgr_token');
   S.user=null;S.shift=null;S.screen='auth';S.gps='idle';S.gpsDist=null;S.nearestLocation=null;
   S.authTab='worker'; // always return to the default worker login
   render();
@@ -6658,18 +6689,34 @@ window.doChangePwd=async()=>{
   const cur=val('pw-current'),nw=val('pw-new'),cf=val('pw-confirm');
   const err=msg=>{$('pw-err').textContent=msg;$('pw-err').style.display='block';};
   $('pw-err').style.display='none';
-  if(cur!==S.user.password){err(T.pwdWrong);return;}
   if(nw.length<6){err(T.pwdTooShort);return;}
   if(nw!==cf){err(T.pwdNoMatch);return;}
-  await dbSetUser(S.user.username,{password:nw});
-  S.user.password=nw;
-  toast(T.pwdChanged,'success');closePwdModal();
+  try{
+    // The current password is verified server-side (hashed) — never compared
+    // against a value sitting in the browser. See /api/change-password.js.
+    const res=await fetch('/api/change-password',{
+      method:'POST',
+      headers:_authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({currentPassword:cur,newPassword:nw})
+    });
+    const data=await res.json().catch(()=>null);
+    if(!data||!data.ok){ err(T.pwdWrong); return; }
+    toast(T.pwdChanged,'success');closePwdModal();
+  }catch(e){ err(T.pwdWrong); }
 };
 window.doSetDefaultPwd=async()=>{
-  if(!confirm(`Reset password to default (${MGR_DEFAULT_PASS})?`)) return;
-  await dbSetUser(S.user.username,{password:MGR_DEFAULT_PASS});
-  S.user.password=MGR_DEFAULT_PASS;
-  toast(T.pwdReset,'success');closePwdModal();
+  if(!confirm(lang==='ar'?'إنشاء كلمة مرور مؤقتة جديدة عشوائية؟':lang==='it'?'Generare una nuova password temporanea casuale?':'Generate a new random temporary password?')) return;
+  try{
+    const res=await fetch('/api/reset-password',{
+      method:'POST',
+      headers:_authHeaders({'Content-Type':'application/json'})
+    });
+    const data=await res.json().catch(()=>null);
+    if(!data||!data.ok){ toast(data?.error||T.pwdWrong,'error'); return; }
+    // Shown once, here — it is never stored in the client code or logged anywhere.
+    alert((lang==='ar'?'كلمة المرور الجديدة المؤقتة: ':lang==='it'?'Nuova password temporanea: ':'New temporary password: ')+data.tempPassword+(lang==='ar'?'\n\nاحفظها الآن — لن تظهر مرة أخرى.':lang==='it'?'\n\nSalvala ora — non verrà mostrata di nuovo.':'\n\nSave it now — it will not be shown again.'));
+    toast(T.pwdReset,'success');closePwdModal();
+  }catch(e){ toast(T.pwdWrong,'error'); }
 };
 
 // ════════════════════════════════════════════════════════
