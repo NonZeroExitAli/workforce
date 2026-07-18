@@ -4,10 +4,14 @@
 //
 // The file never passes through this server, so there's no upload
 // size limit to worry about and it costs you no bandwidth.
+//
+// Requires a valid, signed-in manager session — only the manager screens
+// ever call this (workers never upload documents directly).
 // ─────────────────────────────────────────────────────────────
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
+import { setCors, verifySession } from './_lib.js';
 
 const s3 = new S3Client({
   region: 'auto',
@@ -21,7 +25,14 @@ const s3 = new S3Client({
 const ALLOWED = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 
 export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') return res.status(200).send('');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const session = await verifySession(req);
+  if (!session || session.role !== 'manager') {
+    return res.status(401).json({ error: 'Not authorized' });
+  }
 
   try {
     const { contentType, owner } = req.body || {};
