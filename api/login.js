@@ -11,12 +11,19 @@
 // Existing plaintext rows are migrated automatically: on first successful
 // login with the old plaintext password, it's re-hashed and saved.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, createSession, bcryptHash, bcryptCompare, looksHashed } from './_lib.js';
+import { sql, setCors, createSession, bcryptHash, bcryptCompare, looksHashed, rateLimit, clientIp, audit } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).send('');
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
+
+  const ip = clientIp(req);
+  // 8 attempts / 5 minutes per IP, and per attempted username — blocks both
+  // a single attacker hammering one account and one hammering many accounts.
+  if (!rateLimit(`login:ip:${ip}`, 8, 5 * 60 * 1000)) {
+    return res.status(429).json({ ok: false, error: 'Too many attempts. Please wait a few minutes and try again.' });
+  }
 
   try {
     const { username, password } = req.body || {};
@@ -25,6 +32,10 @@ export default async function handler(req, res) {
     }
 
     const uname = String(username).trim().toLowerCase();
+    if (!rateLimit(`login:user:${uname}`, 8, 5 * 60 * 1000)) {
+      return res.status(429).json({ ok: false, error: 'Too many attempts. Please wait a few minutes and try again.' });
+    }
+
     const rows = await sql(
       'SELECT username,password,role,label FROM wf_users WHERE username=$1 AND role=$2 LIMIT 1',
       [uname, 'manager']
@@ -47,10 +58,12 @@ export default async function handler(req, res) {
     }
 
     if (!user || !ok) {
+      await audit(uname, 'login_failed', uname, { ip });
       return res.status(401).json({ ok: false, error: 'Invalid username or password' });
     }
 
     const { token } = await createSession(user.username, 'manager');
+    await audit(user.username, 'login_success', user.username, { ip });
     return res.status(200).json({
       ok: true,
       token,
