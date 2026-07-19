@@ -1373,7 +1373,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // ════════════════════════════════════════════════════════
 const GPS_RADIUS       = 500;
 
-const SCHEMA_VERSION = '18';          // internal DB schema (migrations only) — bumped to add wf_sessions (login tokens)
+const SCHEMA_VERSION = '19';          // internal DB schema (migrations only) — bumped to add wf_users.photo_url
 const APP_VERSION    = '2.2';         // public app version shown in the UI
 
 // ════════════════════════════════════════════════════════
@@ -1420,7 +1420,7 @@ async function sql(query, params = []) {
 async function dbGetUser(u) {
   // Never selects `password` — logging in and changing passwords go through
   // dedicated, authenticated endpoints instead (see /api/login.js).
-  const r = await sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users WHERE username=$1 LIMIT 1', [u]);
+  const r = await sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users WHERE username=$1 LIMIT 1', [u]);
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
@@ -1435,7 +1435,7 @@ async function dbSetUser(u, d) {
     [u, ...vals]
   );
 }
-async function dbListUsers() { return sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses FROM wf_users'); }
+async function dbListUsers() { return sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users'); }
 
 let _usersCache = null;
 function _clearUsersCache() { _usersCache = null; }
@@ -2006,6 +2006,7 @@ async function initDB() {
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS idoneita_expiry TEXT;
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS patente_expiry TEXT;
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS courses TEXT;
+      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS photo_url TEXT;
       UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';
       UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';
       UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';
@@ -4211,6 +4212,16 @@ async function buildLive(forceRefresh=false, sharedData=null){
     return byName(a,b);
   });
   if(!workers.length){ _liveCache=`<div class="empty">${T.noWorkers}</div>`; return _liveCache; }
+  // Resolve real profile photos (in parallel) once per cache build, not per
+  // row — this is the whole worker list, so a batch of signed-URL lookups
+  // here instead of N sequential ones keeps it cheap and fast.
+  const _photoUsers = workers.filter(w=>w.photo_url);
+  const _photoMap = {};
+  if(_photoUsers.length){
+    await Promise.all(_photoUsers.map(async w=>{
+      try{ const r = await storageUrl(w.photo_url); _photoMap[w.username]=r.url; }catch(e){}
+    }));
+  }
   const now=Date.now();
   const updatedAt=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
   const userMap={};allUsers.forEach(u=>userMap[u.username]=u);
@@ -4239,6 +4250,11 @@ async function buildLive(forceRefresh=false, sharedData=null){
       ? `<span class="badge" style="background:var(--orange-soft);color:var(--orange);border:1px solid rgba(212,160,23,.4)">⏸ ${T.paused}</span>`
       : `<span class="badge" style="background:var(--green-soft);color:var(--green);border:1px solid rgba(46,160,67,.35)">✓ ${T.confirmed}</span>`;
     return`<div data-search="${disp(w.label||w.username)} ${esc(w.phone||'')}" style="background:var(--bg1);border:1px solid var(--border2);border-left:4px solid ${stColor};border-radius:4px;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;transition:border-color .2s">
+      <div style="flex-shrink:0;cursor:pointer" onclick="openWorkerProfile('${esc(w.username)}')" title="${T.viewProfile}">
+        ${_photoMap[w.username]
+          ? `<img src="${esc(_photoMap[w.username])}" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg1);box-shadow:0 2px 6px rgba(0,0,0,.15)"/>`
+          : _avatarHtml(w.label||w.username, 46)}
+      </div>
       <div style="display:flex;flex-direction:column;min-width:180px;flex:2">
         <div data-worker-link="${esc(w.username)}" onclick="openWorkerProfile('${esc(w.username)}')" title="${T.viewProfile}" style="font-family:var(--font);font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);cursor:pointer">${disp(w.label||w.username)}</div>
         <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:2px">${esc(w.phone||'—')} · <span style="color:var(--brand-ink)">€${w.hourly_rate||0}/hr</span></div>
@@ -4325,16 +4341,28 @@ window.mgrEndShift=async(shiftId, workerName)=>{
 
 async function buildAddWorker(){
   const phones=(await dbListPhonesCached()).slice().sort(byName);const users=await dbListUsersCached();
+  // Same batch photo resolution as the Live list — one parallel round of
+  // lookups per build instead of one per row.
+  const _photoUsers = users.filter(u=>u.role==='worker'&&u.photo_url);
+  const _photoMap = {};
+  if(_photoUsers.length){
+    await Promise.all(_photoUsers.map(async u=>{
+      try{ const r = await storageUrl(u.photo_url); _photoMap[u.username]=r.url; }catch(e){}
+    }));
+  }
   const listHtml=!phones.length?`<div class="empty">${T.noPhonesYet}</div>`:phones.map(p=>{
     const norm=p.norm;
     const linked=users.filter(u=>u.role==='worker'&&normPhone(u.phone||'')===norm);
     const workerUser = linked[0] || null;
     const hasDevice = !!(workerUser?.device_id);
+    const photoUrl = workerUser ? _photoMap[workerUser.username] : null;
     return`<div class="phone-row" data-search="${disp(p.label||'')} ${esc(p.phone||'')}" style="flex-direction:column;gap:10px">
       <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
         <div style="flex:1">
           <div ${workerUser?`onclick="openWorkerProfile('${esc(workerUser.username)}')" title="${T.viewProfile}" style="cursor:pointer;display:flex;align-items:center;gap:12px"`:'style="display:flex;align-items:center;gap:12px"'}>
-            ${_avatarHtml(p.label||p.phone, 50)}
+            ${photoUrl
+              ? `<img src="${esc(photoUrl)}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg1);box-shadow:0 2px 6px rgba(0,0,0,.15)"/>`
+              : _avatarHtml(p.label||p.phone, 50)}
             <div style="min-width:0">
               <div style="font-family:var(--font);font-size:20px;font-weight:800;letter-spacing:.3px;color:var(--text)">${disp(p.label||p.phone)}</div>
               ${p.label?`<div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${esc(p.phone)}</div>`:''}
@@ -4941,6 +4969,11 @@ async function buildWorkerProfile(username, editInfo){
   if(!isCreate && !user){ return `<div class="empty">${T.noWorkers}</div>`; }
   const P=PL();
   const u=user||{};
+  let photoUrl = null;
+  if(!isCreate && u.photo_url){
+    try{ const r = await storageUrl(u.photo_url); photoUrl = r.url; }
+    catch(e){ console.error('profile photo load failed', e); }
+  }
   const norm = isCreate ? '' : _workerNorm(u);
   const status=(u.worker_status==='paused')?'paused':'confirmed';
   const locMap={}; locs.forEach(l=>locMap[l.id]=l);
@@ -5214,7 +5247,16 @@ async function buildWorkerProfile(username, editInfo){
       <button onclick="backFromProfile()" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang==='ar'?'<path d="M5 12h14M13 5l7 7-7 7"/>':'<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>
       </button>
-      ${_avatarHtml(isCreate?'+':(u.label||u.username), 52)}
+      <div style="position:relative;flex-shrink:0;width:88px;height:88px">
+        ${photoUrl
+          ? `<img src="${esc(photoUrl)}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;display:block;box-shadow:0 4px 14px rgba(0,0,0,.18);border:3px solid var(--bg1)"/>`
+          : _avatarHtml(isCreate?'+':(u.label||u.username), 88)}
+        ${isCreate?'':`
+        <button onclick="document.getElementById('wp-photo-input').click()" title="${P.changePhoto||'Change photo'}" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;background:var(--copper);border:2px solid var(--bg1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <input id="wp-photo-input" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onWorkerPhotoPicked('${esc(username)}',this)"/>`}
+      </div>
       <div>
         <div style="font-family:var(--font);font-size:22px;font-weight:900;letter-spacing:.3px;color:var(--text)">${isCreate?P.newWorker:disp(u.label||u.username)}</div>
         <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${isCreate?'':(esc(u.job_title||'')+(siteVal?(u.job_title?' · ':'')+siteVal:'')||T.profile)}</div>
@@ -6263,6 +6305,42 @@ window.onSlotPicked = async (username, slotKey, input, category, label)=>{
     profileTab(cat==='payslip'?'payslips':'docs');
   }catch(e){
     console.error('upload failed', e);
+    toast('Error: '+(e && e.message ? e.message : e),'error');
+  }finally{ if(input) input.value=''; }
+};
+
+// Worker profile picture — manager-only (this whole panel is manager-gated
+// already), stored in the same object storage as documents via storagePut,
+// referenced from wf_users.photo_url as an 'obj:<key>' string.
+window.onWorkerPhotoPicked = async (username, input)=>{
+  const P=PL();
+  try{
+    const file = input && input.files && input.files[0];
+    if(!file) return;
+    const type=(file.type||'').toLowerCase();
+    const name=(file.name||'').toLowerCase();
+    const isHeic = type.indexOf('heic')>=0 || type.indexOf('heif')>=0 || /\.(heic|heif)$/.test(name);
+    const isImage = (type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)) && !isHeic;
+    if(isHeic){ toast(P.heicUnsupported,'error'); input.value=''; return; }
+    if(!isImage){ toast(P.badType,'error'); input.value=''; return; }
+    if(file.size > 8*1024*1024){ toast(P.tooBigPre,'error'); input.value=''; return; }
+
+    toast(P.compressing,'info');
+    let dataUrl;
+    try{ dataUrl = await _compressImage(file, 640, 0.85); }
+    catch(err){ console.error('photo compress failed', err); toast(P.imgUnreadable,'error'); input.value=''; return; }
+
+    const oldRef = (await dbGetUser(username))?.photo_url || null;
+    const stored = await storagePut(dataUrl, { name: file.name, owner: username });
+    await dbSetUser(username, { photo_url: stored });
+    // Best-effort cleanup of the previous photo so old uploads don't pile up in R2.
+    if(oldRef && oldRef.indexOf('obj:')===0 && oldRef!==stored){
+      fetch('/api/file?key=' + encodeURIComponent(oldRef.slice(4)), { method:'DELETE', headers:_authHeaders() }).catch(()=>{});
+    }
+    toast(lang==='ar'?'تم تحديث الصورة':lang==='it'?'Foto aggiornata':'Photo updated','success');
+    await openWorkerProfile(username);
+  }catch(e){
+    console.error('photo upload failed', e);
     toast('Error: '+(e && e.message ? e.message : e),'error');
   }finally{ if(input) input.value=''; }
 };
