@@ -198,17 +198,39 @@ export default async function handler(req, res) {
         // it as 24:00 for the purposes of this comparison.
         if (endMinutes < 12 * 60) endMinutes += 24 * 60;
         const diff = endMinutes - nowMinutes;
-        if (diff <= 10 && diff > 0) {
+        // Catch window: up to 10 min BEFORE the end time, or up to 20 min
+        // AFTER it. The pinger is only scheduled to land inside the "before"
+        // half (checks at :20/:50 vs on-the-hour/half-hour end times), but
+        // free external cron services (cron-job.org included) don't
+        // guarantee second-perfect timing — a run that fires a minute or two
+        // early would see diff > 10 and skip entirely, then the next run
+        // 30 min later would see diff already very negative and skip again,
+        // silently dropping the alert for that shift. Widening the back end
+        // of the window means a late-firing or delayed run still catches it
+        // and sends a (slightly late, but sent) reminder instead of nothing.
+        if (diff <= 10 && diff >= -20) {
           const key = `shiftend:${s.id}`;
           const isNew = await _claimOnce(key);
           if (!isNew) continue;
-          await sendPushToUser(s.worker, {
+          const label = diff > 0
+            ? `Il tuo turno termina tra ${diff} min${s.location_name ? ' — ' + s.location_name : ''} / ينتهي دوامك خلال ${diff} دقيقة`
+            : `Il tuo turno dovrebbe essere terminato${s.location_name ? ' — ' + s.location_name : ''} / كان يجب أن ينتهي دوامك الآن`;
+          const pushResult = await sendPushToUser(s.worker, {
             title: 'Newidra',
-            body: `Il tuo turno termina tra ${diff} min${s.location_name ? ' — ' + s.location_name : ''} / ينتهي دوامك خلال ${diff} دقيقة`,
+            body: label,
             url: '/?source=push',
             tag: key,
           });
+          // sendPushToUser never throws, so without this the response would
+          // report an alert as "sent" even when the worker has zero
+          // registered subscriptions or VAPID keys are missing — this makes
+          // that failure visible in the JSON response and Vercel logs
+          // instead of looking identical to a real send.
+          if (!pushResult.sent) {
+            console.warn('[check-notifications] shift alert not delivered', { worker: s.worker, shiftId: s.id, reason: pushResult.reason || 'no active subscriptions', total: pushResult.total });
+          }
           results.shiftAlerts++;
+          results.shiftAlertsDelivered = (results.shiftAlertsDelivered || 0) + (pushResult.sent || 0);
         }
       }
     }
