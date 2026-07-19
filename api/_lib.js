@@ -8,6 +8,7 @@
 import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import webpush from 'web-push';
 
 export const sql = neon(process.env.NEON_DATABASE_URL || process.env.DATABASE_URL);
 
@@ -91,4 +92,50 @@ export async function audit(actorUsername, action, target, details) {
   } catch (e) {
     console.error('audit log failed', e);
   }
+}
+
+// ── Web Push ────────────────────────────────────────────────────
+// VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY are set once in Vercel's environment
+// variables. The public key is also embedded in the client so the browser
+// can subscribe; the private key never leaves the server, and is what
+// actually lets this server (and only this server) send pushes signed as
+// this app.
+let _vapidReady = false;
+function _ensureVapid() {
+  if (_vapidReady) return;
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      'mailto:admin@newidra.app',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+    _vapidReady = true;
+  }
+}
+
+// Sends one push to every subscription a username has registered (they may
+// have several devices). Dead/expired subscriptions (410 Gone / 404) are
+// cleaned up automatically. Never throws — a failed push should never take
+// down the caller.
+export async function sendPushToUser(username, payload) {
+  _ensureVapid();
+  if (!_vapidReady) return { sent: 0, reason: 'VAPID keys not configured' };
+  const subs = await sql('SELECT id,endpoint,p256dh,auth FROM wf_push_subscriptions WHERE username=$1', [username]);
+  let sent = 0;
+  await Promise.all(subs.map(async (s) => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        JSON.stringify(payload)
+      );
+      sent++;
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await sql('DELETE FROM wf_push_subscriptions WHERE id=$1', [s.id]).catch(() => {});
+      } else {
+        console.error('push send failed for', username, e.statusCode, e.message);
+      }
+    }
+  }));
+  return { sent, total: subs.length };
 }
