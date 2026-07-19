@@ -1735,12 +1735,13 @@ function _urlB64ToUint8Array(base64String) {
 async function storagePut(blobOrDataUrl, meta) {
   if (STORAGE_PROVIDER === "obj") {
     const blob = typeof blobOrDataUrl === "string" ? _dataUrlToBlob(blobOrDataUrl) : blobOrDataUrl;
-    const r = await fetch("/api/upload-url", {
+    const r = await fetch("/api/storage", {
       method: "POST",
       headers: _authHeaders({
         "Content-Type": "application/json"
       }),
       body: JSON.stringify({
+        action: "upload-url",
         contentType: blob.type || "image/jpeg",
         owner: meta && meta.owner || "misc"
       })
@@ -1756,12 +1757,13 @@ async function storagePut(blobOrDataUrl, meta) {
       body: blob
     });
     if (!put.ok) throw new Error("Upload failed (" + put.status + ")");
-    const fin = await fetch("/api/finalize-upload", {
+    const fin = await fetch("/api/storage", {
       method: "POST",
       headers: _authHeaders({
         "Content-Type": "application/json"
       }),
       body: JSON.stringify({
+        action: "finalize",
         key: key
       })
     });
@@ -1776,7 +1778,7 @@ async function storagePut(blobOrDataUrl, meta) {
 
 async function storageUrl(ref) {
   if (typeof ref === "string" && ref.indexOf("obj:") === 0) {
-    const res = await fetch("/api/file?key=" + encodeURIComponent(ref.slice(4)), {
+    const res = await fetch("/api/storage?key=" + encodeURIComponent(ref.slice(4)), {
       headers: _authHeaders()
     });
     if (!res.ok) throw new Error("Could not fetch file (" + res.status + ")");
@@ -1922,7 +1924,7 @@ async function dbDelDocById(id) {
     const r = await sql("SELECT file_url FROM wf_documents WHERE id=$1 LIMIT 1", [ id ]);
     const ref = r[0] && r[0].file_url;
     if (typeof ref === "string" && ref.indexOf("obj:") === 0) {
-      await fetch("/api/file?key=" + encodeURIComponent(ref.slice(4)), {
+      await fetch("/api/storage?key=" + encodeURIComponent(ref.slice(4)), {
         method: "DELETE",
         headers: _authHeaders()
       }).catch(() => {});
@@ -7010,7 +7012,7 @@ window.onWorkerPhotoPicked = async (username, input) => {
     });
     await _clientAudit("worker_photo_changed", username, {});
     if (oldRef && oldRef.indexOf("obj:") === 0 && oldRef !== stored) {
-      fetch("/api/file?key=" + encodeURIComponent(oldRef.slice(4)), {
+      fetch("/api/storage?key=" + encodeURIComponent(oldRef.slice(4)), {
         method: "DELETE",
         headers: _authHeaders()
       }).catch(() => {});
@@ -7696,7 +7698,7 @@ window.enablePushNotificationsWorker = async () => {
         applicationServerKey: _urlB64ToUint8Array(VAPID_PUBLIC_KEY)
       });
     }
-    const res = await fetch("/api/push-subscribe-worker", {
+    const res = await fetch("/api/push-subscribe", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -7722,7 +7724,7 @@ window.disablePushNotificationsWorker = async () => {
   try {
     const sub = await _getPushSubscription();
     if (sub) {
-      await fetch("/api/push-subscribe-worker", {
+      await fetch("/api/push-subscribe", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json"
