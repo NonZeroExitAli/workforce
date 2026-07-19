@@ -1105,6 +1105,29 @@ th.sortable.sorted .arr{ opacity:1; color:var(--brand-ink); }
   .app-main{ margin-left:0 !important; margin-right:0 !important; }
   .hamburger{ display:flex; align-items:center; justify-content:center; }
 }
+
+/* ── Manager dashboard shell on phones: the sidebar/hamburger swap above
+   handles the structural part, this tightens spacing + density so the
+   header, KPI cards, and panels actually fit a phone screen well. ── */
+@media(max-width:640px){
+  :root{ --side-w:84vw; }
+  .side-nav{ max-width:300px; }
+  .app-header{ padding:0 14px; gap:8px; min-height:52px; }
+  .app-header .page-title{ font-size:15px; letter-spacing:1px; }
+  .app-header .page-title small{ display:none; }
+  .app-header .clock{ display:none; }
+  #bellBtn{ width:36px; height:36px; }
+  .app-content{ padding:14px; }
+  .kpi-grid{ grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  .kpi{ padding:14px; }
+  .kpi .kpi-val{ font-size:22px; }
+  .kpi .kpi-ico{ width:32px; height:32px; font-size:15px; }
+  .quick-grid{ grid-template-columns:1fr 1fr; gap:10px; }
+  .panel-card{ padding:14px; border-radius:10px; margin-bottom:14px; }
+  .pc-title,.st{ font-size:10px; margin-bottom:10px; }
+  .profile-header-card{ flex-direction:column; align-items:flex-start !important; }
+  .profile-header-card > div{ width:100%; }
+}
 </style>
 <style>
 /* ════ DARK NAVY SIDEBAR · ORANGE ACCENT · LIGHT CONTENT (enterprise theme) ════ */
@@ -5242,7 +5265,7 @@ async function buildWorkerProfile(username, editInfo){
   const dis = isCreate;
 
   return `
-  <div class="panel-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:14px">
       <button onclick="backFromProfile()" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang==='ar'?'<path d="M5 12h14M13 5l7 7-7 7"/>':'<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>
@@ -5455,7 +5478,7 @@ async function buildSiteDetail(locId){
   const isFinished = loc.finished===true || loc.finished==='true';
   const sdTab=(key,label,iconName)=>`<button class="pf-tab" data-pf="${key}" onclick="profileTab('${key}')" style="border:none;background:none;padding:8px 4px;cursor:pointer"><span class="pf-tab-inner" style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;font-family:var(--font);font-size:12.5px;font-weight:800;letter-spacing:.2px;color:var(--muted);background:transparent;white-space:nowrap;transition:background .15s ease,color .15s ease">${ic(iconName,15)}<span>${label}</span></span></button>`;
   return `
-  <div class="panel-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:14px">
       <button onclick="mTab('locations')" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang==='ar'?'<path d="M5 12h14M13 5l7 7-7 7"/>':'<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>
@@ -6518,7 +6541,7 @@ async function buildVehicleProfile(id, edit){
   const assigned=v.assigned_user&&uByName[v.assigned_user]?disp(uByName[v.assigned_user].label||uByName[v.assigned_user].username):(v.assigned_user?esc(v.assigned_user):P.none);
 
   const header=`
-  <div class="panel-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:14px">
       <button onclick="mTab('cars')" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang==='ar'?'<path d="M5 12h14M13 5l7 7-7 7"/>':'<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>
@@ -6682,7 +6705,7 @@ async function buildPropertyProfile(id, edit){
   const nextRent = _nextRentDue(p.rent_day);
 
   const header = `
-  <div class="panel-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:14px">
       <button onclick="mTab('properties')" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang==='ar'?'<path d="M5 12h14M13 5l7 7-7 7"/>':'<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>
