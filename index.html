@@ -1314,7 +1314,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
     <div class="err-box" id="pw-err" style="display:none;margin-bottom:12px"></div>
     <div class="modal-btns" style="flex-direction:column;gap:8px">
       <button class="btn btn-gold" id="pwd-btn-save" onclick="doChangePwd()">Save New Password</button>
-      <button class="btn btn-dark" onclick="doSetDefaultPwd()" style="background:rgba(232,128,28,.1);border-color:rgba(232,128,28,.3);color:var(--red)">Set Default (mohamed123321)</button>
+      <button class="btn btn-dark" onclick="doSetDefaultPwd()" style="background:rgba(232,128,28,.1);border-color:rgba(232,128,28,.3);color:var(--red)">Generate Random Temporary Password</button>
       <button class="btn btn-dark" id="pwd-btn-cancel" onclick="closePwdModal()">Cancel</button>
     </div>
   </div>
@@ -1371,7 +1371,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 <script>
 const GPS_RADIUS = 500;
 
-const SCHEMA_VERSION = "20";
+const SCHEMA_VERSION = "21";
 
 const APP_VERSION = "2.2";
 
@@ -1398,6 +1398,21 @@ async function sql(query, params = []) {
   const data = await res.json().catch(() => null);
   if (!data || !data.ok) throw new Error(data?.error || `SQL failed (${res.status})`);
   return data.rows || [];
+}
+
+// Best-effort activity trail for sensitive manager actions. Since most
+// mutations in this app go straight from the client to /api/sql rather than
+// through dedicated server endpoints, this call is made from the client too
+// — it's a visibility/accountability record, not a tamper-proof one (a
+// determined attacker bypassing the UI entirely could avoid it). A fully
+// tamper-proof log would need every mutation to move behind its own
+// server-owned endpoint, which is a bigger change tracked separately.
+async function _clientAudit(action, target, details) {
+  try {
+    await sql("INSERT INTO wf_audit_log(actor_username,action,target,details,created_at) VALUES($1,$2,$3,$4,$5)", [ S.user && S.user.username || null, action, target || null, details ? JSON.stringify(details) : null, Date.now() ]);
+  } catch (e) {
+    console.warn("[audit] log failed", e);
+  }
 }
 
 async function dbGetUser(u) {
@@ -1475,6 +1490,7 @@ async function dbDelUser(username) {
 }
 
 async function dbPurgeWorker(username, norm) {
+  await _clientAudit("worker_deleted", username, {});
   const jobs = [ sql("DELETE FROM wf_documents WHERE worker_username=$1", [ username ]), sql("DELETE FROM wf_career    WHERE worker_username=$1", [ username ]), sql("DELETE FROM wf_shifts    WHERE worker=$1", [ username ]), sql("DELETE FROM wf_assignments WHERE worker_username=$1", [ username ]), sql("UPDATE wf_vehicles   SET assigned_user=NULL        WHERE assigned_user=$1", [ username ]), sql("UPDATE wf_locations  SET leader_username=NULL      WHERE leader_username=$1", [ username ]), sql("UPDATE wf_properties SET responsible_username=NULL WHERE responsible_username=$1", [ username ]), sql("DELETE FROM wf_users  WHERE username=$1", [ username ]) ];
   if (norm) {
     jobs.push(sql("DELETE FROM wf_assignments WHERE worker_username=$1", [ norm ]));
@@ -1669,6 +1685,19 @@ const DOC_STORAGE_SOFT = 450 * 1024 * 1024;
 
 const STORAGE_PROVIDER = "obj";
 
+// Public VAPID key for Web Push — safe to embed client-side (only the
+// server-held private key can actually sign/send notifications with it).
+const VAPID_PUBLIC_KEY = "BAKNS8WZ4qKMf21hHAnFSYMHjhfccOApPt26bYUaezaiQf5Ku388mXMQOjN1D-ZEtXb7UvcY0UCLh2vENPOyPLs";
+
+function _urlB64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const out = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) out[i] = rawData.charCodeAt(i);
+  return out;
+}
+
 async function storagePut(blobOrDataUrl, meta) {
   if (STORAGE_PROVIDER === "obj") {
     const blob = typeof blobOrDataUrl === "string" ? _dataUrlToBlob(blobOrDataUrl) : blobOrDataUrl;
@@ -1693,6 +1722,19 @@ async function storagePut(blobOrDataUrl, meta) {
       body: blob
     });
     if (!put.ok) throw new Error("Upload failed (" + put.status + ")");
+    const fin = await fetch("/api/finalize-upload", {
+      method: "POST",
+      headers: _authHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        key: key
+      })
+    });
+    const finData = await fin.json().catch(() => null);
+    if (!fin.ok || !finData || !finData.ok) {
+      throw new Error(finData && finData.error || "Upload rejected");
+    }
     return "obj:" + key;
   }
   return typeof blobOrDataUrl === "string" ? blobOrDataUrl : await _fileToDataURL(blobOrDataUrl);
@@ -1853,6 +1895,7 @@ async function dbDelDocById(id) {
     }
   } catch (_) {}
   await sql("DELETE FROM wf_documents WHERE id=$1", [ id ]);
+  await _clientAudit("document_deleted", id, {});
 }
 
 async function dbSetDocument(id, worker_username, doc_type, file_url, uploaded_at) {
@@ -1954,6 +1997,10 @@ async function dbDelVehicle(id) {
   await sql("DELETE FROM wf_vehicles WHERE id=$1", [ id ]);
 }
 
+async function dbListAuditLog(limit = 100) {
+  return sql("SELECT actor_username,action,target,details,created_at FROM wf_audit_log ORDER BY created_at DESC LIMIT $1", [ limit ]);
+}
+
 async function _runMigrationBatch(block) {
   const stmts = block.split(";").map(s => s.trim()).filter(Boolean);
   let failures = 0;
@@ -1974,6 +2021,7 @@ async function initDB() {
     let migrationFailures = 0;
     migrationFailures += await _runMigrationBatch(`\n      CREATE TABLE IF NOT EXISTS wf_users(\n        username TEXT PRIMARY KEY, password TEXT, role TEXT,\n        phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_phones(\n        norm TEXT PRIMARY KEY, phone TEXT, label TEXT,\n        rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_shifts(\n        id TEXT PRIMARY KEY, worker TEXT, date TEXT,\n        start_time BIGINT, end_time BIGINT, work_hours NUMERIC,\n        earnings NUMERIC, hourly_rate NUMERIC,\n        location_name TEXT, location_id TEXT, status TEXT,\n        billing_start_time BIGINT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0\n      );\n      CREATE TABLE IF NOT EXISTS wf_config(\n        id INTEGER PRIMARY KEY DEFAULT 1,\n        std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,\n        auto_end_time TEXT DEFAULT NULL\n      );\n      CREATE TABLE IF NOT EXISTS wf_locations(\n        id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,\n        map_link TEXT, added_at BIGINT,\n        is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL,\n        start_time TEXT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0\n      );\n      CREATE TABLE IF NOT EXISTS wf_assignments(\n        worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,\n        PRIMARY KEY(worker_username, loc_id)\n      );\n      CREATE TABLE IF NOT EXISTS wf_career(\n        id TEXT PRIMARY KEY, worker_username TEXT, event_date TEXT,\n        event_type TEXT, description TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_documents(\n        id TEXT PRIMARY KEY, worker_username TEXT, doc_type TEXT,\n        file_url TEXT, uploaded_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_vehicles(\n        id TEXT PRIMARY KEY, plate TEXT, model TEXT, assigned_user TEXT,\n        inspection_date TEXT, insurance_expiry TEXT, road_tax_expiry TEXT,\n        last_oil_change TEXT, mileage NUMERIC, status TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_properties(\n        id TEXT PRIMARY KEY, kind TEXT, kind_other TEXT, name TEXT, address TEXT,\n        rent_day INTEGER, rent_amount NUMERIC,\n        contract_start TEXT, contract_end TEXT, responsible_username TEXT, notes TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_payslip_amounts(\n        worker_username TEXT, year INTEGER, month INTEGER, amount NUMERIC,\n        PRIMARY KEY(worker_username, year, month)\n      );\n      CREATE INDEX IF NOT EXISTS idx_career_worker ON wf_career(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_docs_worker ON wf_documents(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);\n      CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);\n      CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);\n      CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);\n      CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);\n      CREATE INDEX IF NOT EXISTS idx_assign_worker ON wf_assignments(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_assign_loc ON wf_assignments(loc_id);\n      CREATE TABLE IF NOT EXISTS wf_sessions(\n        token TEXT PRIMARY KEY, username TEXT NOT NULL, role TEXT NOT NULL,\n        created_at BIGINT, expires_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON wf_sessions(expires_at);\n    `);
     migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS worker_status TEXT DEFAULT 'confirmed';\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS leader_username TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS dob TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS email TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS tax_code TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS residence_permit TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS doc_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS iban TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS address TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS start_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS job_title TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_type TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS permit_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS idoneita_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS patente_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS courses TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS photo_url TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart_date TEXT;\n      UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';\n      UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';\n      UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS title TEXT;\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'document';\n      UPDATE wf_documents SET category='document'       WHERE category IS NULL;\n      CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS finished BOOLEAN DEFAULT false;\n      ALTER TABLE wf_properties ADD COLUMN IF NOT EXISTS kind_other TEXT;\n      CREATE TABLE IF NOT EXISTS wf_career(\n        id TEXT PRIMARY KEY, worker_username TEXT, event_date TEXT,\n        event_type TEXT, description TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_documents(\n        id TEXT PRIMARY KEY, worker_username TEXT, doc_type TEXT,\n        file_url TEXT, uploaded_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_vehicles(\n        id TEXT PRIMARY KEY, plate TEXT, model TEXT, assigned_user TEXT,\n        inspection_date TEXT, insurance_expiry TEXT, road_tax_expiry TEXT,\n        last_oil_change TEXT, mileage NUMERIC, status TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_properties(\n        id TEXT PRIMARY KEY, kind TEXT, kind_other TEXT, name TEXT, address TEXT,\n        rent_day INTEGER, rent_amount NUMERIC,\n        contract_start TEXT, contract_end TEXT, responsible_username TEXT, notes TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_payslip_amounts(\n        worker_username TEXT, year INTEGER, month INTEGER, amount NUMERIC,\n        PRIMARY KEY(worker_username, year, month)\n      );\n    `);
+    migrationFailures += await _runMigrationBatch(`\n      CREATE TABLE IF NOT EXISTS wf_audit_log(\n        id BIGSERIAL PRIMARY KEY, actor_username TEXT, action TEXT NOT NULL,\n        target TEXT, details TEXT, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_audit_created ON wf_audit_log(created_at);\n      CREATE INDEX IF NOT EXISTS idx_audit_actor ON wf_audit_log(actor_username);\n      CREATE TABLE IF NOT EXISTS wf_push_subscriptions(\n        id TEXT PRIMARY KEY, username TEXT NOT NULL, endpoint TEXT NOT NULL,\n        p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_push_username ON wf_push_subscriptions(username);\n      CREATE TABLE IF NOT EXISTS wf_notified_log(\n        notif_key TEXT PRIMARY KEY, sent_at BIGINT\n      );\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS notify_window INTEGER DEFAULT 10;\n    `);
     if (migrationFailures === 0) {
       localStorage.setItem("wf_schema", SCHEMA_VERSION);
     } else {
@@ -4307,6 +4355,11 @@ function mgrTabList() {
     ico: "",
     label: T.salary,
     sub: L.sub_salary
+  }, {
+    key: "settings",
+    ico: "",
+    label: T.settings,
+    sub: L.sub_settings
   } ];
 }
 
@@ -4770,6 +4823,7 @@ window.allowRestart = async (username, displayName) => {
       can_restart: true,
       can_restart_date: todayStr()
     });
+    await _clientAudit("restart_granted", username, {});
     _liveCache = null;
     toast(T.canNowStart(displayName), "success");
     await mTab("live");
@@ -4785,6 +4839,7 @@ window.revokeRestart = async (username, displayName) => {
       can_restart: false,
       can_restart_date: null
     });
+    await _clientAudit("restart_revoked", username, {});
     _liveCache = null;
     toast(T.restartRevoked(displayName), "warning");
     await mTab("live");
@@ -6369,6 +6424,12 @@ window.setNotifyWindow = v => {
   n = Math.max(1, Math.min(365, n));
   NOTIFY_WINDOW = n;
   localStorage.setItem("wf_notify_window", String(n));
+  // Also persisted server-side (wf_config.notify_window) — this is a
+  // per-browser display setting, but the push-notification cron job runs
+  // with no browser at all, so it needs its own copy of this number.
+  dbSetConfig({
+    notify_window: n
+  }).catch(() => {});
   mTab("notifications");
   updateNotifyBadge();
 };
@@ -6908,6 +6969,7 @@ window.onWorkerPhotoPicked = async (username, input) => {
     await dbSetUser(username, {
       photo_url: stored
     });
+    await _clientAudit("worker_photo_changed", username, {});
     if (oldRef && oldRef.indexOf("obj:") === 0 && oldRef !== stored) {
       fetch("/api/file?key=" + encodeURIComponent(oldRef.slice(4)), {
         method: "DELETE",
@@ -7378,10 +7440,208 @@ window.reSalary = async () => {
   if (panel) panel.innerHTML = await buildSalary(p);
 };
 
+function _fmtDT(ms) {
+  if (!ms) return "—";
+  const loc = lang === "ar" ? "ar" : lang === "it" ? "it-IT" : "en-GB";
+  return new Date(Number(ms)).toLocaleString(loc, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
+function _auditActionLabel(action) {
+  const map = {
+    login_success: {
+      ar: "تسجيل دخول",
+      it: "Accesso effettuato",
+      en: "Login"
+    },
+    login_failed: {
+      ar: "محاولة دخول فاشلة",
+      it: "Tentativo di accesso fallito",
+      en: "Failed login attempt"
+    },
+    password_changed: {
+      ar: "تم تغيير كلمة المرور",
+      it: "Password modificata",
+      en: "Password changed"
+    },
+    password_reset: {
+      ar: "تم إعادة تعيين كلمة المرور",
+      it: "Password reimpostata",
+      en: "Password reset"
+    },
+    worker_deleted: {
+      ar: "تم حذف عامل",
+      it: "Lavoratore eliminato",
+      en: "Worker deleted"
+    },
+    gps_bypass_enabled: {
+      ar: "تم تفعيل تجاوز GPS",
+      it: "Bypass GPS attivato",
+      en: "GPS bypass enabled"
+    },
+    gps_bypass_disabled: {
+      ar: "تم إلغاء تجاوز GPS",
+      it: "Bypass GPS disattivato",
+      en: "GPS bypass disabled"
+    },
+    device_reset: {
+      ar: "تم إعادة تعيين الجهاز",
+      it: "Dispositivo reimpostato",
+      en: "Device reset"
+    },
+    restart_granted: {
+      ar: "تم السماح ببدء وردية جديدة",
+      it: "Riavvio turno concesso",
+      en: "Restart access granted"
+    },
+    restart_revoked: {
+      ar: "تم إلغاء إذن بدء وردية جديدة",
+      it: "Riavvio turno revocato",
+      en: "Restart access revoked"
+    },
+    document_deleted: {
+      ar: "تم حذف مستند",
+      it: "Documento eliminato",
+      en: "Document deleted"
+    },
+    shift_manually_edited: {
+      ar: "تعديل يدوي للوردية",
+      it: "Turno modificato manualmente",
+      en: "Shift manually edited"
+    },
+    worker_photo_changed: {
+      ar: "تم تغيير صورة العامل",
+      it: "Foto del lavoratore modificata",
+      en: "Worker photo changed"
+    },
+    session_revoked: {
+      ar: "تم إلغاء جلسة دخول",
+      it: "Sessione revocata",
+      en: "Session revoked"
+    }
+  };
+  const l = lang === "ar" ? "ar" : lang === "it" ? "it" : "en";
+  return map[action] && map[action][l] || action;
+}
+
+async function _fetchSessions() {
+  try {
+    const res = await fetch("/api/sessions", {
+      headers: _authHeaders()
+    });
+    const data = await res.json().catch(() => null);
+    return data && data.ok ? data.sessions : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+window.revokeSessionUI = async id => {
+  if (!confirm(lang === "ar" ? "إنهاء هذه الجلسة؟" : lang === "it" ? "Terminare questa sessione?" : "Revoke this session?")) return;
+  try {
+    const res = await fetch("/api/sessions", {
+      method: "DELETE",
+      headers: _authHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        id: id
+      })
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) {
+      toast(data && data.error || "Error", "error");
+      return;
+    }
+    toast(lang === "ar" ? "تم إنهاء الجلسة" : lang === "it" ? "Sessione terminata" : "Session revoked", "success");
+    await mTab("settings");
+  } catch (e) {
+    toast("Error: " + e.message, "error");
+  }
+};
+
+async function _getPushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  } catch (e) {
+    return null;
+  }
+}
+
+window.enablePushNotifications = async () => {
+  const msg = (m) => toast(m, "error");
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    msg(lang === "ar" ? "الإشعارات غير مدعومة على هذا الجهاز." : lang === "it" ? "Le notifiche non sono supportate su questo dispositivo." : "Push notifications aren't supported on this device.");
+    return;
+  }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      msg(lang === "ar" ? "تم رفض إذن الإشعارات." : lang === "it" ? "Permesso notifiche negato." : "Notification permission denied.");
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: _urlB64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const res = await fetch("/api/push-subscribe", {
+      method: "POST",
+      headers: _authHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        subscription: sub.toJSON ? sub.toJSON() : sub
+      })
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) throw new Error(data && data.error || "Failed");
+    toast(lang === "ar" ? "تم تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Notifiche attivate su questo dispositivo" : "Notifications enabled on this device", "success");
+    await mTab("settings");
+  } catch (e) {
+    console.error("push subscribe failed", e);
+    msg(lang === "ar" ? "تعذر تفعيل الإشعارات." : lang === "it" ? "Impossibile attivare le notifiche." : "Could not enable notifications.");
+  }
+};
+
+window.disablePushNotifications = async () => {
+  try {
+    const sub = await _getPushSubscription();
+    if (sub) {
+      await fetch("/api/push-subscribe", {
+        method: "DELETE",
+        headers: _authHeaders({
+          "Content-Type": "application/json"
+        }),
+        body: JSON.stringify({
+          endpoint: sub.endpoint
+        })
+      }).catch(() => {});
+      await sub.unsubscribe().catch(() => {});
+    }
+    toast(lang === "ar" ? "تم إيقاف الإشعارات على هذا الجهاز" : lang === "it" ? "Notifiche disattivate su questo dispositivo" : "Notifications disabled on this device", "warning");
+    await mTab("settings");
+  } catch (e) {
+    toast("Error: " + e.message, "error");
+  }
+};
+
 async function buildSettings() {
   const cfg = await dbGetConfig();
   const autoEnd = cfg.auto_end_time || "";
-  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n    <div class="sc"><div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n    <div class="sc"><div class="st"> ${T.danger}</div>\n      <p style="font-family:var(--font);font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>\n      <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>\n    </div>\n  </div>`;
+  const pushSub = await _getPushSubscription();
+  const pushSupported = "serviceWorker" in navigator && "PushManager" in window;
+  const [sessions, auditRows] = await Promise.all([ _fetchSessions(), dbListAuditLog(100).catch(() => []) ]);
+  const sessionsHtml = !sessions.length ? `<div class="empty">—</div>` : sessions.map(s => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2)">\n      <div>\n        <div style="font-family:var(--font);font-size:13px;font-weight:700;color:var(--text)">${s.isCurrent ? (lang === "ar" ? "هذا الجهاز" : lang === "it" ? "Questo dispositivo" : "This device") : (lang === "ar" ? "جهاز آخر" : lang === "it" ? "Altro dispositivo" : "Other device")} ${s.isCurrent ? `<span class="badge" style="background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border:1px solid rgba(26,127,55,.3);font-size:10px;margin-${lang === "ar" ? "right" : "left"}:6px">${lang === "ar" ? "الحالي" : lang === "it" ? "Attuale" : "Current"}</span>` : ""}</div>\n        <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:3px">${lang === "ar" ? "بدأت" : lang === "it" ? "Iniziata" : "Started"}: ${_fmtDT(s.createdAt)} · ${lang === "ar" ? "تنتهي" : lang === "it" ? "Scade" : "Expires"}: ${_fmtDT(s.expiresAt)}</div>\n      </div>\n      ${s.isCurrent ? "" : `<button class="btn-sm" style="background:var(--red-soft);border:1px solid rgba(231,76,60,.35);color:var(--red);flex-shrink:0" onclick="revokeSessionUI('${esc(s.id)}')">${lang === "ar" ? "إنهاء" : lang === "it" ? "Termina" : "Revoke"}</button>`}\n    </div>`).join("");
+  const auditHtml = !auditRows.length ? `<div class="empty">—</div>` : `<div style="max-height:360px;overflow:auto">${auditRows.map(r => `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border2)">\n      <div style="min-width:0">\n        <span style="font-family:var(--font);font-size:12px;font-weight:700;color:var(--text)">${_auditActionLabel(r.action)}</span>\n        ${r.target ? `<span style="font-family:var(--font);font-size:11px;color:var(--muted)"> · ${esc(disp(r.target))}</span>` : ""}\n        <div style="font-family:var(--font);font-size:10px;color:var(--muted);margin-top:2px">${lang === "ar" ? "بواسطة" : lang === "it" ? "da" : "by"} ${esc(r.actor_username || "—")}</div>\n      </div>\n      <div style="font-family:var(--font);font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0">${_fmtDT(r.created_at)}</div>\n    </div>`).join("")}</div>`;
+  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الإشعارات" : lang === "it" ? "Notifiche push" : "Push Notifications"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "احصل على تنبيه على هذا الجهاز عند اقتراب انتهاء وثيقة أو عند اقتراب نهاية وردية عامل ما زال مسجلاً دخوله." : lang === "it" ? "Ricevi un avviso su questo dispositivo quando un documento sta per scadere o quando il turno di un lavoratore ancora collegato sta per terminare." : "Get an alert on this device when a document is about to expire, or when a signed-in worker's shift is about to end."}</div>\n      ${!pushSupported ? `<div class="warn-box">${lang === "ar" ? "غير مدعوم على هذا المتصفح/الجهاز." : lang === "it" ? "Non supportato su questo browser/dispositivo." : "Not supported on this browser/device."}</div>` : pushSub ? `<div class="warn-box" style="margin-bottom:12px;background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border-color:rgba(26,127,55,.3)">${lang === "ar" ? "الإشعارات مفعلة على هذا الجهاز." : lang === "it" ? "Notifiche attive su questo dispositivo." : "Notifications are enabled on this device."}</div><button class="btn btn-dark" style="width:auto;padding:10px 20px" onclick="disablePushNotifications()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : `<button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="enablePushNotifications()">${lang === "ar" ? "تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Attiva notifiche su questo dispositivo" : "Enable Notifications on This Device"}</button>`}\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الجلسات النشطة" : lang === "it" ? "Sessioni attive" : "Active Sessions"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "الأجهزة المسجلة دخولها حالياً بحساب المدير هذا." : lang === "it" ? "I dispositivi attualmente connessi con questo account manager." : "Devices currently signed in with this manager account."}</div>\n      ${sessionsHtml}\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "سجل النشاط" : lang === "it" ? "Registro attività" : "Activity Log"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "أحدث 100 إجراء حساس تم تنفيذه في النظام." : lang === "it" ? "Le ultime 100 azioni sensibili eseguite nel sistema." : "The most recent 100 sensitive actions taken in the system."}</div>\n      ${auditHtml}\n    </div>\n    <div class="sc"><div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n    <div class="sc"><div class="st"> ${T.danger}</div>\n      <p style="font-family:var(--font);font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>\n      <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>\n    </div>\n  </div>`;
 }
 
 window.saveAutoEnd = async () => {
@@ -7728,6 +7988,7 @@ window.toggleGpsBypass = async (username, displayName, current) => {
   await dbSetUser(username, {
     gps_bypass: willEnable
   });
+  await _clientAudit(willEnable ? "gps_bypass_enabled" : "gps_bypass_disabled", username, {});
   toast(willEnable ? ` ${displayName} can now sign in without GPS` : ` GPS check restored for ${displayName}`, willEnable ? "success" : "warning");
   await mTab("addworker");
 };
@@ -7738,6 +7999,7 @@ window.resetDevice = async (username, displayName) => {
     await dbSetUser(username, {
       device_id: null
     });
+    await _clientAudit("device_reset", username, {});
     toast(T.deviceResetFor(displayName), "success");
     await mTab("addworker");
   } catch (e) {
@@ -8103,6 +8365,7 @@ window.saveAttendanceEdit = async () => {
       newStatus = shift.status === "needs_review" ? "needs_review" : "working";
     }
     await sql(`UPDATE wf_shifts SET start_time=$2, end_time=$3, work_hours=$4, earnings=$5, status=$6 WHERE id=$1`, [ _attendanceEditShiftId, newStartMs, newEndMs, newWorkHours, newEarnings, newStatus ]);
+    await _clientAudit("shift_manually_edited", shift.worker, { shiftId: _attendanceEditShiftId, date: origDate });
     _liveCache = null;
     toast(T.attUpdateSuccess, "success");
     closeAttendanceModal();
