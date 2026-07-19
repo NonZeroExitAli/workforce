@@ -1396,7 +1396,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 // ════════════════════════════════════════════════════════
 const GPS_RADIUS       = 500;
 
-const SCHEMA_VERSION = '19';          // internal DB schema (migrations only) — bumped to add wf_users.photo_url
+const SCHEMA_VERSION = '20';          // internal DB schema (migrations only) — bumped to add wf_users.can_restart_date
 const APP_VERSION    = '2.2';         // public app version shown in the UI
 
 // ════════════════════════════════════════════════════════
@@ -1443,7 +1443,7 @@ async function sql(query, params = []) {
 async function dbGetUser(u) {
   // Never selects `password` — logging in and changing passwords go through
   // dedicated, authenticated endpoints instead (see /api/login.js).
-  const r = await sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users WHERE username=$1 LIMIT 1', [u]);
+  const r = await sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users WHERE username=$1 LIMIT 1', [u]);
   return r[0] || null;
 }
 async function dbSetUser(u, d) {
@@ -1458,7 +1458,7 @@ async function dbSetUser(u, d) {
     [u, ...vals]
   );
 }
-async function dbListUsers() { return sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users'); }
+async function dbListUsers() { return sql('SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users'); }
 
 let _usersCache = null;
 function _clearUsersCache() { _usersCache = null; }
@@ -2030,6 +2030,7 @@ async function initDB() {
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS patente_expiry TEXT;
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS courses TEXT;
       ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart_date TEXT;
       UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';
       UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';
       UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';
@@ -2106,6 +2107,14 @@ const $   = id => document.getElementById(id);
 const val = id => $(id)?.value || '';
 const esc = s  => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+// A manager-granted "restart" (extra shift today) is only valid for the day it
+// was granted — without this, an unused grant would silently carry over and
+// keep unlocking a second shift every day forever instead of just once.
+function _restartValid(u){
+  if(!u) return false;
+  const flag = u.can_restart===true || u.can_restart==='true';
+  return flag && u.can_restart_date === todayStr();
+}
 const fmtMs  = ms => { const s=Math.max(0,Math.floor(ms/1000)); return `${Math.floor(s/3600).toString().padStart(2,'0')}:${Math.floor((s%3600)/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`; };
 const fmtDur = ms => { const s=Math.max(0,Math.floor(ms/1000)); return `${Math.floor(s/3600)}h ${String(Math.floor((s%3600)/60)).padStart(2,'0')}m`; };
 const fmtTime = ts => { const n=Number(ts); if(!n)return'—'; const d=new Date(n); if(isNaN(d.getTime()))return'—'; return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}); };
@@ -3207,7 +3216,7 @@ async function renderWorkerScreen(){
 
   const todayCompletedShifts=myShifts.filter(x=>x.date===todayStr()&&x.status==='completed');
   const hasCompletedToday=todayCompletedShifts.length>0;
-  const canRestart=fresh?.can_restart===true||fresh?.can_restart==='true';
+  const canRestart=_restartValid(fresh);
   // Cache from real server data only — offlineFallback's shift list is just
   // [S.shift], not a real "today's shifts" fetch, so it can't tell us this.
   // This cached flag is what _wActOffline checks to keep the one-shift-per-
@@ -3462,15 +3471,15 @@ async function _wActOnline(action){
 
       if(completedToday){
         const freshUser = await dbGetUser(username);
-        if(!freshUser?.can_restart){
+        if(!_restartValid(freshUser)){
           const alreadyDoneMsg = lang==='ar'
             ? ' لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
             : " Hai già completato un turno oggi. Se c'è un problema contatta il manager.";
           toast(alreadyDoneMsg,'warning');
           await renderWorkerScreen();return;
         }
-        await dbSetUser(username,{can_restart:false});
-        S.user.can_restart=false;
+        await dbSetUser(username,{can_restart:false,can_restart_date:null});
+        S.user.can_restart=false; S.user.can_restart_date=null;
       }
 
       const nowD=new Date(now);
@@ -3636,7 +3645,7 @@ async function _wActOffline(action){
     // from the last real server read (or set the moment a shift was ended
     // this session), not a fresh fetch — see the note on _wsCache above.
     const alreadyCompletedToday = S._completedTodayFlag===todayStr();
-    const canRestartNow = S.user?.can_restart===true || S.user?.can_restart==='true';
+    const canRestartNow = _restartValid(S.user);
     if(alreadyCompletedToday && !canRestartNow){
       const alreadyDoneMsg = lang==='ar'
         ? ' لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير.'
@@ -3648,8 +3657,8 @@ async function _wActOffline(action){
       // Consume the one-time restart grant, same as the online path — queued
       // so it's reflected server-side once back online, and applied locally
       // right away so it can't be reused for a third shift this session.
-      _queueOfflineUserUpdate(username, {can_restart:false});
-      S.user.can_restart=false;
+      _queueOfflineUserUpdate(username, {can_restart:false,can_restart_date:null});
+      S.user.can_restart=false; S.user.can_restart_date=null;
     }
     const nowD=new Date(now);
     const siteStartTime = S.nearestLocation?.start_time || null;
@@ -4259,7 +4268,7 @@ async function buildLive(forceRefresh=false, sharedData=null){
     const latestDone=done.sort((a,b)=>Number(b.start_time)-Number(a.start_time))[0];
     const st=active?'working':latestDone?'ended':'absent';
     const freshW=userMap[w.username]||w;
-    const alreadyUnlocked=freshW.can_restart===true||freshW.can_restart==='true';
+    const alreadyUnlocked=_restartValid(freshW);
     let h=0,e=0;
     ts.filter(s=>s.worker===w.username).forEach(s=>{
       if(s.status==='completed'){h+=parseFloat(s.work_hours)||0;e+=parseFloat(s.earnings)||0;}
@@ -4322,7 +4331,9 @@ async function buildLive(forceRefresh=false, sharedData=null){
 window.allowRestart=async(username, displayName)=>{
   if(!confirm(T.confirmAllow(displayName))) return;
   try{
-    await dbSetUser(username,{can_restart:true});
+    // Dated so this grant only ever covers today — it can't silently carry
+    // over and unlock a second shift on some future day nobody approved.
+    await dbSetUser(username,{can_restart:true,can_restart_date:todayStr()});
     _liveCache=null;
     toast(T.canNowStart(displayName),'success');
     await mTab('live');
@@ -4332,7 +4343,7 @@ window.allowRestart=async(username, displayName)=>{
 window.revokeRestart=async(username, displayName)=>{
   if(!confirm(T.confirmRevoke(displayName))) return;
   try{
-    await dbSetUser(username,{can_restart:false});
+    await dbSetUser(username,{can_restart:false,can_restart_date:null});
     _liveCache=null;
     toast(T.restartRevoked(displayName),'warning');
     await mTab('live');
