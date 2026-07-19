@@ -10,13 +10,16 @@
 // worker's — this file only makes sure the PAGE ITSELF is available
 // offline.
 // ─────────────────────────────────────────────────────────────
-const CACHE_NAME = 'newidra-shell-v1';
+const CACHE_NAME = 'newidra-shell-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-192-circle.png',
+  '/icons/icon-512-circle.png',
+  '/icons/badge-96.png',
 ];
 
 self.addEventListener('install', (event) => {
