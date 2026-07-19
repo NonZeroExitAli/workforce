@@ -1606,6 +1606,7 @@ async function dbSetLocation(id, d) {
 }
 
 async function dbDelLocation(id) {
+  _clearLocsCache();
   await sql("DELETE FROM wf_locations WHERE id=$1", [ id ]);
 }
 
@@ -3412,6 +3413,13 @@ function buildTimeOptions(selected = "") {
       opts.push(`<option value="${v}"${selected === v ? " selected" : ""}>${label} (${v})</option>`);
     }
   }
+  // Midnight — the latest possible end time, stored as "00:00" but meant
+  // as the end of the working day (right after 11:30 PM), not its start.
+  // Every place that reads an auto-end time treats this specific value as
+  // "midnight tonight" rather than "midnight this morning" — see
+  // _finalizeShift, the shift-start cutoff checks, and
+  // reconcileStaleShifts.
+  opts.push(`<option value="00:00"${selected === "00:00" ? " selected" : ""}>12:00 AM (00:00)</option>`);
   return opts.join("");
 }
 
@@ -3783,6 +3791,12 @@ function _finalizeShift(billingStartMs, rawEndMs, autoEndTimeStr, breakMinutes, 
     if (!isNaN(ceh) && !isNaN(cem)) {
       const configuredEnd = new Date(anchorDateMs);
       configuredEnd.setHours(ceh, cem, 0, 0);
+      // "00:00" means midnight at the end of the anchor day, not its
+      // start — setHours(0,0) always lands at the very beginning of the
+      // day, which would be earlier than the shift's own start time and
+      // silently disable the auto-end cutoff entirely. Roll it forward
+      // one day so it correctly lands at the day/night boundary.
+      if (ceh === 0 && cem === 0) configuredEnd.setDate(configuredEnd.getDate() + 1);
       const configuredEndMs = configuredEnd.getTime();
       if (rawEndMs > configuredEndMs && configuredEndMs > billingStartMs) {
         billingEndMs = configuredEndMs;
@@ -3833,7 +3847,11 @@ async function reconcileStaleShifts() {
         return;
       }
       const dayAnchor = new Date(sy, sm - 1, sd, 12, 0, 0, 0).getTime();
-      const cutoff = new Date(sy, sm - 1, sd, ch, cm, 0, 0).getTime();
+      // Same "00:00 means end of this day, not its start" correction as
+      // _finalizeShift — otherwise a midnight cutoff would land before
+      // the shift even started, on the wrong side of billingStartMs.
+      const cutoffDay = ch === 0 && cm === 0 ? sd + 1 : sd;
+      const cutoff = new Date(sy, sm - 1, cutoffDay, ch, cm, 0, 0).getTime();
       const billingStartMs = Number(shift.billing_start_time) || Number(shift.start_time);
       const r = _finalizeShift(billingStartMs, cutoff, null, shift.break_minutes, shift.hourly_rate, dayAnchor);
       await dbSetShift(shift.id, {
@@ -3939,7 +3957,11 @@ async function _wActOnline(action) {
     if (S.autoEndTime) {
       const [eh, em] = S.autoEndTime.split(":").map(Number);
       const nowMins = nowD.getHours() * 60 + nowD.getMinutes();
-      const endMins = eh * 60 + em;
+      // "00:00" means midnight at the END of today, not its start — treat
+      // it as minute 1440 so it never falsely looks like it already
+      // passed at, say, 3pm (nowMins=900 >= 0 would otherwise always be
+      // true, blocking every shift start at a midnight-cutoff site).
+      const endMins = eh === 0 && em === 0 ? 24 * 60 : eh * 60 + em;
       if (nowMins >= endMins) {
         toast(lang === "ar" ? ` انتهت ورديات اليوم في ${S.autoEndTime}. إلى اللقاء غداً!` : ` I turni di oggi sono terminati alle ${S.autoEndTime}. A domani!`, "error");
         await renderWorkerScreen();
@@ -4125,7 +4147,11 @@ async function _wActOffline(action) {
     if (S.autoEndTime) {
       const [eh, em] = S.autoEndTime.split(":").map(Number);
       const nowMins = nowD.getHours() * 60 + nowD.getMinutes();
-      const endMins = eh * 60 + em;
+      // "00:00" means midnight at the END of today, not its start — treat
+      // it as minute 1440 so it never falsely looks like it already
+      // passed at, say, 3pm (nowMins=900 >= 0 would otherwise always be
+      // true, blocking every shift start at a midnight-cutoff site).
+      const endMins = eh === 0 && em === 0 ? 24 * 60 : eh * 60 + em;
       if (nowMins >= endMins) {
         toast(lang === "ar" ? ` انتهت ورديات اليوم في ${S.autoEndTime}. إلى اللقاء غداً!` : ` I turni di oggi sono terminati alle ${S.autoEndTime}. A domani!`, "error");
         await renderWorkerScreen();
@@ -5407,6 +5433,7 @@ window.renameLocation = async id => {
   }
   try {
     await sql("UPDATE wf_locations SET name=$2 WHERE id=$1", [ id, newName ]);
+    _clearLocsCache();
     toast(` Location renamed to "${newName}"`, "success");
     mTab("locations");
   } catch (e) {
@@ -5429,6 +5456,7 @@ window.saveLocEndTime = async id => {
   }
   try {
     await sql("UPDATE wf_locations SET end_time=$2 WHERE id=$1", [ id, et || null ]);
+    _clearLocsCache();
     toast(et ? T.autoEndSetTo(et) : T.autoEndCleared, "success");
     mTab("locations");
   } catch (e) {
@@ -5439,6 +5467,7 @@ window.saveLocEndTime = async id => {
 window.clearLocEndTime = async id => {
   try {
     await sql("UPDATE wf_locations SET end_time=NULL WHERE id=$1", [ id ]);
+    _clearLocsCache();
     toast(T.autoEndCleared, "success");
     mTab("locations");
   } catch (e) {
@@ -5451,6 +5480,7 @@ window.saveLocStartTime = async id => {
   const st = input?.value?.trim() || null;
   try {
     await sql("UPDATE wf_locations SET start_time=$2 WHERE id=$1", [ id, st || null ]);
+    _clearLocsCache();
     toast(st ? T.autoStartSet(st) : T.autoStartCleared, "success");
     mTab("locations");
   } catch (e) {
@@ -5461,6 +5491,7 @@ window.saveLocStartTime = async id => {
 window.clearLocStartTime = async id => {
   try {
     await sql("UPDATE wf_locations SET start_time=NULL WHERE id=$1", [ id ]);
+    _clearLocsCache();
     toast(T.autoStartCleared, "success");
     mTab("locations");
   } catch (e) {
@@ -5473,6 +5504,7 @@ window.saveLocBreak = async id => {
   const brk = parseInt(input?.value) || 0;
   try {
     await sql("UPDATE wf_locations SET break_minutes=$2 WHERE id=$1", [ id, brk ]);
+    _clearLocsCache();
     const msg = brk > 0 ? ` ${T.breakLbl || "Break"} set to ${brk} min` : ` ${T.breakNone || "No break set"}`;
     toast(msg, "success");
     mTab("locations");
@@ -5995,6 +6027,7 @@ window.siteSaveStartTime = async locId => {
   const st = (val("sd-st") || "").trim() || null;
   try {
     await sql("UPDATE wf_locations SET start_time=$2 WHERE id=$1", [ locId, st ]);
+    _clearLocsCache();
     toast(st ? T.autoStartSet(st) : T.autoStartCleared, "success");
     await openSiteDetail(locId);
   } catch (e) {
@@ -6010,6 +6043,7 @@ window.siteSaveEndTime = async locId => {
   }
   try {
     await sql("UPDATE wf_locations SET end_time=$2 WHERE id=$1", [ locId, et ]);
+    _clearLocsCache();
     toast(et ? T.autoEndSetTo(et) : T.autoEndCleared, "success");
     await openSiteDetail(locId);
   } catch (e) {
@@ -6021,6 +6055,7 @@ window.siteSaveBreak = async locId => {
   const brk = parseInt(val("sd-brk")) || 0;
   try {
     await sql("UPDATE wf_locations SET break_minutes=$2 WHERE id=$1", [ locId, brk ]);
+    _clearLocsCache();
     toast(brk > 0 ? (T.breakLbl || "Break") + ": " + brk + " min" : T.breakNone || "No break", "success");
     await openSiteDetail(locId);
   } catch (e) {
@@ -7750,10 +7785,7 @@ async function buildSettings() {
   const autoEnd = cfg.auto_end_time || "";
   const pushSub = await _getPushSubscription();
   const pushSupported = "serviceWorker" in navigator && "PushManager" in window;
-  const [sessions, auditRows] = await Promise.all([ _fetchSessions(), dbListAuditLog(100).catch(() => []) ]);
-  const sessionsHtml = !sessions.length ? `<div class="empty">—</div>` : sessions.map(s => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border2)">\n      <div>\n        <div style="font-family:var(--font);font-size:13px;font-weight:700;color:var(--text)">${s.isCurrent ? (lang === "ar" ? "هذا الجهاز" : lang === "it" ? "Questo dispositivo" : "This device") : (lang === "ar" ? "جهاز آخر" : lang === "it" ? "Altro dispositivo" : "Other device")} ${s.isCurrent ? `<span class="badge" style="background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border:1px solid rgba(26,127,55,.3);font-size:10px;margin-${lang === "ar" ? "right" : "left"}:6px">${lang === "ar" ? "الحالي" : lang === "it" ? "Attuale" : "Current"}</span>` : ""}</div>\n        <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:3px">${lang === "ar" ? "بدأت" : lang === "it" ? "Iniziata" : "Started"}: ${_fmtDT(s.createdAt)} · ${lang === "ar" ? "تنتهي" : lang === "it" ? "Scade" : "Expires"}: ${_fmtDT(s.expiresAt)}</div>\n      </div>\n      ${s.isCurrent ? "" : `<button class="btn-sm" style="background:var(--red-soft);border:1px solid rgba(231,76,60,.35);color:var(--red);flex-shrink:0" onclick="revokeSessionUI('${esc(s.id)}')">${lang === "ar" ? "إنهاء" : lang === "it" ? "Termina" : "Revoke"}</button>`}\n    </div>`).join("");
-  const auditHtml = !auditRows.length ? `<div class="empty">—</div>` : `<div style="max-height:360px;overflow:auto">${auditRows.map(r => `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border2)">\n      <div style="min-width:0">\n        <span style="font-family:var(--font);font-size:12px;font-weight:700;color:var(--text)">${_auditActionLabel(r.action)}</span>\n        ${r.target ? `<span style="font-family:var(--font);font-size:11px;color:var(--muted)"> · ${esc(disp(r.target))}</span>` : ""}\n        <div style="font-family:var(--font);font-size:10px;color:var(--muted);margin-top:2px">${lang === "ar" ? "بواسطة" : lang === "it" ? "da" : "by"} ${esc(r.actor_username || "—")}</div>\n      </div>\n      <div style="font-family:var(--font);font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0">${_fmtDT(r.created_at)}</div>\n    </div>`).join("")}</div>`;
-  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الإشعارات" : lang === "it" ? "Notifiche push" : "Push Notifications"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "احصل على تنبيه على هذا الجهاز عند اقتراب انتهاء وثيقة أو عند اقتراب نهاية وردية عامل ما زال مسجلاً دخوله." : lang === "it" ? "Ricevi un avviso su questo dispositivo quando un documento sta per scadere o quando il turno di un lavoratore ancora collegato sta per terminare." : "Get an alert on this device when a document is about to expire, or when a signed-in worker's shift is about to end."}</div>\n      ${!pushSupported ? `<div class="warn-box">${lang === "ar" ? "غير مدعوم على هذا المتصفح/الجهاز." : lang === "it" ? "Non supportato su questo browser/dispositivo." : "Not supported on this browser/device."}</div>` : pushSub ? `<div class="warn-box" style="margin-bottom:12px;background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border-color:rgba(26,127,55,.3)">${lang === "ar" ? "الإشعارات مفعلة على هذا الجهاز." : lang === "it" ? "Notifiche attive su questo dispositivo." : "Notifications are enabled on this device."}</div><button class="btn btn-dark" style="width:auto;padding:10px 20px" onclick="disablePushNotifications()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : `<button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="enablePushNotifications()">${lang === "ar" ? "تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Attiva notifiche su questo dispositivo" : "Enable Notifications on This Device"}</button>`}\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الجلسات النشطة" : lang === "it" ? "Sessioni attive" : "Active Sessions"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "الأجهزة المسجلة دخولها حالياً بحساب المدير هذا." : lang === "it" ? "I dispositivi attualmente connessi con questo account manager." : "Devices currently signed in with this manager account."}</div>\n      ${sessionsHtml}\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "سجل النشاط" : lang === "it" ? "Registro attività" : "Activity Log"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "أحدث 100 إجراء حساس تم تنفيذه في النظام." : lang === "it" ? "Le ultime 100 azioni sensibili eseguite nel sistema." : "The most recent 100 sensitive actions taken in the system."}</div>\n      ${auditHtml}\n    </div>\n    <div class="sc"><div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n    <div class="sc"><div class="st"> ${T.danger}</div>\n      <p style="font-family:var(--font);font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>\n      <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>\n    </div>\n  </div>`;
+  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الإشعارات" : lang === "it" ? "Notifiche push" : "Push Notifications"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "احصل على تنبيه على هذا الجهاز عند اقتراب انتهاء وثيقة أو عند اقتراب نهاية وردية عامل ما زال مسجلاً دخوله." : lang === "it" ? "Ricevi un avviso su questo dispositivo quando un documento sta per scadere o quando il turno di un lavoratore ancora collegato sta per terminare." : "Get an alert on this device when a document is about to expire, or when a signed-in worker's shift is about to end."}</div>\n      ${!pushSupported ? `<div class="warn-box">${lang === "ar" ? "غير مدعوم على هذا المتصفح/الجهاز." : lang === "it" ? "Non supportato su questo browser/dispositivo." : "Not supported on this browser/device."}</div>` : pushSub ? `<div class="warn-box" style="margin-bottom:12px;background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border-color:rgba(26,127,55,.3)">${lang === "ar" ? "الإشعارات مفعلة على هذا الجهاز." : lang === "it" ? "Notifiche attive su questo dispositivo." : "Notifications are enabled on this device."}</div><button class="btn btn-dark" style="width:auto;padding:10px 20px" onclick="disablePushNotifications()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : `<button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="enablePushNotifications()">${lang === "ar" ? "تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Attiva notifiche su questo dispositivo" : "Enable Notifications on This Device"}</button>`}\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n    <div class="sc"><div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n    <div class="sc"><div class="st"> ${T.danger}</div>\n      <p style="font-family:var(--font);font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>\n      <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>\n    </div>\n  </div>`;
 }
 
 window.saveAutoEnd = async () => {
