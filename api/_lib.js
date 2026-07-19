@@ -45,3 +45,50 @@ export async function verifySession(req) {
 export const bcryptHash = (pw) => bcrypt.hash(pw, 10);
 export const bcryptCompare = (pw, hash) => bcrypt.compare(pw, hash);
 export const looksHashed = (pw) => typeof pw === 'string' && /^\$2[aby]\$/.test(pw);
+
+// ── Rate limiting ───────────────────────────────────────────────
+// In-memory sliding window, keyed per warm serverless instance. This is a
+// best-effort defense, not a perfect one: a cold start or a request landing
+// on a different instance resets the count for that instance. It still
+// meaningfully raises the bar against a single script hammering one
+// endpoint (the common case), which is what this is for. A fully accurate
+// limit across all instances would need an external store (e.g. Upstash
+// Redis) — flagged as a possible future upgrade, out of scope for now.
+const _rlBuckets = new Map(); // key -> array of request timestamps (ms)
+
+export function rateLimit(key, max, windowMs) {
+  const now = Date.now();
+  let arr = _rlBuckets.get(key);
+  if (!arr) {
+    arr = [];
+    _rlBuckets.set(key, arr);
+  }
+  while (arr.length && now - arr[0] > windowMs) arr.shift();
+  if (arr.length >= max) return false;
+  arr.push(now);
+  // Cheap guard against unbounded memory growth if this instance stays warm
+  // a long time and sees traffic from many distinct keys/IPs.
+  if (_rlBuckets.size > 5000) _rlBuckets.clear();
+  return true;
+}
+
+export function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+// ── Audit log ────────────────────────────────────────────────────
+// Best-effort security/activity trail. Logging failures never break the
+// calling action — an audit entry is a nice-to-have, not something that
+// should ever cause a 500 on a real user action.
+export async function audit(actorUsername, action, target, details) {
+  try {
+    await sql(
+      'INSERT INTO wf_audit_log(actor_username,action,target,details,created_at) VALUES($1,$2,$3,$4,$5)',
+      [actorUsername || null, action, target || null, details ? JSON.stringify(details) : null, Date.now()]
+    );
+  } catch (e) {
+    console.error('audit log failed', e);
+  }
+}
