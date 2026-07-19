@@ -16,7 +16,7 @@
 //      login/password-change go through their own dedicated endpoints).
 //   2. DROP / TRUNCATE (no legitimate client code ever issues these).
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors } from './_lib.js';
+import { sql, setCors, rateLimit, clientIp } from './_lib.js';
 
 function isBlockedQuery(query) {
   const q = String(query || '');
@@ -32,6 +32,13 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).send('');
   if (req.method !== 'POST') return res.status(405).send('POST only');
+
+  // Generous per-IP ceiling — normal usage (dashboards firing several
+  // parallel queries per screen) stays well under this. It exists to
+  // blunt a scripted flood, not to throttle real users.
+  if (!rateLimit(`sql:${clientIp(req)}`, 240, 60 * 1000)) {
+    return res.status(429).json({ ok: false, error: 'Too many requests, please slow down.' });
+  }
 
   try {
     const { query, params } = req.body || {};
