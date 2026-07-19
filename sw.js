@@ -51,10 +51,26 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Newidra';
   const options = {
     body: data.body || '',
+    // Full-color logo — shown as the larger image inside the notification
+    // body (the thumbnail on the right).
     icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    // Android's status bar / notification-shade icon (and the app-icon
+    // badge dot) is NOT rendered as-is — Android masks it using only its
+    // alpha channel and fills the visible shape solid white. icon-192.png
+    // is fully opaque with no transparency, so that mask covered the whole
+    // square, which is why it showed as a plain white block instead of the
+    // logo. badge-96.png is a white silhouette of the same logo on a
+    // transparent background, generated specifically for this purpose —
+    // Android composites it correctly instead of flattening it to a block.
+    badge: '/icons/badge-96.png',
     data: { url: data.url || '/' },
     tag: data.tag || undefined,
+    // Re-alert (sound/vibrate) even if a notification with the same tag is
+    // already showing, and keep the icon-bearing entry visible until the
+    // user actively swipes it away or taps it — this is what keeps the
+    // launcher icon's badge dot present until it's cleared from the shade.
+    renotify: !!data.tag,
+    requireInteraction: false,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
