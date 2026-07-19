@@ -5,7 +5,7 @@
 // server-side (never trusts a client-side comparison) and stores the
 // new one as a bcrypt hash.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, verifySession, bcryptHash, bcryptCompare, looksHashed } from './_lib.js';
+import { sql, setCors, verifySession, bcryptHash, bcryptCompare, looksHashed, rateLimit, clientIp, audit } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -14,6 +14,10 @@ export default async function handler(req, res) {
 
   const session = await verifySession(req);
   if (!session) return res.status(401).json({ ok: false, error: 'Not signed in' });
+
+  if (!rateLimit(`change-pwd:${session.username}:${clientIp(req)}`, 6, 5 * 60 * 1000)) {
+    return res.status(429).json({ ok: false, error: 'Too many attempts. Please wait a few minutes and try again.' });
+  }
 
   try {
     const { currentPassword, newPassword } = req.body || {};
@@ -33,6 +37,7 @@ export default async function handler(req, res) {
 
     const hash = await bcryptHash(newPassword);
     await sql('UPDATE wf_users SET password=$1 WHERE username=$2', [hash, user.username]);
+    await audit(session.username, 'password_changed', user.username, {});
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error('change-password failed', e);
