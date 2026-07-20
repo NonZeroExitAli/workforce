@@ -569,6 +569,8 @@ body.rtl .wcard.working{border-right-color:var(--green)}
 .offline-banner{display:none;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:var(--font);font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:.5px;font-weight:700}
 .offline-banner.offline{background:rgba(210,120,0,.1);border:1px solid rgba(210,120,0,.3);color:var(--orange)}
 .offline-banner.syncing{background:rgba(58,96,128,.1);border:1px solid var(--border2);color:var(--steel)}
+.push-enable-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:4px;font-family:var(--font);font-size:11px;margin-bottom:16px;flex-wrap:wrap;background:rgba(232,128,28,.08);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink)}
+.push-enable-banner .peb-btn{flex-shrink:0;padding:8px 16px;border-radius:4px;border:none;background:var(--brand-ink);color:#fff;font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.5px;cursor:pointer}
 .gps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;font-family:var(--font);font-size:11px;margin-bottom:16px;flex-wrap:wrap;letter-spacing:1px}
 .gps-bar.ok{background:rgba(232,128,28,.07);border:1px solid rgba(232,128,28,.2);color:var(--green)}
 .gps-bar.far{background:rgba(232,128,28,.07);border:1px solid rgba(232,128,28,.2);color:var(--red)}
@@ -3780,7 +3782,15 @@ async function renderWorkerScreen() {
   const showRestartHint = !active && hasCompletedToday && !canRestart;
   const wkPushSupported = "serviceWorker" in navigator && "PushManager" in window;
   const wkPushSub = wkPushSupported ? await _getPushSubscription() : null;
-  $("root").innerHTML = `\n  <div class="topbar">\n    ${niTopbarLogo()}\n    <div class="top-right">\n      <div class="top-right-utility">\n        ${langBar(true)}\n        <span class="clock" id="clock"></span>\n        <span>${disp(u.label || u.username)}</span>\n        <span class="role-pill pill-wkr">WORKER</span>\n        <button class="wk-menu-btn" onclick="toggleWorkerDrawer()" aria-label="${T.shiftHist}">☰</button>\n      </div>\n      <div class="top-right-stats">\n        <div class="info-card"><div class="il"> ${T.shiftsC} (${T.month})</div><div class="iv" style="color:var(--brand-ink)">${myMonthShifts.length}</div></div>\n        <div class="info-card"><div class="il"> ${T.site}</div><div class="iv" style="color:#f59a44;font-size:14px" id="wi-site">${disp(locName)}</div></div>\n      </div>\n    </div>\n  </div>\n  <div class="worker-main">\n    <div class="offline-banner" id="offline-banner" style="display:none"></div>\n    ${S.gps === "ok" ? `<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${disp(S.nearestLocation?.name || locName)}</strong></span></div>` : ""}\n    ${showRestartHint ? `<div class="warn-box" style="margin-bottom:16px">⏸ ${lang === "ar" ? "لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير." : lang === "it" ? "Hai già completato un turno oggi. Se c'è un problema contatta il manager." : "You already finished a shift today. If there is a problem contact your manager."}</div>` : ""}\n    ${canRestart && !active ? `<div class="gps-bar ok" style="margin-bottom:16px"> ${T.allowNewShift}</div>` : ""}\n    <div class="stat-card ${active ? "working" : ""}" id="scard">\n      <div class="status-row">\n        <div class="dot ${active ? "working" : ""}" id="sdot"></div>\n        <span class="status-lbl" id="slbl" style="color:${active ? "#f59a44" : "#6f6257"}">${active ? "● " + T.wking : T.waiting}</span>\n        ${active ? `<span style="font-family:var(--font);font-size:10px;color:#f59a44;margin-left:auto"> ${disp(active.location_name || "—")}</span>` : ""}\n      </div>\n      <div class="timer-big" id="tbig">00:00:00</div>\n      <div style="font-family:var(--font);font-size:9px;letter-spacing:3px;color:#6f6257;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>\n      ${(() => {
+  // Shown directly on the main screen, not tucked in the ☰ drawer, whenever
+  // there's still something useful the worker can do: push is supported,
+  // not already subscribed, and permission hasn't been permanently denied
+  // (once denied, the browser won't re-prompt, so nagging here would just
+  // be noise with no way to act on it — the drawer button still exists as
+  // a manual fallback for that case).
+  const wkShowPushBanner = wkPushSupported && !wkPushSub && typeof Notification !== "undefined" && Notification.permission !== "denied";
+  const pushBannerHtml = wkShowPushBanner ? `<div class="push-enable-banner"><span> ${lang === "ar" ? "فعّل الإشعارات لتصلك تنبيهات المهام والوردية" : lang === "it" ? "Attiva le notifiche per ricevere avvisi su incarichi e turno" : "Turn on notifications to get alerts about assignments and your shift"}</span><button class="peb-btn" onclick="enablePushNotificationsWorker()">${lang === "ar" ? "تفعيل" : lang === "it" ? "Attiva" : "Enable"}</button></div>` : "";
+  $("root").innerHTML = `\n  <div class="topbar">\n    ${niTopbarLogo()}\n    <div class="top-right">\n      <div class="top-right-utility">\n        ${langBar(true)}\n        <span class="clock" id="clock"></span>\n        <span>${disp(u.label || u.username)}</span>\n        <span class="role-pill pill-wkr">WORKER</span>\n        <button class="wk-menu-btn" onclick="toggleWorkerDrawer()" aria-label="${T.shiftHist}">☰</button>\n      </div>\n      <div class="top-right-stats">\n        <div class="info-card"><div class="il"> ${T.shiftsC} (${T.month})</div><div class="iv" style="color:var(--brand-ink)">${myMonthShifts.length}</div></div>\n        <div class="info-card"><div class="il"> ${T.site}</div><div class="iv" style="color:#f59a44;font-size:14px" id="wi-site">${disp(locName)}</div></div>\n      </div>\n    </div>\n  </div>\n  <div class="worker-main">\n    <div class="offline-banner" id="offline-banner" style="display:none"></div>\n    ${pushBannerHtml}\n    ${S.gps === "ok" ? `<div class="gps-bar ok"><span>✓</span><span>${T.gpsOk} — <strong>${disp(S.nearestLocation?.name || locName)}</strong></span></div>` : ""}\n    ${showRestartHint ? `<div class="warn-box" style="margin-bottom:16px">⏸ ${lang === "ar" ? "لقد أنهيت وردية اليوم بالفعل. إذا كانت هناك مشكلة تواصل مع المدير." : lang === "it" ? "Hai già completato un turno oggi. Se c'è un problema contatta il manager." : "You already finished a shift today. If there is a problem contact your manager."}</div>` : ""}\n    ${canRestart && !active ? `<div class="gps-bar ok" style="margin-bottom:16px"> ${T.allowNewShift}</div>` : ""}\n    <div class="stat-card ${active ? "working" : ""}" id="scard">\n      <div class="status-row">\n        <div class="dot ${active ? "working" : ""}" id="sdot"></div>\n        <span class="status-lbl" id="slbl" style="color:${active ? "#f59a44" : "#6f6257"}">${active ? "● " + T.wking : T.waiting}</span>\n        ${active ? `<span style="font-family:var(--font);font-size:10px;color:#f59a44;margin-left:auto"> ${disp(active.location_name || "—")}</span>` : ""}\n      </div>\n      <div class="timer-big" id="tbig">00:00:00</div>\n      <div style="font-family:var(--font);font-size:9px;letter-spacing:3px;color:#6f6257;text-transform:uppercase;margin-bottom:8px">${T.workTime}</div>\n      ${(() => {
     const siteStart = curLoc?.start_time || null;
     const siteBreak = parseInt(curLoc?.break_minutes || 0) || 0;
     let banners = "";
@@ -7815,9 +7825,19 @@ window.enablePushNotificationsWorker = async (silent) => {
     });
     const data = await res.json().catch(() => null);
     if (!data || !data.ok) throw new Error(data && data.error || "Failed");
+    // Re-render either way, silent or not — the drawer's button reflects
+    // whatever _getPushSubscription() finds at render time, and that
+    // render only happens once right after login (opening/closing the
+    // drawer itself doesn't re-check). Without this, a silent auto-sync
+    // would genuinely enable notifications in the background but the
+    // button would still say "Enable" until some unrelated re-render
+    // happened to run later — exactly the "still shows enable, why do I
+    // have to press it again" symptom. Toast and force-opening the drawer
+    // stay gated behind !silent so a background sync on login doesn't pop
+    // the drawer open or show a toast every single time.
+    if (S.screen === "worker") await renderWorkerScreen();
     if (!silent) {
       toast(lang === "ar" ? "تم تفعيل الإشعارات" : lang === "it" ? "Notifiche attivate" : "Notifications enabled", "success");
-      await renderWorkerScreen();
       toggleWorkerDrawer(true);
     }
   } catch (e) {
