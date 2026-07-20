@@ -3574,6 +3574,7 @@ window.doPhoneLogin = async () => {
       S.user = workerUser;
       _resetInactiveTimer();
       renderWorkerScreen();
+      _autoSyncPush(true).catch(() => {});
       return;
     }
     if (locations.length > 0) {
@@ -3622,6 +3623,7 @@ window.doPhoneLogin = async () => {
     S.user = workerUser;
     _resetInactiveTimer();
     renderWorkerScreen();
+    _autoSyncPush(true).catch(() => {});
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -3666,6 +3668,7 @@ window.doLogin = async () => {
     S.user = fresh || data.user;
     _resetInactiveTimer();
     renderManagerScreen();
+    _autoSyncPush(false).catch(() => {});
   } catch (e) {
     showErr(T.badLogin);
   } finally {
@@ -7658,13 +7661,51 @@ async function _getPushSubscription() {
   }
 }
 
-window.enablePushNotifications = async () => {
-  const msg = (m) => toast(m, "error");
+// Called right after every successful login (both roles). Two jobs:
+//
+//   1. First time EVER on this device: silently trigger the same flow the
+//      "Enable Notifications" button uses, which is what actually shows
+//      the browser/OS's native permission popup. This is the one-time
+//      prompt the person signs in and immediately gets, no button hunt
+//      required.
+//   2. Every login after that: if the browser already granted permission
+//      (from step 1, on a previous visit), re-run the same subscribe call
+//      silently in the background. Browser permission and the SERVER's
+//      subscription record are two different things — permission, once
+//      granted, is remembered by the browser forever, but the server-side
+//      row can go stale (redeploys, a cleared subscription, etc.). Redoing
+//      this quietly on every login keeps the two in sync without ever
+//      asking the person to press "Enable" again on a device that already
+//      said yes once. If permission was denied, this does nothing, every
+//      time — never re-nags.
+async function _autoSyncPush(isWorker) {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "denied") return;
+    if (isWorker) await window.enablePushNotificationsWorker(true);
+    else await window.enablePushNotifications(true);
+  } catch (e) {
+    console.warn("[push] auto-sync on login failed", e);
+  }
+}
+
+// `silent` is used by the auto-sync-on-login flow (see _autoSyncPush) so it
+// can run in the background without popping a toast or jumping the screen
+// to Settings every time — the visible button still calls this the normal
+// (non-silent) way and gets the full feedback.
+window.enablePushNotifications = async (silent) => {
+  const msg = (m) => { if (!silent) toast(m, "error"); };
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     msg(lang === "ar" ? "الإشعارات غير مدعومة على هذا الجهاز." : lang === "it" ? "Le notifiche non sono supportate su questo dispositivo." : "Push notifications aren't supported on this device.");
     return;
   }
   try {
+    // Once the browser has already decided (granted or denied), asking
+    // again via requestPermission() doesn't show a popup a second time —
+    // it just resolves instantly with the same answer. So calling this
+    // silently on every login is safe: it only ever shows the native
+    // permission popup the very first time, on this device, ever.
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
       msg(lang === "ar" ? "تم رفض إذن الإشعارات." : lang === "it" ? "Permesso notifiche negato." : "Notification permission denied.");
@@ -7689,8 +7730,10 @@ window.enablePushNotifications = async () => {
     });
     const data = await res.json().catch(() => null);
     if (!data || !data.ok) throw new Error(data && data.error || "Failed");
-    toast(lang === "ar" ? "تم تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Notifiche attivate su questo dispositivo" : "Notifications enabled on this device", "success");
-    await mTab("settings");
+    if (!silent) {
+      toast(lang === "ar" ? "تم تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Notifiche attivate su questo dispositivo" : "Notifications enabled on this device", "success");
+      await mTab("settings");
+    }
   } catch (e) {
     console.error("push subscribe failed", e);
     msg(lang === "ar" ? "تعذر تفعيل الإشعارات." : lang === "it" ? "Impossibile attivare le notifiche." : "Could not enable notifications.");
@@ -7723,13 +7766,16 @@ window.disablePushNotifications = async () => {
 // but they save the subscription through the no-session worker endpoint
 // (see push-subscribe-worker.js) and re-render the worker drawer instead
 // of the manager Settings tab.
-window.enablePushNotificationsWorker = async () => {
-  const msg = m => toast(m, "error");
+window.enablePushNotificationsWorker = async (silent) => {
+  const msg = m => { if (!silent) toast(m, "error"); };
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     msg(lang === "ar" ? "الإشعارات غير مدعومة على هذا الجهاز." : lang === "it" ? "Le notifiche non sono supportate su questo dispositivo." : "Push notifications aren't supported on this device.");
     return;
   }
   try {
+    // Same as the manager version — safe to call on every login, since the
+    // native popup only ever appears once per device; after that this just
+    // resolves with whatever the user already answered.
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
       msg(lang === "ar" ? "تم رفض إذن الإشعارات." : lang === "it" ? "Permesso notifiche negato." : "Notification permission denied.");
@@ -7756,9 +7802,11 @@ window.enablePushNotificationsWorker = async () => {
     });
     const data = await res.json().catch(() => null);
     if (!data || !data.ok) throw new Error(data && data.error || "Failed");
-    toast(lang === "ar" ? "تم تفعيل الإشعارات" : lang === "it" ? "Notifiche attivate" : "Notifications enabled", "success");
-    await renderWorkerScreen();
-    toggleWorkerDrawer(true);
+    if (!silent) {
+      toast(lang === "ar" ? "تم تفعيل الإشعارات" : lang === "it" ? "Notifiche attivate" : "Notifications enabled", "success");
+      await renderWorkerScreen();
+      toggleWorkerDrawer(true);
+    }
   } catch (e) {
     console.error("worker push subscribe failed", e);
     msg(lang === "ar" ? "تعذر تفعيل الإشعارات." : lang === "it" ? "Impossibile attivare le notifiche." : "Could not enable notifications.");
