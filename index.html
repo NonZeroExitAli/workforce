@@ -1626,9 +1626,22 @@ async function dbSetAssignment(worker_username, loc_id) {
 
 async function _notifyWorkerAssigned(worker_username, loc_id) {
   try {
-    const locs = await dbListLocationsCached();
+    const [locs, users] = await Promise.all([ dbListLocationsCached(), dbListUsersCached() ]);
     const loc = locs.find(l => l.id === loc_id);
     const locName = loc ? disp(loc.name) : "—";
+    // wf_assignments.worker_username is actually _workerNorm(u) — the
+    // worker's normalized PHONE NUMBER when they have one, falling back to
+    // their account username only if they don't (see _workerNorm and every
+    // call site of dbSetAssignment, which all pass a phone, not a
+    // username). Push subscriptions, on the other hand, are always saved
+    // under the real wf_users.username (see enablePushNotificationsWorker).
+    // Sending straight to worker_username silently looked up zero
+    // subscriptions for almost every worker, since their phone number and
+    // their account username are essentially never the same string —
+    // resolving back to the real username here is what actually connects
+    // "who got assigned" to "whose device gets the push".
+    const target = users.find(u => _workerNorm(u) === worker_username || u.username === worker_username);
+    const realUsername = target ? target.username : worker_username;
     const body = `Sei stato assegnato a ${locName} / تم تعيينك في ${locName}`;
     const res = await fetch("/api/notify-worker", {
       method: "POST",
@@ -1636,7 +1649,7 @@ async function _notifyWorkerAssigned(worker_username, loc_id) {
         "Content-Type": "application/json"
       }),
       body: JSON.stringify({
-        username: worker_username,
+        username: realUsername,
         title: "Newidra — Nuova assegnazione",
         body: body,
         url: "/?source=push"
@@ -1650,7 +1663,7 @@ async function _notifyWorkerAssigned(worker_username, loc_id) {
     // previously looked identical to a real delivery from here. Surfacing
     // it makes that case visible instead of silently assuming it worked.
     if (!data || !data.ok || !data.sent) {
-      console.warn("[push] assignment notify not delivered", { worker: worker_username, locId: loc_id, response: data });
+      console.warn("[push] assignment notify not delivered", { assignedAs: worker_username, resolvedUsername: realUsername, locId: loc_id, response: data });
     }
   } catch (e) {
     console.warn("[push] assignment notify failed", e);
