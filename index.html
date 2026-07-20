@@ -1630,7 +1630,7 @@ async function _notifyWorkerAssigned(worker_username, loc_id) {
     const loc = locs.find(l => l.id === loc_id);
     const locName = loc ? disp(loc.name) : "—";
     const body = `Sei stato assegnato a ${locName} / تم تعيينك في ${locName}`;
-    await fetch("/api/notify-worker", {
+    const res = await fetch("/api/notify-worker", {
       method: "POST",
       headers: _authHeaders({
         "Content-Type": "application/json"
@@ -1642,6 +1642,16 @@ async function _notifyWorkerAssigned(worker_username, loc_id) {
         url: "/?source=push"
       })
     });
+    const data = await res.json().catch(() => null);
+    // A 200 response only means the server accepted the request, not that
+    // a device actually received anything — sendPushToUser returns
+    // {sent: 0} with no error when the worker has zero registered
+    // subscriptions (never enabled notifications on any device), which
+    // previously looked identical to a real delivery from here. Surfacing
+    // it makes that case visible instead of silently assuming it worked.
+    if (!data || !data.ok || !data.sent) {
+      console.warn("[push] assignment notify not delivered", { worker: worker_username, locId: loc_id, response: data });
+    }
   } catch (e) {
     console.warn("[push] assignment notify failed", e);
   }
