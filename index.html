@@ -5576,12 +5576,12 @@ async function buildAssign() {
   const unassigned = uniqueWorkers.filter(p => !assignedMap[p.norm] || assignedMap[p.norm].size === 0);
   function workerChip(p, locId) {
     const removeBtn = locId ? `<span class="chip-remove" title="${T.cancel}" onclick="removeAssignment('${esc(p.norm)}','${esc(locId)}')">&#x2715;</span>` : "";
-    const otherLocs = locs.filter(l => l.id !== locId).slice().sort(byName);
+    const otherLocs = locs.filter(l => l.id !== locId && _isAssignableLoc(l)).slice().sort(byName);
     const quickAssign = otherLocs.length ? `<div style="margin-top:5px"><select style="width:100%;padding:3px 5px;font-size:10px;border-radius:3px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);font-family:var(--font)" onchange="quickAssignWorker('${esc(p.norm)}',this.value,this)"><option value="">assign to...</option>${otherLocs.map(l => `<option value="${esc(l.id)}">${disp(l.name)}</option>`).join("")}</select></div>` : "";
     return `<div class="assign-worker-chip" draggable="true" data-worker="${esc(p.norm)}" data-from="${esc(locId || "__unassigned__")}" style="flex-direction:column;align-items:stretch;gap:2px"><div style="display:flex;align-items:center;gap:8px"><div style="display:flex;flex-direction:column;flex:1;min-width:0"><span class="chip-name">${disp(p.label || p.phone)}</span><span class="chip-phone">${esc(p.phone)}</span></div>${removeBtn}</div>${quickAssign}</div>`;
   }
   const unassignedChips = unassigned.length ? unassigned.map(p => workerChip(p, null)).join("") : `<div class="assign-empty-drop">${T.allAssigned}</div>`;
-  const activeLocs = locs.filter(l => l.is_open !== false && l.is_open !== "false");
+  const activeLocs = locs.filter(_isAssignableLoc);
   const locCols = !activeLocs.length ? `<div style="color:var(--muted);font-family:var(--font);font-size:11px;padding:20px">${T.noLocations}</div>` : activeLocs.map(l => {
     const isOpen = l.is_open !== false && l.is_open !== "false";
     const assignedPhones = uniqueWorkers.filter(p => assignedMap[p.norm]?.has(l.id));
@@ -5672,6 +5672,17 @@ window.quickAssignWorker = async (workerNorm, locId, selectEl) => {
 
 function _workerNorm(u) {
   return normPhone(u.phone || "") || u.username;
+}
+
+// Closed (is_open=false) and finished/archived locations shouldn't show up
+// as options when assigning a worker — they're not active sites, so
+// offering them just invites mis-assignment. Used everywhere a location
+// picker is built (worker profile page, the assign board's quick-assign
+// dropdown, and the board's own columns).
+function _isAssignableLoc(l) {
+  const closed = l.is_open === false || l.is_open === "false";
+  const finished = l.finished === true || l.finished === "true";
+  return !closed && !finished;
 }
 
 window.openWorkerProfile = async (username, editInfo) => {
@@ -5801,7 +5812,7 @@ async function buildWorkerProfile(username, editInfo) {
   };
   const myAssigns = assignments.filter(a => a.worker_username === norm).map(a => a.loc_id).filter(id => locMap[id]);
   const assignedChips = myAssigns.length ? myAssigns.map(id => `<span class="badge bb" style="display:inline-flex;align-items:center;gap:6px;padding:5px 9px">${disp(locMap[id].name)} <span style="cursor:pointer;color:var(--red);font-weight:900" title="${T.removeFromSite}" onclick="profileRemoveSite('${esc(norm)}','${esc(id)}','${esc(username)}')">&#x2715;</span></span>`).join(" ") : `<span style="font-family:var(--font);font-size:12px;color:var(--muted)">${T.notAssigned}</span>`;
-  const unassignedLocs = locs.filter(l => !myAssigns.includes(l.id)).sort(byName);
+  const unassignedLocs = locs.filter(l => !myAssigns.includes(l.id) && _isAssignableLoc(l)).sort(byName);
   const assignDropdown = unassignedLocs.length ? `<select onchange="profileAssignSite('${esc(norm)}',this.value,'${esc(username)}',this)" style="max-width:280px;margin-top:8px"><option value="">${P.assignSite}</option>${unassignedLocs.map(l => `<option value="${esc(l.id)}">${disp(l.name)}</option>`).join("")}</select>` : "";
   const byLoc = {};
   allShifts.filter(s => s.worker === username).forEach(s => {
@@ -8234,6 +8245,15 @@ window.resetDevice = async (username, displayName) => {
     await dbSetUser(username, {
       device_id: null
     });
+    // The old phone's push subscription doesn't get cleared just because
+    // the device lock was lifted — without this it would keep receiving
+    // notifications (assignment changes, shift-end reminders) even after
+    // the worker has moved to a new phone, since sendPushToUser() sends to
+    // every row on file for this username. Clearing it here means the
+    // worker starts clean on their next login: the new device subscribes
+    // itself the moment they sign in (via the auto-sync-on-login flow),
+    // with no leftover old-phone subscription still in the mix.
+    await sql("DELETE FROM wf_push_subscriptions WHERE username=$1", [ username ]).catch(e => console.warn("[push] could not clear old subscription on device reset", e));
     await _clientAudit("device_reset", username, {});
     toast(T.deviceResetFor(displayName), "success");
     await mTab("addworker");
