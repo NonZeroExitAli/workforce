@@ -126,7 +126,21 @@ export async function sendPushToUser(username, payload) {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        JSON.stringify(payload)
+        JSON.stringify(payload),
+        // Without an explicit urgency, the push protocol defaults to
+        // "normal" — which Android/FCM is allowed to defer until the
+        // device wakes up on its own (Doze mode holds "normal" pushes
+        // back to save battery, only flushing them once the screen turns
+        // on or the phone is unlocked). "high" tells the push service to
+        // wake the device immediately instead of batching it for later —
+        // this is what was causing notifications to only ever "arrive"
+        // at the moment someone unlocked the phone and opened the app,
+        // when in fact they'd been sent and sitting queued the whole
+        // time. TTL is a 1-hour delivery window: long enough to survive
+        // a brief connectivity gap, short enough that a stale alert
+        // (e.g. a shift-ending reminder for a shift that already ended)
+        // doesn't show up hours late.
+        { urgency: 'high', TTL: 3600 }
       );
       sent++;
     } catch (e) {
