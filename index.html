@@ -3542,17 +3542,21 @@ function render() {
 
 function renderAuth() {
   const isAdmin = S.authTab === "admin";
-  const tAdmin = lang === "ar" ? "دخول المشرف" : lang === "it" ? "Accesso Admin" : "Admin login";
-  const tWorker = lang === "ar" ? "دخول العامل" : lang === "it" ? "Accesso operaio" : "Worker login";
+  // Deliberately not called "Admin" or "Manager" anywhere on this screen,
+  // and not offered as an equal, same-size option next to the worker
+  // login — a worker glancing at this screen shouldn't see two obviously
+  // paired choices ("Worker" / "Admin") and get curious. It's a small,
+  // muted, generically-worded link tucked below the card instead.
+  const tBack = lang === "ar" ? "← رجوع لتسجيل دخول العامل" : lang === "it" ? "← Torna all'accesso operaio" : "← Back to worker login";
+  const tQuietLink = lang === "ar" ? "دخول الفريق" : lang === "it" ? "Accesso team" : "Team access";
   const workerHint = lang === "ar" ? "أدخل رقم هاتفك للمتابعة" : lang === "it" ? "Inserisci il tuo numero di telefono per continuare" : "Enter your phone number to continue";
-  const adminHint = lang === "ar" ? "أدخل بيانات اعتماد المدير" : lang === "it" ? "Inserisci le tue credenziali da manager" : "Enter your manager credentials";
+  const adminHint = lang === "ar" ? "أدخل بيانات الدخول" : lang === "it" ? "Inserisci le tue credenziali" : "Enter your credentials";
   const icoPhone = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
   const icoUser = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>`;
   const icoLock = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
-  const icoShield = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5l-8-3Z"/></svg>`;
   const workerForm = `\n        <p class="auth-hint">${workerHint}</p>\n        <div class="fg" id="wf">\n          <div>\n            <label class="lbl">${T.phoneNum}</label>\n            <div class="auth-input-group">${icoPhone}<input id="wph" type="tel" placeholder="" autocomplete="tel" onkeydown="if(event.key==='Enter')doPhoneLogin()"/></div>\n          </div>\n          <div class="err-box" id="wph-err" style="display:none"></div>\n          <button class="btn btn-gold" id="wph-btn" onclick="doPhoneLogin()">${T.signIn} →</button>\n        </div>`;
-  const adminForm = `\n        <p class="auth-hint">${adminHint}</p>\n        <div class="fg" id="lf">\n          <div><label class="lbl">${T.username}</label><div class="auth-input-group">${icoUser}<input id="lu" placeholder="${T.yourUser}" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/></div></div>\n          <div><label class="lbl">${T.password}</label><div class="auth-input-group">${icoLock}<input id="lp" type="password" placeholder="${T.yourPass}" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div></div>\n          <div class="err-box" id="lerr" style="display:none"></div>\n          <button class="btn btn-gold" onclick="doLogin()">${T.signIn} →</button>\n        </div>`;
-  return `<div class="center auth-screen">\n    <div class="auth-bg-glow"></div>\n    <div class="auth-lang-corner">${langBar(true)}</div>\n    <div class="auth-header">\n      <div class="ni-logo-wrap">\n        ${niLogoSVG(200)}\n      </div>\n    </div>\n    <div class="auth-wrap">\n      <div class="auth-toggle" role="tablist">\n        <button class="auth-toggle-btn ${!isAdmin ? "active" : ""}" onclick="authTab('worker')">${icoUser}${tWorker}</button>\n        <button class="auth-toggle-btn ${isAdmin ? "active" : ""}" onclick="authTab('admin')">${icoShield}${tAdmin}</button>\n      </div>\n      <div class="card-body auth-card">\n        ${isAdmin ? adminForm : workerForm}\n      </div>\n    </div>\n  </div>`;
+  const adminForm = `\n        <button onclick="authTab('worker')" style="background:none;border:none;padding:0;margin-bottom:14px;font-family:var(--font);font-size:11px;color:var(--muted);cursor:pointer">${tBack}</button>\n        <p class="auth-hint">${adminHint}</p>\n        <div class="fg" id="lf">\n          <div><label class="lbl">${T.username}</label><div class="auth-input-group">${icoUser}<input id="lu" placeholder="${T.yourUser}" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/></div></div>\n          <div><label class="lbl">${T.password}</label><div class="auth-input-group">${icoLock}<input id="lp" type="password" placeholder="${T.yourPass}" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div></div>\n          <div class="err-box" id="lerr" style="display:none"></div>\n          <button class="btn btn-gold" onclick="doLogin()">${T.signIn} →</button>\n        </div>`;
+  return `<div class="center auth-screen">\n    <div class="auth-bg-glow"></div>\n    <div class="auth-lang-corner">${langBar(true)}</div>\n    <div class="auth-header">\n      <div class="ni-logo-wrap">\n        ${niLogoSVG(200)}\n      </div>\n    </div>\n    <div class="auth-wrap">\n      <div class="card-body auth-card">\n        ${isAdmin ? adminForm : workerForm}\n      </div>\n      ${!isAdmin ? `<div style="text-align:center;margin-top:18px"><button onclick="authTab('admin')" style="background:none;border:none;padding:4px;font-family:var(--font);font-size:10px;letter-spacing:.5px;color:var(--muted);opacity:.55;cursor:pointer">${tQuietLink}</button></div>` : ""}\n    </div>\n  </div>`;
 }
 
 window.authTab = tab => {
@@ -3902,7 +3906,7 @@ function _finalizeShift(billingStartMs, rawEndMs, autoEndTimeStr, breakMinutes, 
     }
   }
   const billedMs = Math.max(0, billingEndMs - billingStartMs);
-  const HALF_DAY_THRESHOLD_MS = 5 * 36e5;
+  const HALF_DAY_THRESHOLD_MS = 6 * 36e5;
   const breakMs = billedMs < HALF_DAY_THRESHOLD_MS ? 0 : (parseFloat(breakMinutes) || 0) * 6e4;
   const netMs = Math.max(0, billedMs - breakMs);
   const netWorkHours = netMs / 36e5;
