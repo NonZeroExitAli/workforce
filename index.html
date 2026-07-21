@@ -1373,7 +1373,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 <script>
 const GPS_RADIUS = 500;
 
-const SCHEMA_VERSION = "22";
+const SCHEMA_VERSION = "23";
 
 const APP_VERSION = "2.2";
 
@@ -1417,13 +1417,33 @@ async function _clientAudit(action, target, details) {
   }
 }
 
+// Defensive, self-healing guard (same pattern as _ensureReviewDismissedCol
+// for wf_shifts) — guarantees the onboarding/on_loan columns exist even if
+// a browser/session missed the versioned migration in initDB() for any
+// reason, since that only re-attempts on a schema-version bump, not on
+// every load.
+let _onboardingColsEnsured = false;
+async function _ensureOnboardingCols() {
+  if (_onboardingColsEnsured) return;
+  try {
+    await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS onboarding BOOLEAN DEFAULT false");
+    await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS on_loan BOOLEAN DEFAULT false");
+    await sql("ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS on_loan_details TEXT");
+    _onboardingColsEnsured = true;
+  } catch (e) {
+    console.warn("[migration] could not ensure onboarding/on_loan columns:", e.message);
+  }
+}
+
 async function dbGetUser(u) {
-  const r = await sql("SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users WHERE username=$1 LIMIT 1", [ u ]);
+  await _ensureOnboardingCols();
+  const r = await sql("SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url,onboarding,on_loan,on_loan_details FROM wf_users WHERE username=$1 LIMIT 1", [ u ]);
   return r[0] || null;
 }
 
 async function dbSetUser(u, d) {
   _clearUsersCache();
+  await _ensureOnboardingCols();
   const keys = Object.keys(d), vals = Object.values(d);
   const cols = keys.join(",");
   const placeholders = keys.map((_, i) => `$${i + 2}`).join(",");
@@ -1432,7 +1452,8 @@ async function dbSetUser(u, d) {
 }
 
 async function dbListUsers() {
-  return sql("SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url FROM wf_users");
+  await _ensureOnboardingCols();
+  return sql("SELECT username,role,phone,hourly_rate,device_id,label,can_restart,can_restart_date,gps_bypass,worker_status,dob,email,tax_code,residence_permit,doc_expiry,iban,address,start_date,job_title,contract_type,contract_date,contract_expiry,permit_expiry,idoneita_expiry,patente_expiry,courses,photo_url,onboarding,on_loan,on_loan_details FROM wf_users");
 }
 
 let _usersCache = null;
@@ -1656,7 +1677,31 @@ async function dbSetAssignment(worker_username, loc_id) {
   // NOTHING skips it silently otherwise) — so this only fires the first
   // time this exact worker+location pairing is created, not on every
   // re-save of an assignment that already existed.
-  if (rows.length) _notifyWorkerAssigned(worker_username, loc_id).catch(() => {});
+  if (rows.length) {
+    _notifyWorkerAssigned(worker_username, loc_id).catch(() => {});
+    // A worker's first real site assignment is what graduates them out of
+    // the "Upcoming Workers" onboarding pool into the normal Employees
+    // list. Every assignment path in the app (drag-and-drop, quick-assign,
+    // profile assign, site-add-worker) already flows through this one
+    // function, so hooking it here — instead of each individual call
+    // site — can't miss a future assignment path either.
+    _clearOnboardingFlagIfNeeded(worker_username).catch(() => {});
+  }
+}
+
+async function _clearOnboardingFlagIfNeeded(worker_username) {
+  try {
+    const users = await dbListUsersCached();
+    const target = users.find(u => _workerNorm(u) === worker_username || u.username === worker_username);
+    if (target && target.onboarding) {
+      await dbSetUser(target.username, {
+        onboarding: false
+      });
+      _clearUsersCache();
+    }
+  } catch (e) {
+    console.warn("[onboarding] could not clear onboarding flag", e);
+  }
 }
 
 async function _notifyWorkerAssigned(worker_username, loc_id) {
@@ -2118,6 +2163,12 @@ async function initDB() {
     migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS worker_status TEXT DEFAULT 'confirmed';\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS leader_username TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS dob TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS email TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS tax_code TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS residence_permit TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS doc_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS iban TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS address TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS start_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS job_title TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_type TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS permit_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS idoneita_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS patente_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS courses TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS photo_url TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart_date TEXT;\n      UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';\n      UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';\n      UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS title TEXT;\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'document';\n      UPDATE wf_documents SET category='document'       WHERE category IS NULL;\n      CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS finished BOOLEAN DEFAULT false;\n      ALTER TABLE wf_properties ADD COLUMN IF NOT EXISTS kind_other TEXT;\n      CREATE TABLE IF NOT EXISTS wf_career(\n        id TEXT PRIMARY KEY, worker_username TEXT, event_date TEXT,\n        event_type TEXT, description TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_documents(\n        id TEXT PRIMARY KEY, worker_username TEXT, doc_type TEXT,\n        file_url TEXT, uploaded_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_vehicles(\n        id TEXT PRIMARY KEY, plate TEXT, model TEXT, assigned_user TEXT,\n        inspection_date TEXT, insurance_expiry TEXT, road_tax_expiry TEXT,\n        last_oil_change TEXT, mileage NUMERIC, status TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_properties(\n        id TEXT PRIMARY KEY, kind TEXT, kind_other TEXT, name TEXT, address TEXT,\n        rent_day INTEGER, rent_amount NUMERIC,\n        contract_start TEXT, contract_end TEXT, responsible_username TEXT, notes TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_payslip_amounts(\n        worker_username TEXT, year INTEGER, month INTEGER, amount NUMERIC,\n        PRIMARY KEY(worker_username, year, month)\n      );\n    `);
     migrationFailures += await _runMigrationBatch(`\n      CREATE TABLE IF NOT EXISTS wf_audit_log(\n        id BIGSERIAL PRIMARY KEY, actor_username TEXT, action TEXT NOT NULL,\n        target TEXT, details TEXT, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_audit_created ON wf_audit_log(created_at);\n      CREATE INDEX IF NOT EXISTS idx_audit_actor ON wf_audit_log(actor_username);\n      CREATE TABLE IF NOT EXISTS wf_push_subscriptions(\n        id TEXT PRIMARY KEY, username TEXT NOT NULL, endpoint TEXT NOT NULL,\n        p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_push_username ON wf_push_subscriptions(username);\n      CREATE TABLE IF NOT EXISTS wf_notified_log(\n        notif_key TEXT PRIMARY KEY, sent_at BIGINT\n      );\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS notify_window INTEGER DEFAULT 10;\n    `);
     migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS review_dismissed BOOLEAN DEFAULT false;\n      CREATE INDEX IF NOT EXISTS idx_shifts_needs_review ON wf_shifts(status) WHERE status='needs_review';\n    `);
+    // "onboarding" = worker pre-registered ahead of their first day (hidden
+    // from the normal Employees list, shown only in the Upcoming Workers
+    // tab, until they're assigned to a site for the first time). "on_loan"
+    // = اعارة/secondment — a currently-employed worker temporarily on loan
+    // to another company/site, with free-text details.
+    migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS onboarding BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS on_loan BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS on_loan_details TEXT;\n      CREATE INDEX IF NOT EXISTS idx_users_onboarding ON wf_users(onboarding) WHERE onboarding=true;\n    `);
     if (migrationFailures === 0) {
       localStorage.setItem("wf_schema", SCHEMA_VERSION);
     } else {
@@ -4405,6 +4456,8 @@ function mgrNav() {
     sub_dashboard: "نظرة عامة",
     sub_live: "مباشر",
     sub_employees: "إدارة الموظفين",
+    upcoming: "القادمون",
+    sub_upcoming: "عمال قبل التعيين",
     sub_locations: "المواقع",
     sub_assign: "تعيين الفرق",
     sub_salary: "الرواتب والساعات",
@@ -4433,6 +4486,8 @@ function mgrNav() {
     sub_dashboard: "Panoramica",
     sub_live: "In tempo reale",
     sub_employees: "Gestione dipendenti",
+    upcoming: "In arrivo",
+    sub_upcoming: "Lavoratori non ancora assegnati",
     sub_locations: "Cantieri",
     sub_assign: "Assegnazione squadre",
     sub_salary: "Stipendi e ore",
@@ -4461,6 +4516,8 @@ function mgrNav() {
     sub_dashboard: "Overview",
     sub_live: "Live",
     sub_employees: "Manage staff",
+    upcoming: "Upcoming",
+    sub_upcoming: "Workers not yet assigned",
     sub_locations: "Sites",
     sub_assign: "Team assignment",
     sub_salary: "Salaries & hours",
@@ -4496,6 +4553,11 @@ function mgrTabList() {
     ico: "",
     label: L.employees,
     sub: L.sub_employees
+  }, {
+    key: "upcoming",
+    ico: "",
+    label: L.upcoming,
+    sub: L.sub_upcoming
   }, {
     key: "locations",
     ico: "",
@@ -4547,7 +4609,7 @@ async function renderManagerScreen() {
   const L = mgrNav();
   const active = S.mgrTab;
   const meta = mgrTabMeta(active);
-  $("root").innerHTML = `\n  <div class="side-scrim" onclick="toggleSidebar(false)"></div>\n  <div class="app-shell">\n    <aside class="side-nav" id="sideNav">\n      <div class="side-brand">${niTopbarLogo()}</div>\n      <div class="side-user">\n        <div class="side-user-avatar">${esc((S.user.username || "?").slice(0, 1).toUpperCase())}</div>\n        <div class="side-user-meta">\n          <div class="side-user-name">${disp(S.user.username)}</div>\n          <div class="side-user-role">${lang === "ar" ? "مدير" : "Manager"}</div>\n        </div>\n      </div>\n      <div class="side-section-label">${L.menu}</div>\n      <nav class="side-nav-list">\n        ${mgrTabList().map(it => `<button class="nav-tab ${it.key === active ? "active" : ""}" data-tab="${it.key}" onclick="mTab('${it.key}')"><span class="ti">${it.ico}</span><span>${it.label}</span>${it.key === "notifications" ? `<span id="nav-badge-notifications" style="display:none;margin-${lang === "ar" ? "right" : "left"}:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-family:var(--font);font-size:11px;font-weight:800;align-items:center;justify-content:center"></span>` : ""}</button>`).join("")}\n      </nav>\n      <div class="side-bottom">\n        ${langBar(true)}\n        <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n      </div>\n      <div class="side-foot">New Idra · v${APP_VERSION}<br><span style="opacity:.75">Developed by NonZeroExitAli</span></div>\n    </aside>\n    <div class="app-main">\n      <header class="app-header">\n        <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>\n        <div class="page-title" id="mgrPageTitle">${meta.label}<small>${meta.sub}</small></div>\n        <div class="spacer"></div>\n        <div style="position:relative;margin-${lang === "ar" ? "left" : "right"}:14px">\n          <button id="bellBtn" onclick="toggleBell(event)" title="${PL().bellTitle}" style="position:relative;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>\n            <span id="bell-badge" style="display:none;position:absolute;top:-5px;${lang === "ar" ? "left" : "right"}:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-family:var(--font);font-size:10px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg1)"></span>\n          </button>\n          <div id="bellPanel" style="display:none;position:absolute;${lang === "ar" ? "left" : "right"}:0;top:48px;width:340px;max-width:90vw;max-height:60vh;overflow:auto;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);z-index:300"></div>\n        </div>\n        <span class="clock" id="clock"></span>\n      </header>\n      <main class="app-content">\n        <div class="kpi-grid" id="scards"></div>\n        <div id="mpanel"></div>\n      </main>\n    </div>\n  </div>`;
+  $("root").innerHTML = `\n  <div class="side-scrim" onclick="toggleSidebar(false)"></div>\n  <div class="app-shell">\n    <aside class="side-nav" id="sideNav">\n      <div class="side-brand">${niTopbarLogo()}</div>\n      <div class="side-user">\n        <div class="side-user-avatar">${esc((S.user.username || "?").slice(0, 1).toUpperCase())}</div>\n        <div class="side-user-meta">\n          <div class="side-user-name">${disp(S.user.username)}</div>\n          <div class="side-user-role">${lang === "ar" ? "مدير" : "Manager"}</div>\n        </div>\n      </div>\n      <div class="side-section-label">${L.menu}</div>\n      <nav class="side-nav-list">\n        ${mgrTabList().filter(it => it.key !== "upcoming").map(it => `<button class="nav-tab ${it.key === active ? "active" : ""}" data-tab="${it.key}" onclick="mTab('${it.key}')"><span class="ti">${it.ico}</span><span>${it.label}</span>${it.key === "notifications" ? `<span id="nav-badge-notifications" style="display:none;margin-${lang === "ar" ? "right" : "left"}:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-family:var(--font);font-size:11px;font-weight:800;align-items:center;justify-content:center"></span>` : ""}</button>`).join("")}\n      </nav>\n      <div class="side-bottom">\n        ${langBar(true)}\n        <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n      </div>\n      <div class="side-foot">New Idra · v${APP_VERSION}<br><span style="opacity:.75">Developed by NonZeroExitAli</span></div>\n    </aside>\n    <div class="app-main">\n      <header class="app-header">\n        <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>\n        <div class="page-title" id="mgrPageTitle">${meta.label}<small>${meta.sub}</small></div>\n        <div class="spacer"></div>\n        <div style="position:relative;margin-${lang === "ar" ? "left" : "right"}:14px">\n          <button id="bellBtn" onclick="toggleBell(event)" title="${PL().bellTitle}" style="position:relative;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>\n            <span id="bell-badge" style="display:none;position:absolute;top:-5px;${lang === "ar" ? "left" : "right"}:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-family:var(--font);font-size:10px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg1)"></span>\n          </button>\n          <div id="bellPanel" style="display:none;position:absolute;${lang === "ar" ? "left" : "right"}:0;top:48px;width:340px;max-width:90vw;max-height:60vh;overflow:auto;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);z-index:300"></div>\n        </div>\n        <span class="clock" id="clock"></span>\n      </header>\n      <main class="app-content">\n        <div class="kpi-grid" id="scards"></div>\n        <div id="mpanel"></div>\n      </main>\n    </div>\n  </div>`;
   const _initPanel = $("mpanel");
   const _sc = $("scards");
   if (active === "dashboard") {
@@ -4595,6 +4657,7 @@ window.mTab = async tab => {
   }
   if (tab === "live") panel.innerHTML = await buildLive(false);
   if (tab === "addworker") panel.innerHTML = await buildAddWorker();
+  if (tab === "upcoming") panel.innerHTML = await buildUpcomingWorkers();
   if (tab === "locations") panel.innerHTML = await buildLocations();
   if (tab === "cars") panel.innerHTML = await buildCars();
   if (tab === "properties") panel.innerHTML = await buildProperties();
@@ -4621,7 +4684,7 @@ function wireManagerTab(tab) {
     initLocationMap();
     return;
   }
-  if (tab === "live" || tab === "addworker") {
+  if (tab === "live" || tab === "addworker" || tab === "upcoming") {
     if (panel.querySelectorAll("[data-search]").length) injectListSearch(panel);
   }
 }
@@ -5048,9 +5111,31 @@ window.mgrEndShift = async (shiftId, workerName) => {
   }
 };
 
+// Small pill toggle shown at the top of both the Employees list and the
+// Upcoming Workers list, linking the two — "Upcoming" isn't its own
+// sidebar item (deliberately, so it doesn't read as a top-level section),
+// it's reached from inside Employees via this toggle instead.
+function _empSubTabBar(active, employeesCount, upcomingCount) {
+  const P = PL();
+  const L = mgrNav();
+  const btn = (key, label, count) => `<button class="btn-sm" style="padding:9px 16px;font-weight:800;${active === key ? "background:var(--copper);color:#fff;border:1px solid var(--copper)" : "background:var(--bg1);border:1px solid var(--border2);color:var(--text)"}" onclick="mTab('${key === "active" ? "addworker" : "upcoming"}')">${label}${count != null ? ` (${count})` : ""}</button>`;
+  return `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">\n    ${btn("active", L.employees, employeesCount)}\n    ${btn("upcoming", P.upcomingWorkers, upcomingCount)}\n  </div>`;
+}
+
 async function buildAddWorker() {
-  const phones = (await dbListPhonesCached()).slice().sort(byName);
+  const allPhones = (await dbListPhonesCached()).slice().sort(byName);
   const users = await dbListUsersCached();
+  // Workers still in the onboarding pool (registered ahead of their first
+  // day, not yet assigned to any site) are deliberately hidden from this
+  // normal Employees list — they only show in the "Upcoming Workers" view
+  // (reached via the toggle below) until dbSetAssignment() flips their
+  // onboarding flag off on first assignment, at which point they show up
+  // here automatically.
+  const phones = allPhones.filter(p => {
+    const linkedUser = users.find(u => u.role === "worker" && normPhone(u.phone || "") === p.norm);
+    return !(linkedUser && linkedUser.onboarding);
+  });
+  const upcomingCount = users.filter(u => u.role === "worker" && u.onboarding).length;
   const _photoUsers = users.filter(u => u.role === "worker" && u.photo_url);
   const _photoMap = {};
   if (_photoUsers.length) {
@@ -5072,8 +5157,89 @@ async function buildAddWorker() {
       return `<button class="btn-sm" title="GPS Bypass" style="background:${bypassed ? "rgba(232,128,28,.15)" : "rgba(58,96,128,.15)"};border:1px solid ${bypassed ? "rgba(232,128,28,.4)" : "var(--border2)"};color:${bypassed ? "#f59a44" : "#6f6257"};font-size:11px;letter-spacing:1px" onclick="toggleGpsBypass('${esc(workerUser.username)}','${disp(p.label || p.phone)}',${bypassed})">\n               GPS ${bypassed ? "OFF" : "ON"}\n            </button>`;
     })() : ""}\n          ${workerUser && hasDevice ? `<button class="btn-sm" style="background:rgba(47,115,184,.12);border:1px solid rgba(47,115,184,.35);color:#f59a44;font-size:11px" onclick="resetDevice('${esc(workerUser.username)}','${disp(p.label || p.phone)}')">${T.resetDevice}</button>` : workerUser ? `<span style="font-family:var(--font);font-size:10px;color:#6f6257;padding:4px 0">${T.noDeviceYet}</span>` : ""}\n          <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="padding:6px 10px;font-size:14px">✕</button>\n        </div>\n      </div>\n    </div>`;
   }).join("");
-  return `<div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">\n    <div class="pc-title" style="margin:0">${T.approved} <span style="color:var(--muted);font-weight:400">(${phones.length})</span></div>\n    <div style="display:flex;gap:8px;flex-wrap:wrap">\n      <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openAddWorker()">+ ${PL().addWorker}</button>\n      <button class="btn-sm btn-red" onclick="clearPhones()">${T.clearAll}</button>\n    </div>\n  </div>\n  <div class="sc">\n    <div id="plist">${listHtml}</div>\n  </div>`;
+  return _empSubTabBar("active", phones.length, upcomingCount) + `<div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">\n    <div class="pc-title" style="margin:0">${T.approved} <span style="color:var(--muted);font-weight:400">(${phones.length})</span></div>\n    <div style="display:flex;gap:8px;flex-wrap:wrap">\n      <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openAddWorker()">+ ${PL().addWorker}</button>\n      <button class="btn-sm" style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.35);color:var(--green);padding:9px 16px;font-weight:800" onclick="openOnboardWorker()">+ ${PL().addUpcomingWorker}</button>\n      <button class="btn-sm btn-red" onclick="clearPhones()">${T.clearAll}</button>\n    </div>\n  </div>\n  <div class="sc">\n    <div id="plist">${listHtml}</div>\n  </div>`;
 }
+
+// "Upcoming Workers" — a holding pool for workers pre-registered ahead of
+// their first day (onboarding=true on wf_users). They get a full profile
+// (info form, training checkboxes, document upload — all of buildWorkerProfile
+// already works as soon as the account row exists) but are deliberately kept
+// out of the normal Employees list until they're actually assigned to a
+// site for the first time, at which point dbSetAssignment() flips the flag
+// automatically and they show up in the normal list like everyone else. A
+// manual "activate now" escape hatch also exists for workers who won't get
+// a site assignment right away (e.g. office roles).
+async function buildUpcomingWorkers() {
+  const P = PL();
+  const [users, allPhones] = await Promise.all([ dbListUsersCached(), dbListPhonesCached() ]);
+  const upcoming = users.filter(u => u.role === "worker" && u.onboarding).sort(byName);
+  const employeesCount = allPhones.filter(p => {
+    const linkedUser = users.find(u => u.role === "worker" && normPhone(u.phone || "") === p.norm);
+    return !(linkedUser && linkedUser.onboarding);
+  }).length;
+  const _photoMap = {};
+  const withPhotos = upcoming.filter(u => u.photo_url);
+  if (withPhotos.length) {
+    await Promise.all(withPhotos.map(async u => {
+      try {
+        const r = await storageUrl(u.photo_url);
+        _photoMap[u.username] = r.url;
+      } catch (e) {}
+    }));
+  }
+  const rows = upcoming.length ? upcoming.map(u => {
+    const photoUrl = _photoMap[u.username];
+    const myCourses = _parseCourses(u.courses);
+    return `<div class="phone-row" style="flex-direction:column;gap:10px" data-search="${disp(u.label || u.username)} ${esc(u.phone || "")}">\n      <div style="display:flex;align-items:flex-start;gap:10px;width:100%;flex-wrap:wrap">\n        <div style="flex:1;min-width:200px">\n          <div onclick="openWorkerProfile('${esc(u.username)}')" title="${T.viewProfile}" style="cursor:pointer;display:flex;align-items:center;gap:12px">\n            ${photoUrl ? `<img src="${esc(photoUrl)}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg1);box-shadow:0 2px 6px rgba(0,0,0,.15)"/>` : _avatarHtml(u.label || u.username, 50)}\n            <div style="min-width:0">\n              <div style="font-family:var(--font);font-size:20px;font-weight:800;letter-spacing:.3px;color:var(--text)">${disp(u.label || u.username)}</div>\n              ${u.phone ? `<div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${esc(u.phone)}</div>` : ""}\n            </div>\n          </div>\n          <div class="pmbadges" style="margin-top:8px">\n            <span class="badge" style="background:var(--orange-soft);color:var(--orange);border:1px solid rgba(212,160,23,.4)">◷ ${P.pendingBadge}</span>\n            ${myCourses.length ? `<span class="badge bg">${myCourses.length} ${lang === "ar" ? "دورات" : "corsi"}</span>` : ""}\n          </div>\n        </div>\n        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">\n          <button class="btn-sm" style="background:rgba(232,128,28,.1);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink);font-size:11px" onclick="openWorkerProfile('${esc(u.username)}')">${T.profile}</button>\n          <button class="btn-sm" style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.35);color:var(--green);font-size:11px" onclick="activateUpcomingWorker('${esc(u.username)}')">${P.activateNow}</button>\n        </div>\n      </div>\n    </div>`;
+  }).join("") : `<div class="empty">${P.noUpcomingWorkers}</div>`;
+  return _empSubTabBar("upcoming", employeesCount, upcoming.length) + `<div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">\n    <div class="pc-title" style="margin:0">${P.upcomingWorkers} <span style="color:var(--muted);font-weight:400">(${upcoming.length})</span></div>\n    <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openOnboardWorker()">+ ${P.addUpcomingWorker}</button>\n  </div>\n  <div class="info-box" style="margin-bottom:14px">${P.upcomingHint}</div>\n  <div class="sc">\n    <div id="plist">${rows}</div>\n  </div>`;
+}
+
+window.openOnboardWorker = () => {
+  S.mgrTab = "upcoming";
+  S._newWorkerOnboarding = true;
+  window._pendingCreatePhoto = null;
+  openWorkerProfile("");
+};
+
+window.activateUpcomingWorker = async username => {
+  const P = PL();
+  if (!confirm(P.activateNowConfirm)) return;
+  try {
+    await dbSetUser(username, {
+      onboarding: false
+    });
+    _clearUsersCache();
+    toast(P.workerActivated, "success");
+    if (S._profileUser === username) {
+      await openWorkerProfile(username);
+    } else {
+      await mTab("upcoming");
+    }
+  } catch (e) {
+    toast("Error: " + e.message, "error");
+  }
+};
+
+// Lets the on-loan (اعارة) checkbox be toggled straight from the profile's
+// read-only view — no need to press "Modifica"/Edit first, unlike every
+// other field on this tab which only saves via the full form.
+window.saveOnLoanStatus = async username => {
+  const P = PL();
+  const on_loan = !!$("w-on-loan-view")?.checked;
+  const on_loan_details = (val("w-on-loan-details-view") || "").trim();
+  try {
+    await dbSetUser(username, {
+      on_loan: on_loan,
+      on_loan_details: on_loan_details
+    });
+    _clearUsersCache();
+    toast(P.detailsSaved, "success");
+    await openWorkerProfile(username);
+  } catch (e) {
+    toast("Error: " + e.message, "error");
+  }
+};
 
 const _LEAFLET_CSS = [ "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css", "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" ];
 
@@ -5754,7 +5920,7 @@ function _isAssignableLoc(l) {
 window.openWorkerProfile = async (username, editInfo) => {
   const panel = $("mpanel");
   if (!panel) return;
-  S._profileReturn = S.mgrTab === "addworker" ? "addworker" : S.mgrTab === "locations" ? "locations" : "live";
+  S._profileReturn = S.mgrTab === "addworker" ? "addworker" : S.mgrTab === "locations" ? "locations" : S.mgrTab === "upcoming" ? "upcoming" : "live";
   S._profileUser = username;
   toggleSidebar(false);
   panel.innerHTML = _sklPanel();
@@ -5804,8 +5970,8 @@ async function buildWorkerProfile(username, editInfo) {
   const saveNote = `<div class="empty" style="padding:24px">${P.saveFirst}</div>`;
   const fld = (id, label, value, type = "text", ph = "") => `<div class="sf"><label class="lbl">${label}</label><input id="${id}" type="${type}" value="${esc(value == null ? "" : value)}" placeholder="${ph}"/></div>`;
   const _myCourses = _parseCourses(u.courses);
-  const infoForm = `\n    <div class="panel-card">\n      <div class="pc-title">${T.profInfo}</div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-name", P.fullName, u.label, "text", "")}\n        ${fld("w-dob", P.dob, u.dob, "date")}\n        ${fld("w-taxcode", P.codiceFiscale, u.tax_code)}\n      </div>\n      <div style="height:1px;background:var(--border2);margin:16px 0"></div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-phone", P.phone, u.phone, "tel", "05xxxxxxxx")}\n        ${fld("w-email", P.email, u.email, "email")}\n        ${fld("w-rate", P.hourlyRate, u.hourly_rate == null ? 15 : u.hourly_rate, "number")}\n        ${fld("w-jobtitle", P.jobTitle, u.job_title)}\n        ${fld("w-permit", P.residencePermit, u.residence_permit)}\n        ${fld("w-permitexp", P.permitExpiry, u.permit_expiry, "date")}\n        ${fld("w-docexp", P.docExpiry, u.doc_expiry, "date")}\n        ${fld("w-iban", P.iban, u.iban)}\n        ${fld("w-startdate", P.startDate, u.start_date, "date")}\n        ${fld("w-contracttype", P.contractType, u.contract_type)}\n        ${fld("w-contractdate", P.contractDate, u.contract_date, "date")}\n        ${fld("w-contractexp", P.contractExpiry, u.contract_expiry, "date")}\n      </div>\n      <div class="sf" style="margin-top:6px"><label class="lbl">${P.address}</label><input id="w-address" type="text" value="${esc(u.address || "")}"/></div>\n      <div style="height:1px;background:var(--border2);margin:16px 0"></div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-idoneita", P.idoneitaExpiry, u.idoneita_expiry, "date")}\n        ${fld("w-patente", P.patenteExpiry, u.patente_expiry, "date")}\n      </div>\n      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:11px 22px" onclick="saveWorkerForm('${esc(username || "")}')">${P.saveWorker}</button>\n        ${isCreate ? "" : `<button class="btn btn-dark" style="width:auto;padding:11px 22px" onclick="openWorkerProfile('${esc(username)}',false)">${P.cancel}</button>`}\n      </div>\n    </div>`;
-  const infoView = `\n    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">\n      <div class="panel-card">\n        ${_cardHead(P.personalData)}\n        ${_field("calendar", P.dob, u.dob)}\n        ${_field("phone", P.phone, u.phone)}\n        ${_field("mail", P.email, u.email)}\n        ${_field("id", P.codiceFiscale, u.tax_code)}\n        ${_field("file", P.residencePermit, u.residence_permit)}\n        ${_field("calendar", P.permitExpiry, u.permit_expiry, _expiryBadge(u.permit_expiry))}\n        ${_field("file", P.docExpiry, u.doc_expiry, _expiryBadge(u.doc_expiry))}\n        ${_field("card", P.iban, u.iban)}\n        ${_field("pin", P.address, u.address)}\n      </div>\n      <div class="panel-card">\n        ${_cardHead(P.workContract)}\n        ${_field("briefcase", P.jobTitle, u.job_title)}\n        ${_field("euro", P.hourlyRate, u.hourly_rate ? "€" + u.hourly_rate + "/h" : "")}\n        ${_field("user", P.teamLeader, teamLeaderVal)}\n        ${_field("building", P.constructionSite, siteVal)}\n        ${_field("calendar", P.startDate, u.start_date)}\n        ${_field("briefcase", P.contractType, u.contract_type)}\n        ${_field("calendar", P.contractDate, u.contract_date)}\n        ${_field("calendar", P.contractExpiry, u.contract_expiry, _expiryBadge(u.contract_expiry))}\n        ${_field("id", P.idoneitaExpiry, u.idoneita_expiry, _expiryBadge(u.idoneita_expiry))}\n        ${_field("card", P.patenteExpiry, u.patente_expiry, _expiryBadge(u.patente_expiry))}\n      </div>\n    </div>`;
+  const infoForm = `\n    <div class="panel-card">\n      <div class="pc-title">${T.profInfo}</div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-name", P.fullName, u.label, "text", "")}\n        ${fld("w-dob", P.dob, u.dob, "date")}\n        ${fld("w-taxcode", P.codiceFiscale, u.tax_code)}\n      </div>\n      <div style="height:1px;background:var(--border2);margin:16px 0"></div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-phone", P.phone, u.phone, "tel", "05xxxxxxxx")}\n        ${fld("w-email", P.email, u.email, "email")}\n        ${fld("w-rate", P.hourlyRate, u.hourly_rate == null ? 15 : u.hourly_rate, "number")}\n        ${fld("w-jobtitle", P.jobTitle, u.job_title)}\n        ${fld("w-permit", P.residencePermit, u.residence_permit)}\n        ${fld("w-permitexp", P.permitExpiry, u.permit_expiry, "date")}\n        ${fld("w-docexp", P.docExpiry, u.doc_expiry, "date")}\n        ${fld("w-iban", P.iban, u.iban)}\n        ${fld("w-startdate", P.startDate, u.start_date, "date")}\n        ${fld("w-contracttype", P.contractType, u.contract_type)}\n        ${fld("w-contractdate", P.contractDate, u.contract_date, "date")}\n        ${fld("w-contractexp", P.contractExpiry, u.contract_expiry, "date")}\n      </div>\n      <div class="sf" style="margin-top:6px"><label class="lbl">${P.address}</label><input id="w-address" type="text" value="${esc(u.address || "")}"/></div>\n      <div style="height:1px;background:var(--border2);margin:16px 0"></div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">\n        ${fld("w-idoneita", P.idoneitaExpiry, u.idoneita_expiry, "date")}\n        ${fld("w-patente", P.patenteExpiry, u.patente_expiry, "date")}\n      </div>\n    </div>\n    <div class="panel-card" style="margin-top:16px">\n      <div class="pc-title">${P.onLoan}</div>\n      <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-bottom:12px">${P.onLoanHint}</div>\n      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-family:var(--font);font-size:13px;color:var(--text)">\n        <input type="checkbox" id="w-on-loan" ${u.on_loan ? "checked" : ""} onchange="document.getElementById('w-on-loan-wrap').style.display=this.checked?'':'none'" style="width:16px;height:16px;accent-color:var(--copper);cursor:pointer"/>\n        <span style="font-weight:700">${P.onLoanActive}</span>\n      </label>\n      <div id="w-on-loan-wrap" style="${u.on_loan ? "" : "display:none"};margin-top:12px">\n        <label class="lbl">${P.onLoanDetails}</label>\n        <textarea id="w-on-loan-details" rows="3" style="width:100%;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--bg1);color:var(--text);font-family:var(--font);font-size:13px;resize:vertical">${esc(u.on_loan_details || "")}</textarea>\n      </div>\n    </div>\n    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">\n      <button class="btn btn-gold" style="width:auto;padding:11px 22px" onclick="saveWorkerForm('${esc(username || "")}')">${P.saveWorker}</button>\n      ${isCreate ? "" : `<button class="btn btn-dark" style="width:auto;padding:11px 22px" onclick="openWorkerProfile('${esc(username)}',false)">${P.cancel}</button>`}\n    </div>`;
+  const infoView = `\n    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">\n      <div class="panel-card">\n        ${_cardHead(P.personalData)}\n        ${_field("calendar", P.dob, u.dob)}\n        ${_field("phone", P.phone, u.phone)}\n        ${_field("mail", P.email, u.email)}\n        ${_field("id", P.codiceFiscale, u.tax_code)}\n        ${_field("file", P.residencePermit, u.residence_permit)}\n        ${_field("calendar", P.permitExpiry, u.permit_expiry, _expiryBadge(u.permit_expiry))}\n        ${_field("file", P.docExpiry, u.doc_expiry, _expiryBadge(u.doc_expiry))}\n        ${_field("card", P.iban, u.iban)}\n        ${_field("pin", P.address, u.address)}\n      </div>\n      <div class="panel-card">\n        ${_cardHead(P.workContract)}\n        ${_field("briefcase", P.jobTitle, u.job_title)}\n        ${_field("euro", P.hourlyRate, u.hourly_rate ? "€" + u.hourly_rate + "/h" : "")}\n        ${_field("user", P.teamLeader, teamLeaderVal)}\n        ${_field("building", P.constructionSite, siteVal)}\n        ${_field("calendar", P.startDate, u.start_date)}\n        ${_field("briefcase", P.contractType, u.contract_type)}\n        ${_field("calendar", P.contractDate, u.contract_date)}\n        ${_field("calendar", P.contractExpiry, u.contract_expiry, _expiryBadge(u.contract_expiry))}\n        ${_field("id", P.idoneitaExpiry, u.idoneita_expiry, _expiryBadge(u.idoneita_expiry))}\n        ${_field("card", P.patenteExpiry, u.patente_expiry, _expiryBadge(u.patente_expiry))}\n      </div>\n      <div class="panel-card"${u.on_loan ? ' style="border-left:4px solid var(--orange)"' : ""}>\n        <div class="pc-title"${u.on_loan ? ' style="color:var(--orange)"' : ""}>${u.on_loan ? "⇄ " : ""}${P.onLoan}</div>\n        <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-family:var(--font);font-size:13px;color:var(--text);margin-top:8px">\n          <input type="checkbox" id="w-on-loan-view" ${u.on_loan ? "checked" : ""} onchange="document.getElementById('w-on-loan-details-wrap-view').style.display=this.checked?'':'none'" style="width:16px;height:16px;accent-color:var(--copper);cursor:pointer"/>\n          <span style="font-weight:700">${P.onLoanActive}</span>\n        </label>\n        <div id="w-on-loan-details-wrap-view" style="${u.on_loan ? "" : "display:none"};margin-top:10px">\n          <label class="lbl">${P.onLoanDetails}</label>\n          <textarea id="w-on-loan-details-view" rows="3" style="width:100%;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--bg1);color:var(--text);font-family:var(--font);font-size:13px;resize:vertical">${esc(u.on_loan_details || "")}</textarea>\n        </div>\n        <button class="btn-sm" style="margin-top:10px;background:rgba(232,128,28,.12);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink);font-weight:700" onclick="saveOnLoanStatus('${esc(username)}')">${P.save}</button>\n      </div>\n    </div>`;
   const infoPane = editing ? infoForm : infoView;
   const mine = allShifts.filter(s => s.worker === username && s.status === "completed");
   const byMonth = {};
@@ -5915,7 +6081,7 @@ async function buildWorkerProfile(username, editInfo) {
   const toggleBtn = status === "paused" ? `<button class="btn-sm" style="background:var(--green-soft);border:1px solid rgba(46,160,67,.35);color:var(--green)" onclick="toggleWorkerStatus('${esc(username)}','paused')">${T.markConfirmed}</button>` : `<button class="btn-sm" style="background:var(--orange-soft);border:1px solid rgba(212,160,23,.4);color:var(--orange)" onclick="toggleWorkerStatus('${esc(username)}','confirmed')">${T.markPaused}</button>`;
   const tabBtn = (key, label, iconName, disabled) => `<button class="pf-tab" data-pf="${key}" ${disabled ? "disabled" : `onclick="profileTab('${key}')"`} style="border:none;background:none;padding:8px 4px;cursor:${disabled ? "not-allowed" : "pointer"};${disabled ? "opacity:.4;" : ""}"><span class="pf-tab-inner" style="display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:10px;font-family:var(--font);font-size:12.5px;font-weight:800;letter-spacing:.2px;color:var(--muted);background:transparent;white-space:nowrap;transition:background .15s ease,color .15s ease">${ic(iconName, 15)}<span>${label}</span></span></button>`;
   const dis = isCreate;
-  return `\n  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">\n    <div style="display:flex;align-items:center;gap:14px">\n      <button onclick="backFromProfile()" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang === "ar" ? '<path d="M5 12h14M13 5l7 7-7 7"/>' : '<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>\n      </button>\n      <div style="position:relative;flex-shrink:0;width:88px;height:88px">\n        ${photoUrl ? `<img src="${esc(photoUrl)}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;display:block;box-shadow:0 4px 14px rgba(0,0,0,.18);border:3px solid var(--bg1)"/>` : _avatarHtml(isCreate ? "+" : u.label || u.username, 88)}\n        ${isCreate ? "" : `\n        <button onclick="document.getElementById('wp-photo-input').click()" title="${P.changePhoto || "Change photo"}" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;background:var(--copper);border:2px solid var(--bg1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)">\n          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>\n        </button>\n        <input id="wp-photo-input" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onWorkerPhotoPicked('${esc(username)}',this)"/>`}\n      </div>\n      <div>\n        <div style="font-family:var(--font);font-size:22px;font-weight:900;letter-spacing:.3px;color:var(--text)">${isCreate ? P.newWorker : disp(u.label || u.username)}</div>\n        <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${isCreate ? "" : esc(u.job_title || "") + (siteVal ? (u.job_title ? " · " : "") + siteVal : "") || T.profile}</div>\n      </div>\n    </div>\n    ${isCreate ? "" : `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${statusBadgeHtml}${toggleBtn}${editing ? "" : `<button class="btn-sm" style="display:inline-flex;align-items:center;gap:7px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);padding:9px 16px;font-weight:800" onclick="openWorkerProfile('${esc(username)}',true)">${ic("tool", 15)} ${P.editDetails}</button>`}<button class="btn-sm btn-red" style="padding:9px 16px;font-weight:800" onclick="deleteWorkerFromProfile('${esc(username)}')">${P.deleteWorker}</button></div>`}\n  </div>\n\n  <div class="panel-card" style="padding:0;overflow:hidden">\n    <div style="display:flex;gap:2px;padding:6px 8px 8px;border-bottom:1px solid var(--border2);overflow-x:auto">\n      ${tabBtn("info", P.tabInfo, "user", false)}\n      ${tabBtn("location", P.tabLocation, "pin", dis)}\n      ${tabBtn("pay", P.tabPay, "euro", dis)}\n      ${tabBtn("hours", P.tabHours, "clock", dis)}\n      ${tabBtn("payslips", P.tabPayslips, "card", dis)}\n      ${tabBtn("docs", P.tabDocs, "file", dis)}\n    </div>\n  </div>\n\n  <div id="pf-info" class="pf-pane">${infoPane}</div>\n\n  <div id="pf-pay" class="pf-pane" style="display:none">\n    <div class="panel-card"><div class="pc-title">${T.profPay}</div>\n      <div class="table-wrap"><table><thead><tr><th>${T.monthCol}</th><th class="num">${T.hoursCol}</th><th class="num">${T.earningsColP}</th><th class="num">${T.shifts}</th></tr></thead><tbody>${payRows}</tbody></table></div>\n    </div>\n  </div>\n\n  <div id="pf-hours" class="pf-pane" style="display:none">\n    ${isCreate ? saveNote : `<div class="panel-card"><div class="pc-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><span>${P.tabHours} <span style="color:var(--muted);font-weight:400">(${allMine.length} ${P.totalShifts.toLowerCase()})</span></span><select id="hours-month-sel" onchange="reHoursMonth('${esc(username)}','${esc(oreWorkerName)}')" style="max-width:190px">${hoursMonthOpts}</select></div>\n      <div id="pf-hours-tablewrap">${oreTableHtml}</div></div>`}\n  </div>\n\n  <div id="pf-payslips" class="pf-pane" style="display:none">\n    <div class="panel-card">${_cardHead(P.tabPayslips)}${payslipPane()}</div>\n  </div>\n\n  <div id="pf-docs" class="pf-pane" style="display:none">\n    <div class="panel-card">${_cardHead(P.docSlots)}${docSlotsPane()}</div>\n    <div class="panel-card">${_cardHead(P.otherDocsTitle)}${docPane("other", P.addDoc, P.noDocs)}</div>\n    ${coursesPane()}\n  </div>\n\n\n  <div id="pf-location" class="pf-pane" style="display:none">${locationPane}</div>`;
+  return `\n  <div class="panel-card profile-header-card" style="border-left:4px solid var(--copper);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">\n    <div style="display:flex;align-items:center;gap:14px">\n      <button onclick="backFromProfile()" title="${T.backToList}" style="flex-shrink:0;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${lang === "ar" ? '<path d="M5 12h14M13 5l7 7-7 7"/>' : '<path d="M19 12H5M11 5l-7 7 7 7"/>'}</svg>\n      </button>\n      <div style="position:relative;flex-shrink:0;width:88px;height:88px">\n        <div id="wp-photo-preview">${photoUrl ? `<img src="${esc(photoUrl)}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;display:block;box-shadow:0 4px 14px rgba(0,0,0,.18);border:3px solid var(--bg1)"/>` : _avatarHtml(isCreate ? "+" : u.label || u.username, 88)}</div>\n        ${isCreate ? `\n        <button onclick="document.getElementById('wp-photo-input-create').click()" title="${P.addPhoto || "Add photo"}" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;background:var(--copper);border:2px solid var(--bg1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)">\n          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>\n        </button>\n        <input id="wp-photo-input-create" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="stageNewWorkerPhoto(this)"/>` : `\n        <button onclick="document.getElementById('wp-photo-input').click()" title="${P.changePhoto || "Change photo"}" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;background:var(--copper);border:2px solid var(--bg1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)">\n          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>\n        </button>\n        <input id="wp-photo-input" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onWorkerPhotoPicked('${esc(username)}',this)"/>`}\n      </div>\n      <div>\n        <div style="font-family:var(--font);font-size:22px;font-weight:900;letter-spacing:.3px;color:var(--text)">${isCreate ? P.newWorker : disp(u.label || u.username)}</div>\n        <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${isCreate ? "" : esc(u.job_title || "") + (siteVal ? (u.job_title ? " · " : "") + siteVal : "") || T.profile}</div>\n      </div>\n    </div>\n    ${isCreate ? "" : `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${u.onboarding ? `<span class="badge" style="background:var(--orange-soft);color:var(--orange);border:1px solid rgba(212,160,23,.4);font-size:11px">◷ ${P.pendingBadge}</span><button class="btn-sm" style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.35);color:var(--green)" onclick="activateUpcomingWorker('${esc(username)}')">${P.activateNow}</button>` : ""}${statusBadgeHtml}${toggleBtn}${editing ? "" : `<button class="btn-sm" style="display:inline-flex;align-items:center;gap:7px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);padding:9px 16px;font-weight:800" onclick="openWorkerProfile('${esc(username)}',true)">${ic("tool", 15)} ${P.editDetails}</button>`}<button class="btn-sm btn-red" style="padding:9px 16px;font-weight:800" onclick="deleteWorkerFromProfile('${esc(username)}')">${P.deleteWorker}</button></div>`}\n  </div>\n\n  <div class="panel-card" style="padding:0;overflow:hidden">\n    <div style="display:flex;gap:2px;padding:6px 8px 8px;border-bottom:1px solid var(--border2);overflow-x:auto">\n      ${tabBtn("info", P.tabInfo, "user", false)}\n      ${tabBtn("location", P.tabLocation, "pin", dis)}\n      ${tabBtn("pay", P.tabPay, "euro", dis)}\n      ${tabBtn("hours", P.tabHours, "clock", dis)}\n      ${tabBtn("payslips", P.tabPayslips, "card", dis)}\n      ${tabBtn("docs", P.tabDocs, "file", dis)}\n    </div>\n  </div>\n\n  <div id="pf-info" class="pf-pane">${infoPane}</div>\n\n  <div id="pf-pay" class="pf-pane" style="display:none">\n    <div class="panel-card"><div class="pc-title">${T.profPay}</div>\n      <div class="table-wrap"><table><thead><tr><th>${T.monthCol}</th><th class="num">${T.hoursCol}</th><th class="num">${T.earningsColP}</th><th class="num">${T.shifts}</th></tr></thead><tbody>${payRows}</tbody></table></div>\n    </div>\n  </div>\n\n  <div id="pf-hours" class="pf-pane" style="display:none">\n    ${isCreate ? saveNote : `<div class="panel-card"><div class="pc-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><span>${P.tabHours} <span style="color:var(--muted);font-weight:400">(${allMine.length} ${P.totalShifts.toLowerCase()})</span></span><select id="hours-month-sel" onchange="reHoursMonth('${esc(username)}','${esc(oreWorkerName)}')" style="max-width:190px">${hoursMonthOpts}</select></div>\n      <div id="pf-hours-tablewrap">${oreTableHtml}</div></div>`}\n  </div>\n\n  <div id="pf-payslips" class="pf-pane" style="display:none">\n    <div class="panel-card">${_cardHead(P.tabPayslips)}${payslipPane()}</div>\n  </div>\n\n  <div id="pf-docs" class="pf-pane" style="display:none">\n    <div class="panel-card">${_cardHead(P.docSlots)}${docSlotsPane()}</div>\n    <div class="panel-card">${_cardHead(P.otherDocsTitle)}${docPane("other", P.addDoc, P.noDocs)}</div>\n    ${coursesPane()}\n  </div>\n\n\n  <div id="pf-location" class="pf-pane" style="display:none">${locationPane}</div>`;
 }
 
 // Renders just the Hours ("Ore") tab's table for one worker, filtered to a
@@ -6317,6 +6483,20 @@ function PL() {
     phone: ar ? "رقم الهاتف" : "Numero di telefono",
     email: ar ? "البريد الإلكتروني" : "Email",
     taxCode: ar ? "الرمز الضريبي" : "Codice fiscale",
+    changePhoto: ar ? "تغيير الصورة" : "Cambia foto",
+    addPhoto: ar ? "إضافة صورة" : "Aggiungi foto",
+    onLoan: ar ? "إعارة" : "In prestito (distacco)",
+    onLoanHint: ar ? "فعّل هذا إذا تمت إعارة العامل مؤقتًا لجهة أو شركة أخرى." : "Attiva se il lavoratore è temporaneamente distaccato presso un'altra azienda o cantiere esterno.",
+    onLoanActive: ar ? "معار حاليًا" : "Attualmente in prestito",
+    onLoanDetails: ar ? "تفاصيل الإعارة" : "Dettagli del prestito",
+    upcomingWorkers: ar ? "العمال القادمون" : "Lavoratori in arrivo",
+    addUpcomingWorker: ar ? "عامل جديد (قادم)" : "Nuovo lavoratore (in arrivo)",
+    upcomingHint: ar ? "سجّل هنا بيانات عامل جديد قبل يوم عمله الأول: أدخل معلوماته، حدد الدورات التدريبية، وارفع مستنداته. سيبقى هنا فقط ولن يظهر في قسم الموظفين العاديين حتى يتم تعيينه لأول موقع عمل، عندها سينتقل تلقائيًا." : "Registra qui i dati di un nuovo lavoratore prima del suo primo giorno: inserisci le informazioni, seleziona i corsi svolti e carica i documenti. Resterà solo qui, non tra i dipendenti normali, finché non viene assegnato al suo primo cantiere — a quel punto passerà automaticamente.",
+    noUpcomingWorkers: ar ? "لا يوجد عمال قادمون حاليًا." : "Nessun lavoratore in arrivo al momento.",
+    pendingBadge: ar ? "قادم" : "In arrivo",
+    activateNow: ar ? "نقل إلى القسم العادي الآن" : "Sposta ora tra i dipendenti",
+    activateNowConfirm: ar ? "نقل هذا العامل إلى قسم الموظفين العاديين الآن؟" : "Spostare subito questo lavoratore tra i dipendenti normali?",
+    workerActivated: ar ? "تم نقل العامل" : "Lavoratore spostato",
     residencePermit: ar ? "تصريح الإقامة" : "Permesso di soggiorno",
     docExpiry: ar ? "تاريخ انتهاء الوثيقة" : "Scadenza documento",
     iban: ar ? "IBAN" : "IBAN",
@@ -6838,12 +7018,16 @@ function _collectWorkerForm() {
     contract_expiry: (val("w-contractexp") || "").trim(),
     idoneita_expiry: (val("w-idoneita") || "").trim(),
     patente_expiry: (val("w-patente") || "").trim(),
-    address: (val("w-address") || "").trim()
+    address: (val("w-address") || "").trim(),
+    on_loan: !!$("w-on-loan")?.checked,
+    on_loan_details: (val("w-on-loan-details") || "").trim()
   };
 }
 
 window.openAddWorker = () => {
   S.mgrTab = "addworker";
+  S._newWorkerOnboarding = false;
+  window._pendingCreatePhoto = null;
   openWorkerProfile("");
 };
 
@@ -6868,7 +7052,9 @@ window.saveWorkerForm = async username => {
     contract_date: d.contract_date,
     contract_expiry: d.contract_expiry,
     idoneita_expiry: d.idoneita_expiry,
-    patente_expiry: d.patente_expiry
+    patente_expiry: d.patente_expiry,
+    on_loan: d.on_loan,
+    on_loan_details: d.on_loan_details
   };
   try {
     if (!username) {
@@ -6896,12 +7082,30 @@ window.saveWorkerForm = async username => {
       const base = (d.label || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || "w" + norm.slice(-6);
       const users = await dbListUsers();
       const newUser = users.find(x => x.username === base) ? base + "_" + norm.slice(-4) : base;
+      // Only true when this create-form was reached via the "+ Nuovo
+      // lavoratore (in arrivo)" button (window.openOnboardWorker), not the
+      // normal "+ Add worker" flow — keeps this worker out of the regular
+      // Employees list until they're actually assigned to a site.
+      const onboarding = !!S._newWorkerOnboarding;
+      S._newWorkerOnboarding = false;
       await dbSetUser(newUser, {
         password: norm,
         role: "worker",
         worker_status: "confirmed",
+        onboarding: onboarding,
         ...fields
       });
+      // A photo picked in the create form (before the account existed) is
+      // staged in memory — upload it now that the account is real, before
+      // navigating to the profile so it shows up on first render.
+      if (window._pendingCreatePhoto) {
+        try {
+          await _uploadWorkerPhotoFile(newUser, window._pendingCreatePhoto);
+        } catch (e) {
+          console.warn("photo upload during worker creation failed", e);
+        }
+        window._pendingCreatePhoto = null;
+      }
       toast(P.workerAdded, "success");
       _clearUsersCache();
       _liveCache = null;
@@ -7157,57 +7361,83 @@ window.onSlotPicked = async (username, slotKey, input, category, label) => {
   }
 };
 
-window.onWorkerPhotoPicked = async (username, input) => {
+// Core upload logic shared by two call sites: the normal "change photo"
+// button on an already-saved worker's profile (onWorkerPhotoPicked below),
+// and the new-worker creation form (stageNewWorkerPhoto + saveWorkerForm),
+// where a photo can now be picked before the account even exists yet — it's
+// held in memory and uploaded right after the account is created. Returns
+// true on success, false on a handled validation failure (toast already
+// shown), and throws on an unexpected error so callers can decide how to
+// report it.
+async function _uploadWorkerPhotoFile(username, file) {
   const P = PL();
+  const type = (file.type || "").toLowerCase();
+  const name = (file.name || "").toLowerCase();
+  const isHeic = type.indexOf("heic") >= 0 || type.indexOf("heif") >= 0 || /\.(heic|heif)$/.test(name);
+  const isImage = (type.startsWith("image/") || /\.(jpe?g|png|webp)$/.test(name)) && !isHeic;
+  if (isHeic) {
+    toast(P.heicUnsupported, "error");
+    return false;
+  }
+  if (!isImage) {
+    toast(P.badType, "error");
+    return false;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    toast(P.tooBigPre, "error");
+    return false;
+  }
+  toast(P.compressing, "info");
+  let dataUrl;
+  try {
+    dataUrl = await _compressImage(file, 640, .85);
+  } catch (err) {
+    console.error("photo compress failed", err);
+    toast(P.imgUnreadable, "error");
+    return false;
+  }
+  const oldRef = (await dbGetUser(username))?.photo_url || null;
+  const stored = await storagePut(dataUrl, {
+    name: file.name,
+    owner: username
+  });
+  await dbSetUser(username, {
+    photo_url: stored
+  });
+  await _clientAudit("worker_photo_changed", username, {});
+  if (oldRef && oldRef.indexOf("obj:") === 0 && oldRef !== stored) {
+    fetch("/api/storage?key=" + encodeURIComponent(oldRef.slice(4)), {
+      method: "DELETE",
+      headers: _authHeaders()
+    }).catch(() => {});
+  }
+  return true;
+}
+
+// Picking a photo before the worker account exists yet (create form): can't
+// upload immediately (no username/storage owner to attach it to), so it's
+// just staged in memory with a live preview, and actually uploaded by
+// saveWorkerForm right after the new account is created.
+window.stageNewWorkerPhoto = input => {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  window._pendingCreatePhoto = file;
+  const preview = $("wp-photo-preview");
+  if (preview) {
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${esc(url)}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;display:block;box-shadow:0 4px 14px rgba(0,0,0,.18);border:3px solid var(--bg1)"/>`;
+  }
+};
+
+window.onWorkerPhotoPicked = async (username, input) => {
   try {
     const file = input && input.files && input.files[0];
     if (!file) return;
-    const type = (file.type || "").toLowerCase();
-    const name = (file.name || "").toLowerCase();
-    const isHeic = type.indexOf("heic") >= 0 || type.indexOf("heif") >= 0 || /\.(heic|heif)$/.test(name);
-    const isImage = (type.startsWith("image/") || /\.(jpe?g|png|webp)$/.test(name)) && !isHeic;
-    if (isHeic) {
-      toast(P.heicUnsupported, "error");
-      input.value = "";
-      return;
+    const ok = await _uploadWorkerPhotoFile(username, file);
+    if (ok) {
+      toast(lang === "ar" ? "تم تحديث الصورة" : lang === "it" ? "Foto aggiornata" : "Photo updated", "success");
+      await openWorkerProfile(username);
     }
-    if (!isImage) {
-      toast(P.badType, "error");
-      input.value = "";
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      toast(P.tooBigPre, "error");
-      input.value = "";
-      return;
-    }
-    toast(P.compressing, "info");
-    let dataUrl;
-    try {
-      dataUrl = await _compressImage(file, 640, .85);
-    } catch (err) {
-      console.error("photo compress failed", err);
-      toast(P.imgUnreadable, "error");
-      input.value = "";
-      return;
-    }
-    const oldRef = (await dbGetUser(username))?.photo_url || null;
-    const stored = await storagePut(dataUrl, {
-      name: file.name,
-      owner: username
-    });
-    await dbSetUser(username, {
-      photo_url: stored
-    });
-    await _clientAudit("worker_photo_changed", username, {});
-    if (oldRef && oldRef.indexOf("obj:") === 0 && oldRef !== stored) {
-      fetch("/api/storage?key=" + encodeURIComponent(oldRef.slice(4)), {
-        method: "DELETE",
-        headers: _authHeaders()
-      }).catch(() => {});
-    }
-    toast(lang === "ar" ? "تم تحديث الصورة" : lang === "it" ? "Foto aggiornata" : "Photo updated", "success");
-    await openWorkerProfile(username);
   } catch (e) {
     console.error("photo upload failed", e);
     toast("Error: " + (e && e.message ? e.message : e), "error");
