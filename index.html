@@ -1373,7 +1373,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 <script>
 const GPS_RADIUS = 500;
 
-const SCHEMA_VERSION = "21";
+const SCHEMA_VERSION = "22";
 
 const APP_VERSION = "2.2";
 
@@ -1579,7 +1579,17 @@ async function dbListShiftsToday() {
 }
 
 async function dbListNeedsReview() {
-  return sql("SELECT id,worker,date,start_time,location_name,hourly_rate FROM wf_shifts WHERE status='needs_review' ORDER BY date DESC");
+  return sql("SELECT id,worker,date,start_time,location_name,hourly_rate FROM wf_shifts WHERE status='needs_review' AND (review_dismissed IS NULL OR review_dismissed=false) ORDER BY date DESC");
+}
+
+// Bulk-clears the Needs Review list in the Notifications tab (e.g. when
+// starting a new month) WITHOUT touching the underlying shift records —
+// each shift stays exactly as it was (still status='needs_review', still
+// missing real hours/earnings until someone actually fixes it via "Edit
+// Times"). This only hides them from the alert list; it's a reset of what
+// the manager has to look at, not a silent way of resolving unpaid hours.
+async function dbDismissAllNeedsReview() {
+  await sql("UPDATE wf_shifts SET review_dismissed=true WHERE status='needs_review' AND (review_dismissed IS NULL OR review_dismissed=false)");
 }
 
 async function dbSetShift(id, d) {
@@ -2084,6 +2094,7 @@ async function initDB() {
     migrationFailures += await _runMigrationBatch(`\n      CREATE TABLE IF NOT EXISTS wf_users(\n        username TEXT PRIMARY KEY, password TEXT, role TEXT,\n        phone TEXT, hourly_rate NUMERIC, device_id TEXT, label TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_phones(\n        norm TEXT PRIMARY KEY, phone TEXT, label TEXT,\n        rate NUMERIC, used BOOLEAN DEFAULT false, added_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_shifts(\n        id TEXT PRIMARY KEY, worker TEXT, date TEXT,\n        start_time BIGINT, end_time BIGINT, work_hours NUMERIC,\n        earnings NUMERIC, hourly_rate NUMERIC,\n        location_name TEXT, location_id TEXT, status TEXT,\n        billing_start_time BIGINT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0\n      );\n      CREATE TABLE IF NOT EXISTS wf_config(\n        id INTEGER PRIMARY KEY DEFAULT 1,\n        std_hours NUMERIC DEFAULT 8, ot_rate NUMERIC DEFAULT 1.5,\n        auto_end_time TEXT DEFAULT NULL\n      );\n      CREATE TABLE IF NOT EXISTS wf_locations(\n        id TEXT PRIMARY KEY, name TEXT, lat NUMERIC, lng NUMERIC,\n        map_link TEXT, added_at BIGINT,\n        is_open BOOLEAN DEFAULT true, end_time TEXT DEFAULT NULL,\n        start_time TEXT DEFAULT NULL, break_minutes NUMERIC DEFAULT 0\n      );\n      CREATE TABLE IF NOT EXISTS wf_assignments(\n        worker_username TEXT NOT NULL, loc_id TEXT NOT NULL,\n        PRIMARY KEY(worker_username, loc_id)\n      );\n      CREATE TABLE IF NOT EXISTS wf_career(\n        id TEXT PRIMARY KEY, worker_username TEXT, event_date TEXT,\n        event_type TEXT, description TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_documents(\n        id TEXT PRIMARY KEY, worker_username TEXT, doc_type TEXT,\n        file_url TEXT, uploaded_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_vehicles(\n        id TEXT PRIMARY KEY, plate TEXT, model TEXT, assigned_user TEXT,\n        inspection_date TEXT, insurance_expiry TEXT, road_tax_expiry TEXT,\n        last_oil_change TEXT, mileage NUMERIC, status TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_properties(\n        id TEXT PRIMARY KEY, kind TEXT, kind_other TEXT, name TEXT, address TEXT,\n        rent_day INTEGER, rent_amount NUMERIC,\n        contract_start TEXT, contract_end TEXT, responsible_username TEXT, notes TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_payslip_amounts(\n        worker_username TEXT, year INTEGER, month INTEGER, amount NUMERIC,\n        PRIMARY KEY(worker_username, year, month)\n      );\n      CREATE INDEX IF NOT EXISTS idx_career_worker ON wf_career(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_docs_worker ON wf_documents(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_shifts_worker ON wf_shifts(worker);\n      CREATE INDEX IF NOT EXISTS idx_shifts_date   ON wf_shifts(date);\n      CREATE INDEX IF NOT EXISTS idx_shifts_status ON wf_shifts(status);\n      CREATE INDEX IF NOT EXISTS idx_shifts_worker_date ON wf_shifts(worker, date);\n      CREATE INDEX IF NOT EXISTS idx_shifts_location ON wf_shifts(location_id);\n      CREATE INDEX IF NOT EXISTS idx_assign_worker ON wf_assignments(worker_username);\n      CREATE INDEX IF NOT EXISTS idx_assign_loc ON wf_assignments(loc_id);\n      CREATE TABLE IF NOT EXISTS wf_sessions(\n        token TEXT PRIMARY KEY, username TEXT NOT NULL, role TEXT NOT NULL,\n        created_at BIGINT, expires_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON wf_sessions(expires_at);\n    `);
     migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS auto_end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_name TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC DEFAULT 0;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS location_id TEXT;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS billing_start_time BIGINT DEFAULT NULL;\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT true;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS end_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS start_time TEXT DEFAULT NULL;\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS break_minutes NUMERIC DEFAULT 0;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS label TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS gps_bypass BOOLEAN DEFAULT false;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS worker_status TEXT DEFAULT 'confirmed';\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS leader_username TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS dob TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS email TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS tax_code TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS residence_permit TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS doc_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS iban TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS address TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS start_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS job_title TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_type TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_date TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS contract_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS permit_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS idoneita_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS patente_expiry TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS courses TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS photo_url TEXT;\n      ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS can_restart_date TEXT;\n      UPDATE wf_documents SET doc_type='contratto'      WHERE doc_type='contract';\n      UPDATE wf_documents SET doc_type='carta_identita' WHERE doc_type='identita';\n      UPDATE wf_documents SET doc_type='cf'             WHERE doc_type='codice_fiscale';\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS title TEXT;\n      ALTER TABLE wf_documents ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'document';\n      UPDATE wf_documents SET category='document'       WHERE category IS NULL;\n      CREATE INDEX IF NOT EXISTS idx_docs_worker_cat ON wf_documents(worker_username, category);\n      ALTER TABLE wf_locations ADD COLUMN IF NOT EXISTS finished BOOLEAN DEFAULT false;\n      ALTER TABLE wf_properties ADD COLUMN IF NOT EXISTS kind_other TEXT;\n      CREATE TABLE IF NOT EXISTS wf_career(\n        id TEXT PRIMARY KEY, worker_username TEXT, event_date TEXT,\n        event_type TEXT, description TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_documents(\n        id TEXT PRIMARY KEY, worker_username TEXT, doc_type TEXT,\n        file_url TEXT, uploaded_at BIGINT\n      );\n      CREATE TABLE IF NOT EXISTS wf_vehicles(\n        id TEXT PRIMARY KEY, plate TEXT, model TEXT, assigned_user TEXT,\n        inspection_date TEXT, insurance_expiry TEXT, road_tax_expiry TEXT,\n        last_oil_change TEXT, mileage NUMERIC, status TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_properties(\n        id TEXT PRIMARY KEY, kind TEXT, kind_other TEXT, name TEXT, address TEXT,\n        rent_day INTEGER, rent_amount NUMERIC,\n        contract_start TEXT, contract_end TEXT, responsible_username TEXT, notes TEXT\n      );\n      CREATE TABLE IF NOT EXISTS wf_payslip_amounts(\n        worker_username TEXT, year INTEGER, month INTEGER, amount NUMERIC,\n        PRIMARY KEY(worker_username, year, month)\n      );\n    `);
     migrationFailures += await _runMigrationBatch(`\n      CREATE TABLE IF NOT EXISTS wf_audit_log(\n        id BIGSERIAL PRIMARY KEY, actor_username TEXT, action TEXT NOT NULL,\n        target TEXT, details TEXT, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_audit_created ON wf_audit_log(created_at);\n      CREATE INDEX IF NOT EXISTS idx_audit_actor ON wf_audit_log(actor_username);\n      CREATE TABLE IF NOT EXISTS wf_push_subscriptions(\n        id TEXT PRIMARY KEY, username TEXT NOT NULL, endpoint TEXT NOT NULL,\n        p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at BIGINT\n      );\n      CREATE INDEX IF NOT EXISTS idx_push_username ON wf_push_subscriptions(username);\n      CREATE TABLE IF NOT EXISTS wf_notified_log(\n        notif_key TEXT PRIMARY KEY, sent_at BIGINT\n      );\n      ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS notify_window INTEGER DEFAULT 10;\n    `);
+    migrationFailures += await _runMigrationBatch(`\n      ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS review_dismissed BOOLEAN DEFAULT false;\n      CREATE INDEX IF NOT EXISTS idx_shifts_needs_review ON wf_shifts(status) WHERE status='needs_review';\n    `);
     if (migrationFailures === 0) {
       localStorage.setItem("wf_schema", SCHEMA_VERSION);
     } else {
@@ -3526,6 +3537,23 @@ window.authTab = tab => {
   render();
 };
 
+// Fire-and-forget alert to every manager the moment a worker gets stuck at
+// login for a real, actionable reason (GPS, device mismatch, not
+// assigned, site closed). Push-only — deliberately does NOT write
+// anything the in-app Notifications tab would ever list, since this is
+// only useful in the moment it happens, not as something to review later.
+async function _notifyManagerLoginIssue(name, phone, issue) {
+  try {
+    await fetch("/api/notify-login-issue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, phone, issue })
+    });
+  } catch (e) {
+    console.warn("[push] login-issue notify failed", e);
+  }
+}
+
 window.doPhoneLogin = async () => {
   if (!rateLimit("phone_login", 1500)) return;
   const ph = val("wph").trim();
@@ -3579,6 +3607,7 @@ window.doPhoneLogin = async () => {
       workerUser.device_id = DEVICE_ID;
     } else if (workerUser.device_id !== DEVICE_ID) {
       showErr(T.deviceBlocked);
+      _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "حاول الدخول من جهاز مختلف عن الجهاز المسجل" : "Trying to sign in from a different phone than the one on file");
       return;
     }
     const locations = await dbListLocations();
@@ -3609,17 +3638,20 @@ window.doPhoneLogin = async () => {
         const myAssignments = allAssignments.filter(a => a.worker_username === norm || a.worker_username === workerUser.username);
         if (myAssignments.length === 0) {
           showErr(lang === "ar" ? " لم يتم تعيينك في أي موقع. تواصل مع المدير." : " Non sei assegnato ad alcun cantiere. Contatta il tuo manager.");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "يحاول الدخول لكنه غير معيّن لأي موقع" : "Trying to sign in but isn't assigned to any site");
           return;
         }
         const candidateLocs = locsWithDist.filter(l => myAssignments.some(a => a.loc_id === l.id));
         const nearbyCandidate = candidateLocs.filter(l => l.dist <= GPS_RADIUS).sort((a, b) => a.dist - b.dist)[0];
         if (!nearbyCandidate) {
           showErr(lang === "ar" ? " أنت بعيد عن موقع عملك. يرجى التوجه إلى موقعك المعيّن لتسجيل الدخول." : " Sei lontano dal tuo cantiere. Recati nella tua sede assegnata per accedere.");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "بعيد جدًا عن موقع عمله المعيّن" : "Too far from their assigned site to sign in");
           return;
         }
         const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== "false";
         if (!isOpen) {
           showErr(lang === "ar" ? ` ${nearbyCandidate.name} مغلق حالياً. تواصل مع المدير.` : ` ${nearbyCandidate.name} è attualmente chiuso. Contatta il tuo manager.`);
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, (lang === "ar" ? "موقعه المعيّن مغلق: " : "Their assigned site is closed: ") + (nearbyCandidate.name || ""));
           return;
         }
         S.gps = "ok";
@@ -3631,7 +3663,14 @@ window.doPhoneLogin = async () => {
           const isAr = lang === "ar";
           const msg = isAr ? " تم رفض إذن الموقع. كيفية الإصلاح: افتح إعدادات الهاتف ← ابحث عن المتصفح (Chrome/Safari) ← الموقع ← اسمح دائمًا ← ثم أعد تحميل الصفحة وحاول مجددًا." : " Permesso posizione negato. Come risolvere: Apri Impostazioni ← Trova il browser (Chrome/Safari) ← Posizione → Sempre ← Ricarica e riprova.";
           showErr(msg);
-        } else if (code === 3) showErr(lang === "ar" ? " انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا." : " Timeout posizione. Assicurati che il GPS sia attivo e riprova."); else showErr(T.gpsLoginErr);
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "رفض إذن الموقع (GPS) عند الدخول" : "Denied location (GPS) permission while signing in");
+        } else if (code === 3) {
+          showErr(lang === "ar" ? " انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا." : " Timeout posizione. Assicurati che il GPS sia attivo e riprova.");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "انتهت مهلة تحديد الموقع (GPS) عند الدخول" : "Location (GPS) timed out while signing in");
+        } else {
+          showErr(T.gpsLoginErr);
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "خطأ في تحديد الموقع (GPS) عند الدخول" : "Location (GPS) error while signing in");
+        }
         return;
       }
     }
@@ -7512,12 +7551,19 @@ window.delPropertyContract = async (propId, docId) => {
 
 async function buildNotifications() {
   const P = PL();
-  const [users, vehicles, props] = await Promise.all([ dbListUsersCached(), dbListVehiclesCached(), dbListPropertiesCached() ]);
+  const [users, vehicles, props, needsReview] = await Promise.all([ dbListUsersCached(), dbListVehiclesCached(), dbListPropertiesCached(), dbListNeedsReview() ]);
   const all = _notifyItems(users, vehicles, NOTIFY_WINDOW, props);
   const active = all.filter(i => !i.dismissed);
   const overdue = active.filter(i => i.dleft < 0).sort((a, b) => a.dleft - b.dleft);
   const upcoming = active.filter(i => i.dleft >= 0).sort((a, b) => a.dleft - b.dleft);
   const ignoredList = all.filter(i => i.dismissed).sort((a, b) => a.dleft - b.dleft);
+  const userMapNR = {};
+  users.forEach(u => userMapNR[u.username] = u);
+  const needsReviewHtml = !needsReview.length ? "" : `\n    <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">\n      <span style="width:8px;height:8px;border-radius:50%;background:var(--orange)"></span>\n      <span style="font-family:var(--font);font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--orange)">${lang === "ar" ? "ورديات تحتاج مراجعة" : lang === "it" ? "Turni da verificare" : "Shifts needing review"}</span>\n      <span style="font-family:var(--font);font-size:12px;color:var(--muted)">(${needsReview.length})</span>\n      <div style="flex:1;height:1px;background:var(--border2)"></div>\n      <button class="btn-sm" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text)" onclick="dismissAllNeedsReview()">${lang === "ar" ? "مسح الكل" : lang === "it" ? "Cancella tutto" : "Clear all"}</button>\n    </div>\n    <div style="display:flex;flex-direction:column;gap:12px">${needsReview.map(s => {
+    const w = userMapNR[s.worker];
+    const wName = disp(w?.label || w?.username || s.worker);
+    return `<div onclick="openNeedsReviewShift('${esc(s.id)}','${esc(s.worker)}')" style="cursor:pointer" class="panel-card-wrap"><div class="panel-card" style="border-left:4px solid var(--orange);background:var(--orange-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">\n      ${_avatarHtml(wName, 42)}\n      <div style="flex:1;min-width:0">\n        <div style="font-family:var(--font);font-size:15px;font-weight:800;color:var(--text)">${wName}</div>\n        <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${esc(s.date || "—")} · ${disp(s.location_name || "—")} · ${lang === "ar" ? "بدأت" : lang === "it" ? "Iniziato" : "Started"} ${fmtTime(s.start_time)}</div>\n      </div>\n      <span class="badge by">⚠ ${lang === "ar" ? "تحتاج مراجعة" : lang === "it" ? "DA VERIFICARE" : "NEEDS REVIEW"}</span>\n    </div></div>`;
+  }).join("")}</div>`;
   const rowHtml = it => {
     const od = it.dleft < 0;
     const color = it.dismissed ? "var(--muted)" : od ? "var(--red)" : "var(--orange)";
@@ -7529,8 +7575,26 @@ async function buildNotifications() {
   };
   const section = (title, arr, accent) => !arr.length ? "" : `\n    <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">\n      <span style="width:8px;height:8px;border-radius:50%;background:${accent}"></span>\n      <span style="font-family:var(--font);font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:${accent}">${title}</span>\n      <span style="font-family:var(--font);font-size:12px;color:var(--muted)">(${arr.length})</span>\n      <div style="flex:1;height:1px;background:var(--border2)"></div>\n    </div>\n    <div style="display:flex;flex-direction:column;gap:12px">${arr.map(rowHtml).join("")}</div>`;
   const winInput = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">\n    <label class="lbl" style="margin:0">${P.notifWindow}</label>\n    <input type="number" min="1" max="365" value="${NOTIFY_WINDOW}" style="width:90px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);font-family:var(--font);font-weight:700" onchange="setNotifyWindow(this.value)"/>\n  </div>`;
-  return `\n  <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">\n    <div>\n      <div class="pc-title" style="margin:0">${P.notifTitle} ${active.length ? `<span style="color:var(--red);font-weight:700">(${active.length})</span>` : ""}</div>\n      <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:6px">${P.within(NOTIFY_WINDOW)}</div>\n    </div>\n    ${winInput}\n  </div>\n  ${active.length || ignoredList.length ? section(P.notifOverdue, overdue, "var(--red)") + section(P.notifUpcoming + " · " + P.within(NOTIFY_WINDOW), upcoming, "var(--orange)") + section(P.ignored, ignoredList, "var(--muted)") : `<div class="empty" style="margin-top:14px">${P.notifNone}</div>`}`;
+  return `\n  <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">\n    <div>\n      <div class="pc-title" style="margin:0">${P.notifTitle} ${active.length ? `<span style="color:var(--red);font-weight:700">(${active.length})</span>` : ""}</div>\n      <div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:6px">${P.within(NOTIFY_WINDOW)}</div>\n    </div>\n    ${winInput}\n  </div>\n  ${needsReviewHtml}\n  ${active.length || ignoredList.length ? section(P.notifOverdue, overdue, "var(--red)") + section(P.notifUpcoming + " · " + P.within(NOTIFY_WINDOW), upcoming, "var(--orange)") + section(P.ignored, ignoredList, "var(--muted)") : needsReviewHtml ? "" : `<div class="empty" style="margin-top:14px">${P.notifNone}</div>`}`;
 }
+
+window.dismissAllNeedsReview = async () => {
+  if (!confirm(lang === "ar" ? "مسح كل التنبيهات دي؟ الورديات نفسها مش هتتغيّر، بس هتختفي من هنا." : lang === "it" ? "Cancellare tutti questi avvisi? I turni non cambiano, spariscono solo da qui." : "Clear all these alerts? The shifts themselves won't change, they'll just disappear from this list.")) return;
+  try {
+    await dbDismissAllNeedsReview();
+    toast(lang === "ar" ? "تم المسح" : lang === "it" ? "Cancellato" : "Cleared", "success");
+    await mTab("notifications");
+  } catch (e) {
+    toast("Error: " + e.message, "error");
+  }
+};
+
+window.openNeedsReviewShift = async (shiftId, username) => {
+  const users = await dbListUsersCached();
+  const u = users.find(x => x.username === username);
+  await openWorkerProfile(username);
+  await openAttendanceEdit(shiftId, disp(u?.label || u?.username || username));
+};
 
 async function buildSalary(per = "month") {
   const workers = (await dbListUsersCached()).filter(u => u.role === "worker").sort(byName);
