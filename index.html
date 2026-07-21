@@ -1685,7 +1685,7 @@ async function _notifyWorkerAssigned(worker_username, loc_id) {
       }),
       body: JSON.stringify({
         username: realUsername,
-        title: "Newidra — Nuova assegnazione",
+        title: "Newidra — Nuova assegnazione / تعيين جديد",
         body: body,
         url: "/?source=push"
       })
@@ -3634,7 +3634,7 @@ window.doPhoneLogin = async () => {
       workerUser.device_id = DEVICE_ID;
     } else if (workerUser.device_id !== DEVICE_ID) {
       showErr(T.deviceBlocked);
-      _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "حاول الدخول من جهاز مختلف عن الجهاز المسجل" : "Trying to sign in from a different phone than the one on file");
+      _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Ha provato ad accedere da un telefono diverso da quello registrato / حاول الدخول من جهاز مختلف عن الجهاز المسجل");
       return;
     }
     const locations = await dbListLocations();
@@ -3665,20 +3665,20 @@ window.doPhoneLogin = async () => {
         const myAssignments = allAssignments.filter(a => a.worker_username === norm || a.worker_username === workerUser.username);
         if (myAssignments.length === 0) {
           showErr(lang === "ar" ? " لم يتم تعيينك في أي موقع. تواصل مع المدير." : " Non sei assegnato ad alcun cantiere. Contatta il tuo manager.");
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "يحاول الدخول لكنه غير معيّن لأي موقع" : "Trying to sign in but isn't assigned to any site");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Sta provando ad accedere ma non è assegnato a nessun cantiere / يحاول الدخول لكنه غير معيّن لأي موقع");
           return;
         }
         const candidateLocs = locsWithDist.filter(l => myAssignments.some(a => a.loc_id === l.id));
         const nearbyCandidate = candidateLocs.filter(l => l.dist <= GPS_RADIUS).sort((a, b) => a.dist - b.dist)[0];
         if (!nearbyCandidate) {
           showErr(lang === "ar" ? " أنت بعيد عن موقع عملك. يرجى التوجه إلى موقعك المعيّن لتسجيل الدخول." : " Sei lontano dal tuo cantiere. Recati nella tua sede assegnata per accedere.");
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "بعيد جدًا عن موقع عمله المعيّن" : "Too far from their assigned site to sign in");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Troppo lontano dal cantiere assegnato per accedere / بعيد جدًا عن موقع عمله المعيّن");
           return;
         }
         const isOpen = nearbyCandidate.is_open !== false && nearbyCandidate.is_open !== "false";
         if (!isOpen) {
           showErr(lang === "ar" ? ` ${nearbyCandidate.name} مغلق حالياً. تواصل مع المدير.` : ` ${nearbyCandidate.name} è attualmente chiuso. Contatta il tuo manager.`);
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, (lang === "ar" ? "موقعه المعيّن مغلق: " : "Their assigned site is closed: ") + (nearbyCandidate.name || ""));
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, `Il suo cantiere assegnato è chiuso: ${nearbyCandidate.name || ""} / موقعه المعيّن مغلق: ${nearbyCandidate.name || ""}`);
           return;
         }
         S.gps = "ok";
@@ -3690,13 +3690,13 @@ window.doPhoneLogin = async () => {
           const isAr = lang === "ar";
           const msg = isAr ? " تم رفض إذن الموقع. كيفية الإصلاح: افتح إعدادات الهاتف ← ابحث عن المتصفح (Chrome/Safari) ← الموقع ← اسمح دائمًا ← ثم أعد تحميل الصفحة وحاول مجددًا." : " Permesso posizione negato. Come risolvere: Apri Impostazioni ← Trova il browser (Chrome/Safari) ← Posizione → Sempre ← Ricarica e riprova.";
           showErr(msg);
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "رفض إذن الموقع (GPS) عند الدخول" : "Denied location (GPS) permission while signing in");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Ha negato il permesso di localizzazione (GPS) durante l'accesso / رفض إذن الموقع (GPS) عند الدخول");
         } else if (code === 3) {
           showErr(lang === "ar" ? " انتهت مهلة الموقع. تأكد من تفعيل GPS وحاول مجددًا." : " Timeout posizione. Assicurati che il GPS sia attivo e riprova.");
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "انتهت مهلة تحديد الموقع (GPS) عند الدخول" : "Location (GPS) timed out while signing in");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Localizzazione (GPS) scaduta durante l'accesso / انتهت مهلة تحديد الموقع (GPS) عند الدخول");
         } else {
           showErr(T.gpsLoginErr);
-          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, lang === "ar" ? "خطأ في تحديد الموقع (GPS) عند الدخول" : "Location (GPS) error while signing in");
+          _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Errore di localizzazione (GPS) durante l'accesso / خطأ في تحديد الموقع (GPS) عند الدخول");
         }
         return;
       }
