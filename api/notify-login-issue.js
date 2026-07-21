@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     const managers = await sql("SELECT username FROM wf_users WHERE role='manager'");
     const body = `${safeName} (${safePhone}) — ${safeIssue}`;
     const results = await Promise.all(managers.map(m => sendPushToUser(m.username, {
-      title: 'Newidra — Login Issue',
+      title: 'Newidra — Problema di accesso / مشكلة دخول',
       body,
       url: '/?source=push',
       // No shared tag here (unlike assignment/expiry pushes): a fixed tag
