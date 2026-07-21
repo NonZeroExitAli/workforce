@@ -126,7 +126,7 @@ export default async function handler(req, res) {
 
         if (managerItemCount > 0) {
           await Promise.all(managers.map(m => sendPushToUser(m.username, {
-            title: 'Newidra',
+            title: 'Newidra — Notifiche / إشعارات',
             body: `${managerItemCount} elemento/i in scadenza — controlla le notifiche / ${managerItemCount} عنصر يقترب من الانتهاء`,
             url: '/?source=push&view=notifications',
             tag: 'morning-digest',
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
               ? `Il tuo contratto scade oggi / ينتهي عقدك اليوم`
               : `Il tuo contratto scade tra ${d} giorni / ينتهي عقدك خلال ${d} أيام`;
           await sendPushToUser(u.username, {
-            title: 'Newidra',
+            title: 'Newidra — Contratto / العقد',
             body,
             url: '/?source=push',
             tag: key,
@@ -213,10 +213,10 @@ export default async function handler(req, res) {
           const isNew = await _claimOnce(key);
           if (!isNew) continue;
           const label = diff > 0
-            ? `Il tuo turno termina tra ${diff} min${s.location_name ? ' — ' + s.location_name : ''} / ينتهي دوامك خلال ${diff} دقيقة`
-            : `Il tuo turno dovrebbe essere terminato${s.location_name ? ' — ' + s.location_name : ''} / كان يجب أن ينتهي دوامك الآن`;
+            ? `Il tuo turno termina tra ${diff} min${s.location_name ? ' — ' + s.location_name : ''} / ينتهي دوامك خلال ${diff} دقيقة${s.location_name ? ' — ' + s.location_name : ''}`
+            : `Il tuo turno dovrebbe essere terminato${s.location_name ? ' — ' + s.location_name : ''} / كان يجب أن ينتهي دوامك الآن${s.location_name ? ' — ' + s.location_name : ''}`;
           const pushResult = await sendPushToUser(s.worker, {
-            title: 'Newidra',
+            title: 'Newidra — Turno / الدوام',
             body: label,
             url: '/?source=push',
             tag: key,
