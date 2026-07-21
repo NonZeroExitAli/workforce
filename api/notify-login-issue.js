@@ -16,23 +16,30 @@
 // limiting is the guard here instead, same pattern as the other
 // no-session worker-facing endpoints.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, rateLimit, clientIp, sendPushToUser } from './_lib.js';
+import { sql, setCors, rateLimit, sendPushToUser } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).send('');
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
 
-  // One alert per worker per issue type is plenty — this exists so a
-  // worker repeatedly retrying (e.g. denying the GPS prompt three times in
-  // a row) doesn't fire three separate pushes to every manager.
+  // One alert per worker PER ISSUE TYPE within a short window — this
+  // exists so a worker repeatedly retrying the exact same blocker (e.g.
+  // denying the GPS prompt three times in a row) doesn't fire three
+  // separate pushes to every manager. Deliberately keyed by phone+issue
+  // only, NOT by IP: multiple devices on the same job-site network share
+  // one public IP, so keying on IP was silently swallowing every attempt
+  // after the first "different device" try — exactly the case a manager
+  // most needs to hear about. Window is short (90s) so if the same issue
+  // keeps happening it still surfaces again soon, rather than staying
+  // silent for the rest of the 5-minute window.
   const { name, phone, issue } = req.body || {};
   if (!issue) return res.status(400).json({ ok: false, error: 'Missing issue' });
   const safeName = String(name || 'Unknown').slice(0, 80);
   const safePhone = String(phone || '—').slice(0, 30);
   const safeIssue = String(issue).slice(0, 200);
 
-  if (!rateLimit(`login-issue:${clientIp(req)}:${safePhone}`, 1, 5 * 60 * 1000)) {
+  if (!rateLimit(`login-issue:${safePhone}:${safeIssue}`, 1, 90 * 1000)) {
     return res.status(200).json({ ok: true, throttled: true });
   }
 
