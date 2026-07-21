@@ -1578,7 +1578,29 @@ async function dbListShiftsToday() {
   return sql("SELECT id,worker,date,start_time,end_time,work_hours,earnings,hourly_rate,location_name,location_id,status,billing_start_time,break_minutes FROM wf_shifts WHERE date=$1 ORDER BY start_time DESC", [ todayStr() ]);
 }
 
+let _reviewColEnsured = false;
+// Defensive, self-healing guard: the versioned schema migration in initDB()
+// SHOULD have already added this column on first load after this feature
+// shipped, but if that migration hit a snag on some browser/session (a
+// transient network blip, a page closed mid-migration, etc.), these two
+// functions would otherwise throw "column does not exist" forever, since
+// initDB() only re-attempts migrations when the schema version itself
+// changes, not on every load. Re-issuing this exact ADD COLUMN IF NOT
+// EXISTS here is free once it's actually there (single no-op check on
+// Postgres' side) and guarantees this feature can't get permanently stuck
+// regardless of what caused the original migration to miss it.
+async function _ensureReviewDismissedCol() {
+  if (_reviewColEnsured) return;
+  try {
+    await sql("ALTER TABLE wf_shifts ADD COLUMN IF NOT EXISTS review_dismissed BOOLEAN DEFAULT false");
+    _reviewColEnsured = true;
+  } catch (e) {
+    console.warn("[migration] could not ensure review_dismissed column:", e.message);
+  }
+}
+
 async function dbListNeedsReview() {
+  await _ensureReviewDismissedCol();
   return sql("SELECT id,worker,date,start_time,location_name,hourly_rate FROM wf_shifts WHERE status='needs_review' AND (review_dismissed IS NULL OR review_dismissed=false) ORDER BY date DESC");
 }
 
@@ -1589,6 +1611,7 @@ async function dbListNeedsReview() {
 // Times"). This only hides them from the alert list; it's a reset of what
 // the manager has to look at, not a silent way of resolving unpaid hours.
 async function dbDismissAllNeedsReview() {
+  await _ensureReviewDismissedCol();
   await sql("UPDATE wf_shifts SET review_dismissed=true WHERE status='needs_review' AND (review_dismissed IS NULL OR review_dismissed=false)");
 }
 
