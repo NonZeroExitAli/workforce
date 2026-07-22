@@ -2372,6 +2372,30 @@ const geoPos = (timeout = 12e3) => new Promise((res, rej) => navigator.geolocati
   maximumAge: 0
 }) : rej(new Error("gps_unavailable")));
 
+// A cold, high-accuracy GPS fix can genuinely take longer than any
+// reasonable timeout — especially near/inside a building, which is common
+// right at a job site. When the strict high-accuracy request times out or
+// comes back unavailable (codes 3 and 2), fall back once to a coarser
+// network/cell-based fix instead of failing outright. That fix is less
+// precise but usually near-instant, and still well inside GPS_RADIUS's
+// 500m tolerance for confirming a worker is at their assigned site.
+// Permission denial (code 1) is not retried — a fallback request would be
+// denied the same way.
+async function geoPosWithFallback(timeout = 15e3) {
+  try {
+    return await geoPos(timeout);
+  } catch (e) {
+    if (e && (e.code === 2 || e.code === 3)) {
+      return new Promise((res, rej) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(res, rej, {
+        enableHighAccuracy: false,
+        timeout: 10e3,
+        maximumAge: 6e4
+      }) : rej(new Error("gps_unavailable")));
+    }
+    throw e;
+  }
+}
+
 const _rl = {};
 
 function rateLimit(key, ms = 2e3) {
@@ -3735,7 +3759,7 @@ window.doPhoneLogin = async () => {
       }
       if (btn) btn.textContent = " " + (T.gpsCheck || "Getting location…");
       try {
-        const pos = await geoPos(15e3);
+        const pos = await geoPosWithFallback(15e3);
         const uLat = pos.coords.latitude, uLng = pos.coords.longitude;
         const locsWithDist = locations.map(l => ({
           ...l,
