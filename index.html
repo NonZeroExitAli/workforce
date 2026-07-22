@@ -6160,7 +6160,13 @@ window.reHoursMonth = (username, workerDisplayName) => {
 };
 
 window.profileTab = key => {
-  S._profileActiveTab = key;
+  // Shared between the worker-profile tabs (info/location/pay/hours/
+  // payslips/docs) and the site-detail tabs (sdov/sdwk/sdset) — the two
+  // screens use disjoint key sets, so a simple prefix check is enough to
+  // remember each screen's active tab separately instead of one clobbering
+  // the other when a manager bounces between a worker profile and a site
+  // detail page.
+  if (key === "sdov" || key === "sdwk" || key === "sdset") S._siteActiveTab = key; else S._profileActiveTab = key;
   document.querySelectorAll(".pf-pane").forEach(p => p.style.display = "none");
   const pane = document.getElementById("pf-" + key);
   if (pane) pane.style.display = "";
@@ -6319,13 +6325,20 @@ window.profileRemoveSite = async (norm, locId, username) => {
 window.openSiteDetail = async locId => {
   const panel = $("mpanel");
   if (!panel) return;
+  // Same logic as openWorkerProfile: only reset to the Overview tab when
+  // actually switching to a different site. Reloading the same site's
+  // detail page after a small save (leader, worker, times, coords…) keeps
+  // the manager on whichever tab they were already working in.
+  const sameSite = S._siteLocId === locId;
+  if (!sameSite) S._siteActiveTab = "sdov";
+  S._siteLocId = locId;
   toggleSidebar(false);
   panel.innerHTML = _sklPanel();
   const titleEl = $("mgrPageTitle");
   if (titleEl) titleEl.innerHTML = `${T.siteDetail}<small>${T.locations}</small>`;
   try {
     panel.innerHTML = await buildSiteDetail(locId);
-    if (window.profileTab) profileTab("sdov");
+    if (window.profileTab) profileTab(S._siteActiveTab || "sdov");
   } catch (e) {
     panel.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
   }
@@ -6337,6 +6350,11 @@ async function buildSiteDetail(locId) {
   if (!loc) {
     return `<div class="empty">${T.noLocationsYet}</div>`;
   }
+  // Cached (not re-fetched) so window._renderSiteWorkersPane can rebuild
+  // just the Workers tab after an add/remove without re-querying shifts
+  // for this site on every click.
+  window._siteShiftsCache = window._siteShiftsCache || {};
+  window._siteShiftsCache[locId] = allShifts;
   const isOpen = loc.is_open !== false && loc.is_open !== "false";
   const workers = allUsers.filter(u => u.role === "worker");
   const phoneMap = {};
@@ -6414,12 +6432,60 @@ window.siteSaveLeader = async (locId, username) => {
   }
 };
 
+// Rebuilds ONLY the #pf-sdwk pane (assigned-workers list + add dropdown) —
+// the site-detail mirror of window._renderProfileLocationPane. Lets a
+// manager add several workers to a new site in a row without bouncing back
+// to Overview or re-fetching shift history on every click.
+window._renderSiteWorkersPane = async locId => {
+  const pane = document.getElementById("pf-sdwk");
+  if (!pane) return;
+  const [assignments, allUsers, phones] = await Promise.all([ dbListAssignmentsCached(), dbListUsersCached(), dbListPhonesCached() ]);
+  const workers = allUsers.filter(u => u.role === "worker");
+  const phoneMap = {};
+  phones.forEach(p => phoneMap[p.norm] = p);
+  const byNorm = {};
+  workers.forEach(u => {
+    byNorm[_workerNorm(u)] = u;
+  });
+  const allShifts = (window._siteShiftsCache && window._siteShiftsCache[locId]) || [];
+  const completedHere = allShifts.filter(s => s.location_id === locId && s.status === "completed");
+  const monthByWorker = {};
+  const monthKey = todayStr().slice(0, 7);
+  completedHere.forEach(s => {
+    if ((s.date || "").slice(0, 7) === monthKey) monthByWorker[s.worker] = (monthByWorker[s.worker] || 0) + (parseFloat(s.work_hours) || 0);
+  });
+  const assignedNorms = assignments.filter(a => a.loc_id === locId).map(a => a.worker_username);
+  const assignedList = assignedNorms.map(n => {
+    const u = byNorm[n];
+    const username = u ? u.username : null;
+    const name = u ? disp(u.label || u.username) : disp(phoneMap[n]?.label || phoneMap[n]?.phone || n);
+    const phone = u ? u.phone || "" : phoneMap[n]?.phone || "";
+    const mh = username ? monthByWorker[username] || 0 : 0;
+    return {
+      norm: n,
+      username: username,
+      name: name,
+      phone: phone,
+      monthHours: mh
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+  const assignedRows = assignedList.length ? assignedList.map(w => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border2);flex-wrap:wrap">\n        <div style="flex:1;min-width:160px">\n          <div style="font-family:var(--font);font-size:14px;font-weight:800;color:var(--text);${w.username ? "cursor:pointer" : ""}" ${w.username ? `onclick="openWorkerProfile('${esc(w.username)}')" title="${T.viewProfile}"` : ""}>${w.name}</div>\n          <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:2px">${esc(w.phone || "—")}</div>\n        </div>\n        <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:110px">\n          <div style="font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">${T.hoursThisMonth}</div>\n          <div style="font-family:var(--font);font-size:15px;color:var(--brand-ink);font-weight:700">${w.monthHours.toFixed(2)} h</div>\n        </div>\n        <button class="btn-sm btn-red" style="flex-shrink:0" onclick="siteRemoveWorker('${esc(w.norm)}','${esc(locId)}')">${T.removeFromSite}</button>\n      </div>`).join("") : `<div class="empty" style="padding:18px">${T.noWorkersAssigned}</div>`;
+  const assignedSet = new Set(assignedNorms);
+  const addable = workers.map(u => ({
+    norm: _workerNorm(u),
+    label: u.label || u.username,
+    phone: u.phone || ""
+  })).filter(w => !assignedSet.has(w.norm)).sort((a, b) => cleanName(a.label).localeCompare(cleanName(b.label)));
+  const addDropdown = addable.length ? `<select onchange="siteAddWorker(this.value,'${esc(locId)}',this)" style="max-width:260px"><option value="">${T.addWorkerToSite}</option>${addable.map(w => `<option value="${esc(w.norm)}">${disp(w.label)} ${w.phone ? "· " + esc(w.phone) : ""}</option>`).join("")}</select>` : `<span style="font-family:var(--font);font-size:11px;color:var(--muted)">${T.allAssigned || "—"}</span>`;
+  pane.innerHTML = `\n    <div class="panel-card">\n      <div class="pc-title"> ${T.assignedWorkers} <span style="color:var(--muted);font-weight:400">(${assignedList.length})</span></div>\n      <div style="margin:6px 0 14px">${addDropdown}</div>\n      ${assignedRows}\n    </div>`;
+};
+
 window.siteAddWorker = async (norm, locId, sel) => {
   if (!norm) return;
   try {
     await dbSetAssignment(norm, locId);
     toast(T.workerAssigned, "success");
-    await openSiteDetail(locId);
+    await window._renderSiteWorkersPane(locId);
   } catch (e) {
     toast("Error: " + e.message, "error");
     if (sel) sel.value = "";
@@ -6430,7 +6496,7 @@ window.siteRemoveWorker = async (norm, locId) => {
   try {
     await dbDelAssignment(norm, locId);
     toast(T.workerRemoved, "warning");
-    await openSiteDetail(locId);
+    await window._renderSiteWorkersPane(locId);
   } catch (e) {
     toast("Error: " + e.message, "error");
   }
