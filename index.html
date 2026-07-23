@@ -970,13 +970,10 @@ body.rtl .side-nav{ left:auto; right:0; border-right:none; border-left:1px solid
   padding:16px 18px; min-height:var(--header-h);
   border-bottom:1px solid var(--border2);
 }
-/* Height-driven, not width-driven: the source PNG has enough built-in
-   padding around the mark that width:100% blew this up into a huge block
-   (far taller than the name row below it) on the narrower mobile sidebar.
-   A fixed height keeps its footprint predictable and closer in scale to
-   the manager-name row underneath, while still reading noticeably bigger
-   than the original 40px. */
-.side-brand img{ height:56px; width:auto; object-fit:contain; display:block; }
+/* width:100% is safe again now that niTopbarLogo() crops the box itself
+   (via an overflow:hidden wrapper) instead of letting the image's own
+   built-in padding dictate the block's height. */
+.side-brand img{ width:100%; height:auto; object-fit:contain; display:block; }
 .side-section-label{
   font-family:var(--font);
   font-size:8px; letter-spacing:3px; color:var(--muted);
@@ -3546,11 +3543,23 @@ const S = {
 };
 
 function niLogoSVG(size = 220) {
-  return `<img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/>`;
+  // The source PNG has a lot of transparent padding baked in below the
+  // visible icon+wordmark, so just rendering it taller (via the height
+  // attribute) blows up that dead space proportionally too — that's what
+  // was pushing everything below it so far down. Cropping the box to a
+  // fixed fraction of the requested size (anchored to the top, where the
+  // actual artwork sits) keeps the logo itself big while discarding the
+  // blank space instead of reserving layout room for it.
+  const cropH = Math.round(size * 0.34);
+  return `<div style="overflow:hidden;max-height:${cropH}px;line-height:0"><img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/></div>`;
 }
 
 function niTopbarLogo() {
-  return `<div class="ni-topbar-logo">\n    <img src="/logo-horizontal.png" height="48" style="object-fit:contain;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
+  // Same fix as niLogoSVG: fill the sidebar's width (so it reads as a big
+  // logo), but crop the box to a fixed visible height instead of letting
+  // the source file's built-in padding reserve a huge, mostly-empty block
+  // above the manager's name.
+  return `<div class="ni-topbar-logo" style="overflow:hidden;max-height:72px;line-height:0">\n    <img src="/logo-horizontal.png" style="width:100%;height:auto;object-fit:contain;display:block;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
 }
 
 function statusBadge(st) {
