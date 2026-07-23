@@ -3552,7 +3552,13 @@ function niLogoSVG(size = 220) {
 }
 
 function niTopbarLogo() {
-  return `<div class="ni-topbar-logo">\n    <img src="/logo-horizontal.png" style="width:100%;height:auto;object-fit:contain;display:block;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
+  // Unlike the vertical logo, this file's icon+wordmark sit in the
+  // vertical middle of the canvas with padding on every side, not
+  // anchored to the top — so a simple top-cropped max-height doesn't work
+  // here. object-fit:cover inside a box shaped like the visible band
+  // (rather than the full, much taller canvas) scales to fill the width
+  // and crops the excess evenly off the top and bottom instead.
+  return `<div class="ni-topbar-logo" style="width:100%;aspect-ratio:3.6;overflow:hidden;">\n    <img src="/logo-horizontal.png" style="width:100%;height:100%;object-fit:cover;object-position:center center;display:block;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
 }
 
 function statusBadge(st) {
