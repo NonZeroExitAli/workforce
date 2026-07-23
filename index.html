@@ -3543,11 +3543,12 @@ const S = {
 };
 
 function niLogoSVG(size = 220) {
-  // Cropping this (two tries, both cut into the "New Idra" wordmark) turned
-  // out to be too risky to guess blind without the actual source file — the
-  // logo is shown in full here, no clipping. Some extra gap below it is a
-  // known trade-off until we can measure the real image dimensions.
-  return `<img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/>`;
+  // Measured against the actual source artwork: the icon+wordmark run to
+  // ~76% of the file's height, the rest is blank padding at the bottom.
+  // 80% keeps a small safety margin above that so the wordmark is never at
+  // risk of being clipped, while still trimming the bulk of the dead space.
+  const cropH = Math.round(size * 0.8);
+  return `<div style="overflow:hidden;max-height:${cropH}px;line-height:0"><img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/></div>`;
 }
 
 function niTopbarLogo() {
