@@ -3543,23 +3543,15 @@ const S = {
 };
 
 function niLogoSVG(size = 220) {
-  // The source PNG has a lot of transparent padding baked in below the
-  // visible icon+wordmark, so just rendering it taller (via the height
-  // attribute) blows up that dead space proportionally too — that's what
-  // was pushing everything below it so far down. Cropping the box to a
-  // fixed fraction of the requested size (anchored to the top, where the
-  // actual artwork sits) keeps the logo itself big while discarding the
-  // blank space instead of reserving layout room for it.
-  const cropH = Math.round(size * 0.65);
-  return `<div style="overflow:hidden;max-height:${cropH}px;line-height:0"><img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/></div>`;
+  // Cropping this (two tries, both cut into the "New Idra" wordmark) turned
+  // out to be too risky to guess blind without the actual source file — the
+  // logo is shown in full here, no clipping. Some extra gap below it is a
+  // known trade-off until we can measure the real image dimensions.
+  return `<img src="/logo-vertical.png" height="${size}" style="object-fit:contain;display:block;margin:0 auto;" alt="New Idra" onerror="this.style.display='none'"/>`;
 }
 
 function niTopbarLogo() {
-  // Same fix as niLogoSVG: fill the sidebar's width (so it reads as a big
-  // logo), but crop the box to a fixed visible height instead of letting
-  // the source file's built-in padding reserve a huge, mostly-empty block
-  // above the manager's name.
-  return `<div class="ni-topbar-logo" style="overflow:hidden;max-height:110px;line-height:0">\n    <img src="/logo-horizontal.png" style="width:100%;height:auto;object-fit:contain;display:block;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
+  return `<div class="ni-topbar-logo">\n    <img src="/logo-horizontal.png" style="width:100%;height:auto;object-fit:contain;display:block;" alt="New Idra" onerror="this.style.display='none'"/>\n  </div>`;
 }
 
 function statusBadge(st) {
