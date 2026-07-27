@@ -93,8 +93,24 @@ export default async function handler(req, res) {
   try {
     const { dateStr: today, hh, mm } = _romeNow();
 
-    // ── 1) Morning batch — only during the 07:00 Rome hour ───────────
-    if (hh === 7) {
+    // ── 1) Morning batch — this is the manager's ONLY recurring push
+    // (login-issue alerts are the other source, but those only fire when
+    // something actually goes wrong at sign-in, so most days this is the
+    // sole manager notification). It used to require the EXACT 07:00 Rome
+    // hour, which silently depended on a pinger landing a request inside
+    // that one-hour window every single day. Two real gaps made that
+    // fragile: Vercel's own backup cron (vercel.json) runs on a fixed UTC
+    // time, which drifts an hour relative to Rome time across the
+    // daylight-saving change, and the external cron-job.org pinger's
+    // schedule only covered 15:00-23:59 Rome (the shift-check window),
+    // never touching the morning hour at all. Result: the morning digest
+    // could go days/weeks without ever actually firing, even though the
+    // code itself was correct. Widened to a 3-hour window (still
+    // once-per-day thanks to the date-keyed dedup below) so any
+    // reasonably-configured pinger has a much easier time landing inside
+    // it. Pair this with widening the cron-job.org schedule to also ping
+    // during early morning Rome time — see NOTIFICATIONS-SETUP.md.
+    if (hh >= 6 && hh <= 8) {
       const claimedMorning = await _claimOnce(`morning:${today}`);
       if (claimedMorning) {
         results.morningRan = true;
