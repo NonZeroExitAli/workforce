@@ -52,11 +52,23 @@ self.addEventListener('push', (event) => {
     data = { title: 'Newidra', body: event.data ? event.data.text() : '' };
   }
   const title = data.title || 'Newidra';
+
+  // iOS/iPadOS Safari's web push never actually renders the `icon` image —
+  // it only ever shows the installed app's own home-screen icon (which is
+  // already correct, that's the small logo you see in the corner). But it
+  // still reserves a big empty square in the notification layout for the
+  // icon it's ignoring, so setting `icon` on iOS produced a blank white box
+  // sitting next to the real logo — "two logos", one of them empty. Chrome/
+  // Android, by contrast, genuinely uses `icon` to show a full-color
+  // thumbnail, so it should stay set there. Detecting iOS here and leaving
+  // `icon` out entirely (rather than pointing it at a real file) collapses
+  // the notification back down to the one real logo on iPhones/iPads, while
+  // Android keeps its full-color thumbnail exactly as before.
+  const ua = (self.navigator && self.navigator.userAgent) || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (self.navigator && self.navigator.platform === 'MacIntel' && self.navigator.maxTouchPoints > 1);
+
   const options = {
     body: data.body || '',
-    // Full-color logo — shown as the larger image inside the notification
-    // body (the thumbnail on the right).
-    icon: '/icons/icon-192.png',
     // Android's status bar / notification-shade icon (and the app-icon
     // badge dot) is NOT rendered as-is — Android masks it using only its
     // alpha channel and fills the visible shape solid white. icon-192.png
@@ -75,6 +87,10 @@ self.addEventListener('push', (event) => {
     renotify: !!data.tag,
     requireInteraction: false,
   };
+  // Full-color logo — shown as the larger image inside the notification
+  // body. Only set on platforms that actually render it (see note above).
+  if (!isIOS) options.icon = '/icons/icon-192.png';
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
@@ -84,7 +100,26 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          // The app was already open (often just backgrounded, not closed —
+          // the common case for a manager who keeps the PWA running). This
+          // used to just call client.focus() and stop there, which brings
+          // the existing tab to the front but leaves it on WHATEVER screen
+          // it already happened to be showing — the "?view=notifications"
+          // deep link in the push payload was silently thrown away, because
+          // that query string is only ever read once, at page load
+          // (_pendingView in index.html). So tapping "8 items expiring"
+          // just re-focused the app on its old screen and looked like the
+          // tap did nothing. navigate() actually sends that existing tab to
+          // the target URL (a real navigation, so _pendingView reads it
+          // fresh) before focusing it, so the deep link works whether the
+          // app was closed or already open. Falls back to a plain focus()
+          // if navigate() isn't supported (very old browsers).
+          if ('navigate' in client) {
+            return client.navigate(url).then((c) => c.focus()).catch(() => client.focus());
+          }
+          return client.focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(url);
     })
