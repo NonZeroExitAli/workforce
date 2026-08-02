@@ -2672,6 +2672,10 @@ const TR = {
     closeMonth: " Close Month",
     closeMonthInfo: "Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>No data is deleted.",
     exportCloseMonth: " Export & Close Month",
+    monthlyPdf: " Monthly Hours PDF",
+    monthlyPdfInfo: "Generates a printable PDF for any calendar month — the company logo on every page, one column per worker, one row per day (1–31), with each cell showing hours worked that day.",
+    downloadPdf: " Download PDF",
+    pdfDay: "Day",
     autoEndSaved: t => t ? ` Auto-end set to ${t}` : " Auto-end cleared",
     loading: "Loading…",
     pwdTitle: "Change Password",
@@ -3006,6 +3010,10 @@ const TR = {
     closeMonth: " Chiudi Mese",
     closeMonthInfo: "Esporta un file Excel solo per il <strong>mese corrente</strong> — tutti i lavoratori, ore e guadagni.<br>Nessun dato viene eliminato.",
     exportCloseMonth: " Esporta e Chiudi Mese",
+    monthlyPdf: " PDF Ore Mensili",
+    monthlyPdfInfo: "Genera un PDF stampabile per qualsiasi mese solare — il logo aziendale su ogni pagina, una colonna per lavoratore, una riga per giorno (1–31), con le ore lavorate in ogni cella.",
+    downloadPdf: " Scarica PDF",
+    pdfDay: "Giorno",
     autoEndSaved: t => t ? ` Fine automatica impostata alle ${t}` : " Fine automatica rimossa",
     loading: "Caricamento…",
     pwdTitle: "Cambia Password",
@@ -3339,6 +3347,10 @@ const TR = {
     closeMonth: " إغلاق الشهر",
     closeMonthInfo: "يُصدّر ملف Excel للـ <strong>الشهر الحالي فقط</strong> — جميع الموظفين والساعات والأرباح.<br>لا يتم حذف أي بيانات.",
     exportCloseMonth: " تصدير وإغلاق الشهر",
+    monthlyPdf: " PDF الساعات الشهرية",
+    monthlyPdfInfo: "يُنشئ ملف PDF قابل للطباعة لأي شهر ميلادي — شعار الشركة في كل صفحة، عمود لكل عامل، وصف لكل يوم (1–31)، مع عدد الساعات في كل خانة.",
+    downloadPdf: " تحميل PDF",
+    pdfDay: "اليوم",
     autoEndSaved: t => t ? ` تم تعيين الإنهاء التلقائي في ${t}` : " تم مسح الإنهاء التلقائي",
     loading: "جارٍ التحميل…",
     pwdTitle: "تغيير كلمة المرور",
@@ -4737,7 +4749,7 @@ window.mTab = async tab => {
     initAssignBoard();
   }
   if (tab === "salary") panel.innerHTML = await buildSalary("month");
-  if (tab === "reports") panel.innerHTML = await buildReports();
+  // "reports" tab removed — see note above buildReports()'s old location.
   if (tab === "settings") panel.innerHTML = await buildSettings();
   wireManagerTab(tab);
 };
@@ -4939,7 +4951,7 @@ async function buildDashboard(shared) {
     const since = fmtTime(s.start_time);
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:8px">\n          <span style="font-size:14px"></span>\n          <div style="flex:1;min-width:0"><div style="font-family:var(--font);font-weight:800;letter-spacing:.5px;color:var(--text)">${disp(w.label || s.worker)}</div>\n          <div style="font-family:var(--font);font-size:10px;color:var(--muted)"> ${disp(s.location_name || "—")} · ${T.startedAt} ${since}</div></div>\n        </div>`;
   }).join("")}</div>` : `<div class="empty" style="padding:24px">${lang === "ar" ? "لا أحد يعمل الآن" : lang === "it" ? "Nessuno al lavoro adesso" : "Nobody working right now"}</div>`;
-  return `\n  <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-left:4px solid var(--copper)">\n    <div>\n      <div style="font-family:var(--font);font-size:20px;font-weight:900;letter-spacing:1px;color:var(--text);text-transform:uppercase">${L.dashboard}</div>\n      <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:3px"> ${lang === "ar" ? "الدورة الحالية" : lang === "it" ? "Ciclo corrente" : "Current cycle"}: <strong style="color:var(--brand-ink)">${cycleLabel(now)}</strong></div>\n    </div>\n    <button class="btn btn-green" style="width:auto;padding:10px 18px" onclick="doExport()">${T.expXlsx}</button>\n  </div>\n\n  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "يعملون الآن" : lang === "it" ? "Al lavoro ora" : "Working now"} <span style="color:var(--muted);font-weight:400">(${workingNow.length})</span></div>\n      ${workingList}\n    </div>\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "الساعات حسب الموقع" : lang === "it" ? "Ore per cantiere" : "Hours by site"}</div>\n      ${locRows.length ? locRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxLoc * 100).toFixed(1)}%"></div></div><span class="bv">${fmtNum(v, 1)} h</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "الأعلى دخلاً" : lang === "it" ? "Top guadagni" : "Top earners"}</div>\n      ${earnRows.length ? earnRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxEarn * 100).toFixed(1)}%;background:linear-gradient(90deg,#e8801c,#f5a44a)"></div></div><span class="bv">${fmtNum(v, 0)} €</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n  </div>\n\n  <div class="panel-card">\n    <div class="pc-title"> ${lang === "ar" ? "إجراءات سريعة" : lang === "it" ? "Azioni rapide" : "Quick actions"}</div>\n    <div class="quick-grid">\n      <button class="quick-tile" onclick="mTab('live')"><div class="qt-ico"></div><div class="qt-lbl">${L.attendance}</div><div class="qt-sub">${L.sub_live}</div></button>\n      <button class="quick-tile" onclick="mTab('addworker')"><div class="qt-ico"></div><div class="qt-lbl">${L.employees}</div><div class="qt-sub">${L.sub_employees}</div></button>\n      <button class="quick-tile" onclick="mTab('salary')"><div class="qt-ico"></div><div class="qt-lbl">${T.salary}</div><div class="qt-sub">${L.sub_salary}</div></button>\n      <button class="quick-tile" onclick="mTab('cars')"><div class="qt-ico"></div><div class="qt-lbl">${L.cars}</div><div class="qt-sub">${L.sub_cars}</div></button>\n      <button class="quick-tile" onclick="mTab('notifications')"><div class="qt-ico"></div><div class="qt-lbl">${L.notifications}</div><div class="qt-sub">${L.sub_notifications}</div></button>\n    </div>\n  </div>`;
+  return `\n  <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-left:4px solid var(--copper)">\n    <div>\n      <div style="font-family:var(--font);font-size:20px;font-weight:900;letter-spacing:1px;color:var(--text);text-transform:uppercase">${L.dashboard}</div>\n      <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:3px"> ${lang === "ar" ? "الدورة الحالية" : lang === "it" ? "Ciclo corrente" : "Current cycle"}: <strong style="color:var(--brand-ink)">${cycleLabel(now)}</strong></div>\n    </div>\n    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">\n      <button class="btn btn-green" style="width:auto;padding:10px 18px" onclick="doExport()">${T.expXlsx}</button>\n      <input type="month" id="pdf-month" value="${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}" style="padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg1);color:var(--text);font-family:var(--font);font-size:12px">\n      <button class="btn btn-gold" style="width:auto;padding:10px 18px" onclick="exportMonthlyHoursPdf()" title="${T.monthlyPdfInfo}">${T.downloadPdf}</button>\n    </div>\n  </div>\n\n  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "يعملون الآن" : lang === "it" ? "Al lavoro ora" : "Working now"} <span style="color:var(--muted);font-weight:400">(${workingNow.length})</span></div>\n      ${workingList}\n    </div>\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "الساعات حسب الموقع" : lang === "it" ? "Ore per cantiere" : "Hours by site"}</div>\n      ${locRows.length ? locRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxLoc * 100).toFixed(1)}%"></div></div><span class="bv">${fmtNum(v, 1)} h</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n    <div class="panel-card">\n      <div class="pc-title"> ${lang === "ar" ? "الأعلى دخلاً" : lang === "it" ? "Top guadagni" : "Top earners"}</div>\n      ${earnRows.length ? earnRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxEarn * 100).toFixed(1)}%;background:linear-gradient(90deg,#e8801c,#f5a44a)"></div></div><span class="bv">${fmtNum(v, 0)} €</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n  </div>\n\n  <div class="panel-card">\n    <div class="pc-title"> ${lang === "ar" ? "إجراءات سريعة" : lang === "it" ? "Azioni rapide" : "Quick actions"}</div>\n    <div class="quick-grid">\n      <button class="quick-tile" onclick="mTab('live')"><div class="qt-ico"></div><div class="qt-lbl">${L.attendance}</div><div class="qt-sub">${L.sub_live}</div></button>\n      <button class="quick-tile" onclick="mTab('addworker')"><div class="qt-ico"></div><div class="qt-lbl">${L.employees}</div><div class="qt-sub">${L.sub_employees}</div></button>\n      <button class="quick-tile" onclick="mTab('salary')"><div class="qt-ico"></div><div class="qt-lbl">${T.salary}</div><div class="qt-sub">${L.sub_salary}</div></button>\n      <button class="quick-tile" onclick="mTab('cars')"><div class="qt-ico"></div><div class="qt-lbl">${L.cars}</div><div class="qt-sub">${L.sub_cars}</div></button>\n      <button class="quick-tile" onclick="mTab('notifications')"><div class="qt-ico"></div><div class="qt-lbl">${L.notifications}</div><div class="qt-sub">${L.sub_notifications}</div></button>\n    </div>\n  </div>`;
 }
 
 function fmtMoney(n) {
@@ -4984,19 +4996,9 @@ function kpiCard(ico, color, label, value, sub) {
   return `<div class="kpi">\n    <div class="kpi-top">\n      <div class="kpi-ico" style="background:${color}1a;color:${color}">${ico}</div>\n      <div class="kpi-label">${label}</div>\n    </div>\n    <div class="kpi-val" style="color:${color}">${value}</div>\n    ${sub ? `<div class="kpi-sub">${sub}</div>` : ""}\n  </div>`;
 }
 
-async function buildReports() {
-  const now = new Date;
-  const L = mgrNav();
-  // users was fetched here but never used below — dropped instead of just
-  // switching it to the cached wrapper, since the real fix is not querying
-  // it at all.
-  const shifts = await dbListShifts();
-  const completed = shifts.filter(s => s.status === "completed" && inCycle(s.date || Number(s.start_time), now));
-  const cycHrs = completed.reduce((a, s) => a + (parseFloat(s.work_hours) || 0), 0);
-  const cycSal = completed.reduce((a, s) => a + (parseFloat(s.earnings) || 0), 0);
-  const cycWorkers = new Set(completed.map(s => s.worker)).size;
-  return `\n  <div class="panel-card">\n    <div class="pc-title"> ${L.reports} — ${L.sub_reports}</div>\n    <div class="info-box" style="margin-bottom:16px">${lang === "ar" ? "تصدير احترافي لملفات Excel — أوراق منفصلة لكل دورة (من 20 إلى 19) مع تنسيق نظيف وعرض أعمدة تلقائي." : lang === "it" ? "Esportazione Excel professionale — fogli separati per ogni ciclo (dal 20 al 19) con formattazione pulita e larghezza colonne automatica." : "Professional Excel export — separate sheets per cycle (20th→19th) with clean formatting and auto-fit columns."}</div>\n    <div class="kpi-grid" style="margin-bottom:8px">\n      ${kpiCard("", "#e8801c", T.month, cycleLabel(now), "")}\n      ${kpiCard("", "#cc6e12", T.workers, cycWorkers, "")}\n      ${kpiCard("", "#e8801c", T.totalH, fmtNum(cycHrs, 1) + " h", "")}\n      ${kpiCard("", "#e8801c", T.salDue, fmtMoney(cycSal), "")}\n    </div>\n  </div>\n  <div class="sg">\n    <div class="sc">\n      <div class="st"> ${lang === "ar" ? "تصدير كامل" : lang === "it" ? "Esportazione completa" : "Full export"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "كل الورديات مجمّعة حسب الدورة + ملخص الرواتب + ورقة شاملة." : lang === "it" ? "Tutti i turni raggruppati per ciclo + riepilogo stipendi + foglio completo." : "All shifts grouped by cycle + salary summary + master sheet."}</div>\n      <button class="btn btn-green" style="width:auto;padding:10px 22px" onclick="doExport()">${T.expXlsx}</button>\n    </div>\n    <div class="sc">\n      <div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 22px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n  </div>`;
-}
+// buildReports() was removed — Full Export and the Monthly Hours PDF now
+// live directly in the Dashboard header (see buildDashboard()) instead of
+// a separate Reports tab, and Close Month was removed entirely per request.
 
 function _renderSummaryCards(allUsers, shifts, locations, monthShifts) {
   const el = $("scards");
@@ -8449,7 +8451,7 @@ async function buildSettings() {
   const autoEnd = cfg.auto_end_time || "";
   const pushSub = await _getPushSubscription();
   const pushSupported = "serviceWorker" in navigator && "PushManager" in window;
-  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الإشعارات" : lang === "it" ? "Notifiche push" : "Push Notifications"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "احصل على تنبيه على هذا الجهاز عند اقتراب انتهاء وثيقة أو عند اقتراب نهاية وردية عامل ما زال مسجلاً دخوله." : lang === "it" ? "Ricevi un avviso su questo dispositivo quando un documento sta per scadere o quando il turno di un lavoratore ancora collegato sta per terminare." : "Get an alert on this device when a document is about to expire, or when a signed-in worker's shift is about to end."}</div>\n      ${!pushSupported ? `<div class="warn-box">${lang === "ar" ? "غير مدعوم على هذا المتصفح/الجهاز." : lang === "it" ? "Non supportato su questo browser/dispositivo." : "Not supported on this browser/device."}</div>` : pushSub ? `<div class="warn-box" style="margin-bottom:12px;background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border-color:rgba(26,127,55,.3)">${lang === "ar" ? "الإشعارات مفعلة على هذا الجهاز." : lang === "it" ? "Notifiche attive su questo dispositivo." : "Notifications are enabled on this device."}</div><button class="btn btn-dark" style="width:auto;padding:10px 20px" onclick="disablePushNotifications()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : `<button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="enablePushNotifications()">${lang === "ar" ? "تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Attiva notifiche su questo dispositivo" : "Enable Notifications on This Device"}</button>`}\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n    <div class="sc"><div class="st">${T.closeMonth}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.closeMonthInfo}</div>\n      <div id="close-month-summary" style="display:none;margin-bottom:14px"></div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="closeMonth()">${T.exportCloseMonth}</button>\n    </div>\n    <div class="sc"><div class="st"> ${T.danger}</div>\n      <p style="font-family:var(--font);font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7">${T.dangerD}</p>\n      <button class="btn btn-red" onclick="delAllShifts()">${T.deleteAll}</button>\n    </div>\n  </div>`;
+  return `<div class="sg">\n    <div class="sc"><div class="st">${T.changePwd}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "تحديث كلمة مرور حساب المدير." : lang === "it" ? "Aggiorna la password dell'account manager." : "Update the manager account password."}</div>\n      <button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="openPwdModal()">${T.changePwd}</button>\n    </div>\n    <div class="sc"><div class="st">${lang === "ar" ? "الإشعارات" : lang === "it" ? "Notifiche push" : "Push Notifications"}</div>\n      <div class="info-box" style="margin-bottom:14px">${lang === "ar" ? "احصل على تنبيه على هذا الجهاز عند اقتراب انتهاء وثيقة أو عند اقتراب نهاية وردية عامل ما زال مسجلاً دخوله." : lang === "it" ? "Ricevi un avviso su questo dispositivo quando un documento sta per scadere o quando il turno di un lavoratore ancora collegato sta per terminare." : "Get an alert on this device when a document is about to expire, or when a signed-in worker's shift is about to end."}</div>\n      ${!pushSupported ? `<div class="warn-box">${lang === "ar" ? "غير مدعوم على هذا المتصفح/الجهاز." : lang === "it" ? "Non supportato su questo browser/dispositivo." : "Not supported on this browser/device."}</div>` : pushSub ? `<div class="warn-box" style="margin-bottom:12px;background:var(--green-soft,#e6f4ea);color:var(--green,#1a7f37);border-color:rgba(26,127,55,.3)">${lang === "ar" ? "الإشعارات مفعلة على هذا الجهاز." : lang === "it" ? "Notifiche attive su questo dispositivo." : "Notifications are enabled on this device."}</div><button class="btn btn-dark" style="width:auto;padding:10px 20px" onclick="disablePushNotifications()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : `<button class="btn btn-gold" style="width:auto;padding:10px 24px" onclick="enablePushNotifications()">${lang === "ar" ? "تفعيل الإشعارات على هذا الجهاز" : lang === "it" ? "Attiva notifiche su questo dispositivo" : "Enable Notifications on This Device"}</button>`}\n    </div>\n    <div class="sc"><div class="st">${T.autoEndSetting}</div>\n      <div class="info-box" style="margin-bottom:14px">${T.autoEndSettingInfo}</div>\n      <div class="sf">\n        <label class="lbl">${T.dailyAutoEnd} <span style="color:var(--muted)">${T.autoEndOptional}</span></label>\n        <select id="cfg-autoend" style="max-width:220px">${buildTimeOptions(autoEnd)}</select>\n        <div class="hint">${T.globalFallback}</div>\n      </div>\n      <div style="display:flex;gap:8px;flex-wrap:wrap">\n        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveAutoEnd()"> ${T.save}</button>\n        ${autoEnd ? `<button class="btn btn-dark" style="width:auto;padding:10px 16px" onclick="clearAutoEnd()">${T.clearManual}</button>` : ""}\n      </div>\n      ${autoEnd ? `<div class="warn-box" style="margin-top:12px">${T.autoEndActive(autoEnd)}</div>` : ""}\n    </div>\n    <div class="sc"><div class="st">${T.gpsSetting}</div>\n      <div class="sf">\n        <label class="lbl">${T.gpsFenceRadius}</label>\n        <div style="font-family:var(--font);font-size:20px;color:var(--brand-ink);font-weight:700;margin:8px 0">${GPS_RADIUS}m</div>\n        <div class="hint">${T.gpsFenceHint}</div>\n      </div>\n    </div>\n  </div>`;
 }
 
 window.saveAutoEnd = async () => {
@@ -8965,6 +8967,206 @@ window.closeMonth = async () => {
   document.head.appendChild(script);
 };
 
+// ── Monthly Hours PDF ────────────────────────────────────────────
+// A separate, simpler export from doExport()/closeMonth() above: a
+// printable attendance-style grid for one CALENDAR month (day 1 through
+// the last day of that month), one column per worker, one row per day,
+// each cell the hours that worker logged that day. Deliberately independent
+// of the pay-cycle (20th→19th) grouping the Excel exports use, since a
+// calendar-month grid is what was asked for here — the Excel exports are
+// untouched by any of this.
+let _pdfLibsPromise = null;
+function _loadPdfLibs() {
+  if (window.jspdf && window.jspdf.jsPDF && typeof window.jspdf.jsPDF.API.autoTable === "function") return Promise.resolve();
+  if (_pdfLibsPromise) return _pdfLibsPromise;
+  _pdfLibsPromise = new Promise((resolve, reject) => {
+    const s1 = document.createElement("script");
+    s1.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s1.onload = () => {
+      const s2 = document.createElement("script");
+      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
+      s2.onload = () => resolve();
+      s2.onerror = () => reject(new Error("autotable load failed"));
+      document.head.appendChild(s2);
+    };
+    s1.onerror = () => reject(new Error("jspdf load failed"));
+    document.head.appendChild(s1);
+  });
+  return _pdfLibsPromise;
+}
+
+async function _fetchImageAsDataURL(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("image fetch failed: " + res.status);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("image read failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+window.exportMonthlyHoursPdf = async () => {
+  const monthInput = document.getElementById("pdf-month");
+  const now0 = new Date;
+  const monthVal = (monthInput && monthInput.value) || `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, "0")}`;
+  const [year, monthNum] = monthVal.split("-").map(Number);
+  if (!year || !monthNum) {
+    toast("Invalid month", "error");
+    return;
+  }
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  const monthLocale = lang === "ar" ? "ar-EG" : lang === "it" ? "it-IT" : "en-GB";
+  const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString(monthLocale, {
+    month: "long",
+    year: "numeric"
+  });
+
+  toast(" " + T.loading, "info");
+
+  const shifts = await dbListShifts();
+  const users = await dbListUsers();
+  const um = {};
+  users.filter(u => u.role === "worker").forEach(u => um[u.username] = u);
+
+  const monthShifts = shifts.filter(s => {
+    if (s.status !== "completed" || !s.date) return false;
+    const [y, m] = s.date.slice(0, 10).split("-").map(Number);
+    return y === year && m === monthNum;
+  });
+
+  if (!monthShifts.length) {
+    toast(lang === "ar" ? "لا توجد ورديات مكتملة لهذا الشهر" : lang === "it" ? "Nessun turno completato per questo mese" : `No completed shifts found for ${monthLabel}`, "warning");
+    return;
+  }
+
+  const workerKeys = [ ...new Set(monthShifts.map(s => s.worker)) ].sort((a, b) => cleanName(um[a]?.label || a).localeCompare(cleanName(um[b]?.label || b), undefined, {
+    sensitivity: "base"
+  }));
+
+  const hoursByDay = {};
+  for (let d = 1; d <= daysInMonth; d++) hoursByDay[d] = {};
+  monthShifts.forEach(s => {
+    const day = Number(s.date.slice(8, 10));
+    if (!day || day < 1 || day > daysInMonth) return;
+    hoursByDay[day][s.worker] = (hoursByDay[day][s.worker] || 0) + (parseFloat(s.work_hours) || 0);
+  });
+
+  const totals = {};
+  workerKeys.forEach(k => totals[k] = 0);
+  for (let d = 1; d <= daysInMonth; d++) workerKeys.forEach(k => {
+    totals[k] += hoursByDay[d][k] || 0;
+  });
+
+  try {
+    await _loadPdfLibs();
+  } catch (e) {
+    toast("Could not load PDF library — check your connection", "error");
+    return;
+  }
+  const logoDataUrl = await _fetchImageAsDataURL("/logo-horizontal.png").catch(() => null);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "pt",
+    format: "a4"
+  });
+
+  // 5 workers per page — each page shows the FULL month (every day 1→last,
+  // plus a Total row) for that group of 5, at a comfortable, non-shrinking
+  // font. More workers just means more pages, not smaller text.
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginX = 40;
+  const dayColW = 30;
+  const WORKERS_PER_PAGE = 5;
+  const chunks = [];
+  for (let i = 0; i < workerKeys.length; i += WORKERS_PER_PAGE) chunks.push(workerKeys.slice(i, i + WORKERS_PER_PAGE));
+
+  chunks.forEach((chunkKeys, idx) => {
+    const usableW = pageW - marginX * 2 - dayColW;
+    const workerColW = usableW / chunkKeys.length;
+    const columnStyles = {
+      0: {
+        fontStyle: "bold",
+        fillColor: [ 245, 245, 245 ],
+        cellWidth: dayColW
+      }
+    };
+    chunkKeys.forEach((_, i) => {
+      columnStyles[i + 1] = {
+        cellWidth: workerColW
+      };
+    });
+
+    const head = [ [ T.pdfDay || "Day", ...chunkKeys.map(k => cleanName(um[k]?.label || k)) ] ];
+    const body = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      body.push([ String(d), ...chunkKeys.map(k => {
+        const h = hoursByDay[d][k];
+        return h ? fmtNum(h, 1) : "—";
+      }) ]);
+    }
+    body.push([ T.total || "TOTAL", ...chunkKeys.map(k => fmtNum(totals[k], 1)) ]);
+
+    if (idx > 0) doc.addPage();
+
+    doc.autoTable({
+      head,
+      body,
+      startY: 70,
+      tableWidth: usableW + dayColW,
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        halign: "center",
+        cellPadding: 3,
+        overflow: "linebreak"
+      },
+      headStyles: {
+        fillColor: [ 232, 128, 28 ],
+        textColor: 255,
+        fontStyle: "bold",
+        fontSize: 9
+      },
+      columnStyles,
+      didParseCell: data => {
+        // Bold the TOTAL row so it stands out from the daily rows above it.
+        if (data.row.index === body.length - 1) data.cell.styles.fontStyle = "bold";
+      },
+      didDrawPage: () => {
+        if (logoDataUrl) {
+          try {
+            doc.addImage(logoDataUrl, "PNG", marginX, 18, 120, 33);
+          } catch (e) {}
+        }
+        doc.setFontSize(13);
+        doc.setTextColor(40, 40, 40);
+        doc.text(monthLabel, pageW - marginX, 32, {
+          align: "right"
+        });
+        if (chunks.length > 1) {
+          doc.setFontSize(9);
+          doc.setTextColor(120, 120, 120);
+          doc.text(`Page ${doc.internal.getNumberOfPages()} / ${chunks.length}`, pageW - marginX, 46, {
+            align: "right"
+          });
+        }
+      },
+      margin: {
+        top: 70,
+        left: marginX,
+        right: marginX
+      }
+    });
+  });
+
+  const fname = `hours-${monthVal}.pdf`;
+  doc.save(fname);
+  toast(` ${monthLabel} exported as ${fname}`, "success");
+};
+
 window.doExport = async () => {
   toast(" " + T.loading, "info");
   const shifts = await dbListShifts();
@@ -8986,9 +9188,19 @@ window.doExport = async () => {
     const t = Number(s.start_time);
     return t ? new Date(t) : new Date;
   };
-  const cycLabelFromKey = key => {
-    const [y, m, d] = key.split("-").map(Number);
-    return cycleLabel(new Date(y, m - 1, d));
+  // Full export groups by CALENDAR month (1st→last day), not the 20th→19th
+  // pay cycle Close Month and the Reports KPI cards use — this is a
+  // deliberate, local-only difference for this one export; cycleBounds()/
+  // inCycle()/cycleLabel() themselves are untouched, so nothing else in the
+  // app (Close Month, the Reports KPI cards, worker profiles) changes.
+  const monthKeyFromDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const monthLabelFromKey = key => {
+    const [y, m] = key.split("-").map(Number);
+    const loc = lang === "ar" ? "ar-EG" : lang === "it" ? "it-IT" : "en-GB";
+    return new Date(y, m - 1, 1).toLocaleDateString(loc, {
+      month: "long",
+      year: "numeric"
+    });
   };
   const SHIFT_HDR = [ "Worker", "Phone", "Hourly Rate (€)", "Site / Location", "Date", "Check-In", "Check-Out", "Work Hours", "Earnings (€)", "Status" ];
   const SHIFT_FMT = {
@@ -9000,25 +9212,25 @@ window.doExport = async () => {
     const u = um[s.worker];
     return [ cleanName(u?.label || s.worker), u?.phone || "", parseFloat(u?.hourly_rate || s.hourly_rate || 0), cleanName(s.location_name || "—"), s.date, fmtExcel(s.start_time), fmtExcel(s.end_time), parseFloat((parseFloat(s.work_hours) || 0).toFixed(2)), parseFloat((parseFloat(s.earnings) || 0).toFixed(2)), cleanName(s.status) ];
   };
-  const byCycle = {};
+  const byMonth = {};
   shifts.forEach(s => {
-    const key = cycleBounds(shiftDate(s)).startStr;
-    if (!byCycle[key]) byCycle[key] = [];
-    byCycle[key].push(s);
+    const key = monthKeyFromDate(shiftDate(s));
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(s);
   });
-  const cycleKeys = Object.keys(byCycle).sort();
+  const monthKeys = Object.keys(byMonth).sort();
   const script = document.createElement("script");
   script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
   script.onload = () => {
     const wb = XLSX.utils.book_new();
-    cycleKeys.forEach(key => {
-      const mShifts = byCycle[key].slice().sort((a, b) => Number(b.start_time) - Number(a.start_time));
+    monthKeys.forEach(key => {
+      const mShifts = byMonth[key].slice().sort((a, b) => Number(b.start_time) - Number(a.start_time));
       const data = [ SHIFT_HDR, ...mShifts.map(makeShiftRow) ];
       const ws = _xlsxBuildSheet(XLSX, data, SHIFT_FMT);
-      XLSX.utils.book_append_sheet(wb, ws, cycLabelFromKey(key).slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, ws, monthLabelFromKey(key).slice(0, 31));
     });
-    cycleKeys.forEach(key => {
-      const mShifts = byCycle[key].filter(s => s.status === "completed");
+    monthKeys.forEach(key => {
+      const mShifts = byMonth[key].filter(s => s.status === "completed");
       if (!mShifts.length) return;
       const locNames = [ ...new Set(mShifts.map(s => s.location_name).filter(Boolean)) ].sort((a, b) => cleanName(a).localeCompare(cleanName(b), undefined, {
         sensitivity: "base"
@@ -9050,13 +9262,13 @@ window.doExport = async () => {
       sumFmts[3 + locNames.length] = FMT_HRS;
       sumFmts[4 + locNames.length] = FMT_EUR;
       const ws = _xlsxBuildSheet(XLSX, rows, sumFmts);
-      XLSX.utils.book_append_sheet(wb, ws, `Salary ${cycLabelFromKey(key)}`.slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, ws, `Salary ${monthLabelFromKey(key)}`.slice(0, 31));
     });
     const allData = [ SHIFT_HDR, ...shifts.slice().sort((a, b) => Number(b.start_time) - Number(a.start_time)).map(makeShiftRow) ];
     const wsAll = _xlsxBuildSheet(XLSX, allData, SHIFT_FMT);
     XLSX.utils.book_append_sheet(wb, wsAll, "All Shifts");
     XLSX.writeFile(wb, `workforce-${todayStr()}.xlsx`);
-    toast(` Exported ${cycleKeys.length} cycle${cycleKeys.length === 1 ? "" : "s"} + All Shifts`, "success");
+    toast(` Exported ${monthKeys.length} month${monthKeys.length === 1 ? "" : "s"} + All Shifts`, "success");
   };
   script.onerror = () => {
     const allData = [ SHIFT_HDR, ...shifts.slice().sort((a, b) => Number(b.start_time) - Number(a.start_time)).map(makeShiftRow) ];
