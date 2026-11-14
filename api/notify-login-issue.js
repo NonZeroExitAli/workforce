@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   // IP, so keying on IP was silently swallowing every attempt after the
   // first "different device" try — exactly the case a manager most needs
   // to hear about.
-  const { name, phone, issue } = req.body || {};
+  const { name, phone, issue, urgent } = req.body || {};
   if (!issue) return res.status(400).json({ ok: false, error: 'Missing issue' });
   const safeName = String(name || 'Unknown').slice(0, 80);
   const safePhone = String(phone || '—').slice(0, 30);
@@ -47,8 +47,11 @@ export default async function handler(req, res) {
     const managers = await sql("SELECT username FROM wf_users WHERE role='manager'");
     const body = `${safeName} (${safePhone}) — ${safeIssue}`;
     const results = await Promise.all(managers.map(m => sendPushToUser(m.username, {
-      title: 'Newidra — Problema di accesso / مشكلة دخول',
+      // Urgent alerts (a GPS-bypass shift with no site) stay on screen until
+      // the manager taps them; see sw.js.
+      title: urgent ? '⚠️ URGENTE — Turno senza GPS / عاجل' : 'Newidra — Problema di accesso / مشكلة دخول',
       body,
+      urgent: !!urgent,
       url: '/?source=push',
       // No shared tag here (unlike assignment/expiry pushes): a fixed tag
       // makes each new notification SILENTLY REPLACE the previous one

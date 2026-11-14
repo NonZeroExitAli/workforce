@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // /api/logout — invalidates the session token server-side.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors } from './_lib.js';
+import { sql, setCors, forgetSession } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -11,7 +11,10 @@ export default async function handler(req, res) {
   try {
     const auth = req.headers['authorization'] || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
-    if (token) await sql('DELETE FROM wf_sessions WHERE token=$1', [token]);
+    if (token) {
+      forgetSession(token);
+      await sql('DELETE FROM wf_sessions WHERE token=$1', [token]);
+    }
   } catch (e) {
     // Logging out should never hard-fail the UI even if this errors.
     console.error('logout cleanup failed', e);

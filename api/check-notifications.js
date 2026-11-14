@@ -39,13 +39,13 @@ function _romeNow() {
   };
 }
 
-function _daysUntil(iso) {
+// Counted from today's date in Rome, not the server's clock (UTC), so an item
+// can't be a day off around midnight.
+function _daysUntil(iso, todayStr) {
   if (!iso) return null;
-  const target = new Date(iso + 'T00:00:00');
-  if (isNaN(target.getTime())) return null;
-  const now = new Date();
-  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((target - todayMid) / 86400000);
+  const target = Date.parse(String(iso).slice(0, 10) + 'T00:00:00Z');
+  if (isNaN(target)) return null;
+  return Math.round((target - Date.parse(todayStr + 'T00:00:00Z')) / 86400000);
 }
 
 function _nextRentDue(day, todayStr) {
@@ -64,13 +64,14 @@ function _nextRentDue(day, todayStr) {
 }
 
 // Have we already sent this exact alert? If not, record it and return true.
+// A database error now fails the run loudly. It used to read as "already sent",
+// which silently dropped alerts.
 async function _claimOnce(key) {
-  try {
-    await sql('INSERT INTO wf_notified_log(notif_key,sent_at) VALUES($1,$2)', [key, Date.now()]);
-    return true;
-  } catch (e) {
-    return false; // primary key collision = already sent
-  }
+  const rows = await sql(
+    'INSERT INTO wf_notified_log(notif_key,sent_at) VALUES($1,$2) ON CONFLICT (notif_key) DO NOTHING RETURNING notif_key',
+    [key, Date.now()]
+  );
+  return rows.length > 0;
 }
 
 export default async function handler(req, res) {
@@ -115,10 +116,17 @@ export default async function handler(req, res) {
       if (claimedMorning) {
         results.morningRan = true;
 
+        // The cron can fire before anyone has opened the new version of the
+        // app, which is what normally adds this column. Once a day, free.
+        await sql('ALTER TABLE wf_users ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false');
+        // One-shot keys are useless after their day has passed. Expiry keys
+        // are kept, or a long-expired contract would alert all over again.
+        await sql("DELETE FROM wf_notified_log WHERE sent_at<$1 AND (notif_key LIKE 'shiftend:%' OR notif_key LIKE 'morning:%')", [Date.now() - 90 * 86400000]);
+
         const cfgRows = await sql('SELECT notify_window FROM wf_config WHERE id=1 LIMIT 1');
         const windowDays = Number(cfgRows[0]?.notify_window) || 10;
 
-        const workers = await sql("SELECT username,label,doc_expiry,permit_expiry,idoneita_expiry,patente_expiry,contract_expiry FROM wf_users WHERE role='worker'");
+        const workers = await sql("SELECT username,label,doc_expiry,permit_expiry,idoneita_expiry,patente_expiry,contract_expiry FROM wf_users WHERE role='worker' AND COALESCE(archived,false)=false");
         const vehicles = await sql('SELECT id,plate,model,inspection_date,insurance_expiry,road_tax_expiry FROM wf_vehicles');
         const properties = await sql('SELECT id,name,contract_end,rent_day FROM wf_properties');
         const managers = await sql("SELECT username FROM wf_users WHERE role='manager'");
@@ -126,7 +134,7 @@ export default async function handler(req, res) {
         // Full expiry sweep (all fields) — for the manager digest count only.
         let managerItemCount = 0;
         const bump = (iso) => {
-          const d = _daysUntil(iso);
+          const d = _daysUntil(iso, today);
           if (d !== null && d <= windowDays) managerItemCount++;
         };
         workers.forEach(u => {
@@ -152,7 +160,7 @@ export default async function handler(req, res) {
 
         // Worker's own contract only — sent to the worker, not the manager.
         for (const u of workers) {
-          const d = _daysUntil(u.contract_expiry);
+          const d = _daysUntil(u.contract_expiry, today);
           if (d === null || d > windowDays) continue;
           const key = `contract:${u.username}:${u.contract_expiry}`;
           const isNew = await _claimOnce(key);
@@ -185,14 +193,13 @@ export default async function handler(req, res) {
     const SHIFT_CHECK_START_HOUR = 15;
     const SHIFT_CHECK_END_HOUR = 23;
     if (hh >= SHIFT_CHECK_START_HOUR && hh <= SHIFT_CHECK_END_HOUR) {
-    const [globalCfg] = await sql('SELECT auto_end_time FROM wf_config WHERE id=1 LIMIT 1');
-    const globalAutoEnd = globalCfg?.auto_end_time || null;
-
     const workingShifts = await sql(
       "SELECT id,worker,location_name,location_id FROM wf_shifts WHERE status='working' AND date=$1",
       [today]
     );
     if (workingShifts.length) {
+      const [globalCfg] = await sql('SELECT auto_end_time FROM wf_config WHERE id=1 LIMIT 1');
+      const globalAutoEnd = globalCfg?.auto_end_time || null;
       const locIds = [...new Set(workingShifts.map(s => s.location_id).filter(Boolean))];
       const locs = locIds.length
         ? await sql(`SELECT id,end_time FROM wf_locations WHERE id = ANY($1)`, [locIds])

@@ -32,15 +32,44 @@ export async function createSession(username, role, days = 30) {
 }
 
 // Reads "Authorization: Bearer <token>" and returns the session row, or null.
+//
+// Every manager query goes through this, so looking the token up each time
+// meant one extra database query per real query. A warm instance now
+// remembers a valid token for a minute. The cost is that a session revoked
+// from another instance can keep working for up to that minute.
+const SESSION_CACHE_MS = 60 * 1000;
+const _sessionCache = new Map(); // token -> { session, until }
+
+export function forgetSession(token) {
+  _sessionCache.delete(token);
+}
+
 export async function verifySession(req) {
   const auth = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
   if (!token) return null;
+  const now = Date.now();
+  const cached = _sessionCache.get(token);
+  if (cached && cached.until > now && Number(cached.session.expires_at) >= now) return cached.session;
   const rows = await sql('SELECT token,username,role,expires_at FROM wf_sessions WHERE token=$1 LIMIT 1', [token]);
   const s = rows[0];
-  if (!s) return null;
-  if (Number(s.expires_at) < Date.now()) return null;
+  if (!s) {
+    _sessionCache.delete(token);
+    return null;
+  }
+  if (Number(s.expires_at) < now) return null;
+  if (_sessionCache.size > 500) _sessionCache.clear();
+  _sessionCache.set(token, { session: s, until: now + SESSION_CACHE_MS });
   return s;
+}
+
+// Workers have no session: they prove who they are with the device ID locked
+// to their account at first sign-in. Archived workers no longer pass.
+export async function verifyWorkerDevice(username, deviceId) {
+  if (!username || !deviceId) return false;
+  const rows = await sql("SELECT device_id,archived FROM wf_users WHERE username=$1 AND role='worker' LIMIT 1", [username]);
+  const worker = rows[0];
+  return !!worker && !worker.archived && !!worker.device_id && worker.device_id === deviceId;
 }
 
 export const bcryptHash = (pw) => bcrypt.hash(pw, 10);
@@ -122,6 +151,7 @@ export async function sendPushToUser(username, payload) {
   if (!_vapidReady) return { sent: 0, reason: 'VAPID keys not configured' };
   const subs = await sql('SELECT id,endpoint,p256dh,auth FROM wf_push_subscriptions WHERE username=$1', [username]);
   let sent = 0;
+  const errors = [];
   await Promise.all(subs.map(async (s) => {
     try {
       await webpush.sendNotification(
@@ -148,8 +178,9 @@ export async function sendPushToUser(username, payload) {
         await sql('DELETE FROM wf_push_subscriptions WHERE id=$1', [s.id]).catch(() => {});
       } else {
         console.error('push send failed for', username, e.statusCode, e.message);
+        errors.push(e.statusCode || 'error');
       }
     }
   }));
-  return { sent, total: subs.length };
+  return { sent, total: subs.length, errors };
 }

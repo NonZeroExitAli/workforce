@@ -23,7 +23,7 @@
 //             same device (upserts on endpoint).
 //   DELETE  → remove a subscription.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, verifySession, rateLimit, clientIp } from './_lib.js';
+import { sql, setCors, verifySession, verifyWorkerDevice, rateLimit, clientIp } from './_lib.js';
 import crypto from 'crypto';
 
 export default async function handler(req, res) {
@@ -43,12 +43,7 @@ export default async function handler(req, res) {
       return res.status(429).json({ ok: false, error: 'Too many requests.' });
     }
     const { username, deviceId } = req.body || {};
-    if (!username || !deviceId) {
-      return res.status(401).json({ ok: false, error: 'Not authorized' });
-    }
-    const rows = await sql("SELECT username,device_id FROM wf_users WHERE username=$1 AND role='worker' LIMIT 1", [username]);
-    const worker = rows[0];
-    if (!worker || !worker.device_id || worker.device_id !== deviceId) {
+    if (!(await verifyWorkerDevice(username, deviceId))) {
       return res.status(401).json({ ok: false, error: 'Not authorized for this account' });
     }
     identity = username;

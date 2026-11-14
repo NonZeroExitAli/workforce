@@ -7,7 +7,7 @@
 //             can only ever revoke their own sessions, never another
 //             manager's — verified server-side, not just hidden in the UI.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, verifySession, audit } from './_lib.js';
+import { sql, setCors, verifySession, forgetSession, audit } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -40,6 +40,7 @@ export default async function handler(req, res) {
       // to a real token, scoped to this manager's own sessions only.
       const rows = await sql('SELECT token FROM wf_sessions WHERE username=$1 AND token LIKE $2', [session.username, id + '%']);
       if (!rows[0]) return res.status(404).json({ ok: false, error: 'Session not found' });
+      forgetSession(rows[0].token);
       await sql('DELETE FROM wf_sessions WHERE token=$1', [rows[0].token]);
       await audit(session.username, 'session_revoked', session.username, { id });
       return res.status(200).json({ ok: true });

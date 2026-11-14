@@ -10,7 +10,7 @@
 // worker's — this file only makes sure the PAGE ITSELF is available
 // offline.
 // ─────────────────────────────────────────────────────────────
-const CACHE_NAME = 'newidra-shell-v2';
+const CACHE_NAME = 'newidra-shell-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -20,6 +20,9 @@ const APP_SHELL = [
   '/icons/icon-192-circle.png',
   '/icons/icon-512-circle.png',
   '/icons/badge-96.png',
+  '/icons/logo-mark.png',
+  '/logo-vertical.png',
+  '/logo-horizontal.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -85,8 +88,10 @@ self.addEventListener('push', (event) => {
     // user actively swipes it away or taps it — this is what keeps the
     // launcher icon's badge dot present until it's cleared from the shade.
     renotify: !!data.tag,
-    requireInteraction: false,
+    requireInteraction: !!data.urgent,
   };
+  // Urgent alerts vibrate harder and stay until the manager taps them.
+  if (data.urgent) options.vibrate = [400, 150, 400, 150, 400];
   // Full-color logo — shown as the larger image inside the notification
   // body. Only set on platforms that actually render it (see note above).
   if (!isIOS) options.icon = '/icons/icon-192.png';
@@ -101,23 +106,11 @@ self.addEventListener('notificationclick', (event) => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ('focus' in client) {
-          // The app was already open (often just backgrounded, not closed —
-          // the common case for a manager who keeps the PWA running). This
-          // used to just call client.focus() and stop there, which brings
-          // the existing tab to the front but leaves it on WHATEVER screen
-          // it already happened to be showing — the "?view=notifications"
-          // deep link in the push payload was silently thrown away, because
-          // that query string is only ever read once, at page load
-          // (_pendingView in index.html). So tapping "8 items expiring"
-          // just re-focused the app on its old screen and looked like the
-          // tap did nothing. navigate() actually sends that existing tab to
-          // the target URL (a real navigation, so _pendingView reads it
-          // fresh) before focusing it, so the deep link works whether the
-          // app was closed or already open. Falls back to a plain focus()
-          // if navigate() isn't supported (very old browsers).
-          if ('navigate' in client) {
-            return client.navigate(url).then((c) => c.focus()).catch(() => client.focus());
-          }
+          // The app is already open. A real navigation would reload the page
+          // and sign the person out (the session lives in memory), so the
+          // open page is told which screen to show instead.
+          const view = new URL(url, self.location.origin).searchParams.get('view');
+          if (view) client.postMessage({ type: 'open-view', view });
           return client.focus();
         }
       }

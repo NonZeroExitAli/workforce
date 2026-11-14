@@ -1,17 +1,7 @@
-import pg from "pg";
-
-const pool = new pg.Pool({
-  connectionString: process.env.NEON_DATABASE_URL || process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+import { sql } from './_lib.js';
 
 const CRON_SECRET = process.env.CRON_SECRET || null;
 const TIMEZONE    = process.env.TIMEZONE || 'Europe/Rome';
-
-async function sql(query, params = []) {
-  const result = await pool.query(query, params);
-  return result.rows;
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,7 +40,8 @@ export default async function handler(req, res) {
 
     // ── Active shifts ──
     const activeShifts = await sql(
-      `SELECT * FROM wf_shifts WHERE status = 'working' AND date = $1`, [today]
+      `SELECT id,worker,start_time,billing_start_time,break_minutes,hourly_rate,location_id,location_name
+       FROM wf_shifts WHERE status = 'working' AND date = $1`, [today]
     );
 
     if (!activeShifts.length) {
@@ -92,15 +83,23 @@ export default async function handler(req, res) {
          .forEach(p => { if (p.type !== 'literal') sp[p.type] = parseInt(p.value, 10); });
       if ((sp.hour * 60 + sp.minute) >= endTotalMins) continue;
 
-      // Calculate hours + earnings
-      const wMs       = Math.max(0, nowUTC - startMs);
-      const workHours = wMs / 3600000;
-      const earnings  = workHours * (parseFloat(shift.hourly_rate) || 0);
+      // Same pay rules as _finalizeShift in index.html: billing starts at the
+      // official start, stops at the site's end time (not at whenever this ran)
+      // and the break comes off without taking a shift below 6 paid hours. Using the raw clock here paid
+      // for early arrivals, for the delay before this ran, and for the break.
+      const billingStartMs = Number(shift.billing_start_time) || startMs;
+      const nowLocalMins   = localH * 60 + localM;
+      const endMs          = nowUTC - Math.max(0, nowLocalMins - endTotalMins) * 60000;
+      const billedMs       = Math.max(0, endMs - billingStartMs);
+      const breakMs        = (parseFloat(shift.break_minutes) || 0) * 60000;
+      const minPaidMs      = 6 * 3600000;
+      const workHours      = (billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs)) / 3600000;
+      const earnings       = workHours * (parseFloat(shift.hourly_rate) || 0);
 
       await sql(
         `UPDATE wf_shifts SET status='completed', end_time=$2, work_hours=$3, earnings=$4
          WHERE id=$1 AND status='working'`,
-        [shift.id, nowUTC, workHours, earnings]
+        [shift.id, endMs, workHours, earnings]
       );
 
       endedCount++;
