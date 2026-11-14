@@ -2796,10 +2796,6 @@ const TR = {
     closeMonth: " Close Month",
     closeMonthInfo: "Exports an Excel file for the <strong>current month only</strong> — all workers, hours, and earnings.<br>No data is deleted.",
     exportCloseMonth: " Export & Close Month",
-    monthlyPdf: " Monthly Hours PDF",
-    monthlyPdfInfo: "Generates a printable PDF for any calendar month — the company logo on every page, one column per worker, one row per day (1–31), with each cell showing hours worked that day.",
-    downloadPdf: " Download PDF",
-    pdfDay: "Day",
     autoEndSaved: t => t ? ` Auto-end set to ${t}` : " Auto-end cleared",
     loading: "Loading…",
     pwdTitle: "Change Password",
@@ -3134,10 +3130,6 @@ const TR = {
     closeMonth: " Chiudi Mese",
     closeMonthInfo: "Esporta un file Excel solo per il <strong>mese corrente</strong> — tutti i lavoratori, ore e guadagni.<br>Nessun dato viene eliminato.",
     exportCloseMonth: " Esporta e Chiudi Mese",
-    monthlyPdf: " PDF Ore Mensili",
-    monthlyPdfInfo: "Genera un PDF stampabile per qualsiasi mese solare — il logo aziendale su ogni pagina, una colonna per lavoratore, una riga per giorno (1–31), con le ore lavorate in ogni cella.",
-    downloadPdf: " Scarica PDF",
-    pdfDay: "Giorno",
     autoEndSaved: t => t ? ` Fine automatica impostata alle ${t}` : " Fine automatica rimossa",
     loading: "Caricamento…",
     pwdTitle: "Cambia Password",
@@ -3471,10 +3463,6 @@ const TR = {
     closeMonth: " إغلاق الشهر",
     closeMonthInfo: "يُصدّر ملف Excel للـ <strong>الشهر الحالي فقط</strong> — جميع الموظفين والساعات والأرباح.<br>لا يتم حذف أي بيانات.",
     exportCloseMonth: " تصدير وإغلاق الشهر",
-    monthlyPdf: " PDF الساعات الشهرية",
-    monthlyPdfInfo: "يُنشئ ملف PDF قابل للطباعة لأي شهر ميلادي — شعار الشركة في كل صفحة، عمود لكل عامل، وصف لكل يوم (1–31)، مع عدد الساعات في كل خانة.",
-    downloadPdf: " تحميل PDF",
-    pdfDay: "اليوم",
     autoEndSaved: t => t ? ` تم تعيين الإنهاء التلقائي في ${t}` : " تم مسح الإنهاء التلقائي",
     loading: "جارٍ التحميل…",
     pwdTitle: "تغيير كلمة المرور",
@@ -5228,7 +5216,7 @@ async function buildDashboard(shared) {
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:8px">\n          <span style="font-size:14px"></span>\n          <div style="flex:1;min-width:0"><div style="font-family:var(--font);font-weight:800;letter-spacing:.5px;color:var(--text)">${disp(w.label || s.worker)}</div>\n          <div style="font-family:var(--font);font-size:10px;color:var(--muted)"> ${disp(s.location_name || "—")} · ${T.startedAt} ${since}</div></div>\n        </div>`;
   }).join("")}</div>` : `<div class="empty" style="padding:24px">${lang === "ar" ? "لا أحد يعمل الآن" : lang === "it" ? "Nessuno al lavoro adesso" : "Nobody working right now"}</div>`;
   return `\n  <div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-left:4px solid var(--copper)">\n    <div>\n      <div style="font-family:var(--font);font-size:20px;font-weight:900;letter-spacing:1px;color:var(--text);text-transform:uppercase">${L.dashboard}</div>\n      <div style="font-family:var(--font);font-size:11px;color:var(--muted);margin-top:3px"> ${lang === "ar" ? "الدورة الحالية" : lang === "it" ? "Ciclo corrente" : "Current cycle"}: <strong style="color:var(--brand-ink)">${cycleLabel(now)}</strong></div>\n    </div>\n    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">\n      <input type="number" id="xl-year" min="2020" max="2100" value="${now.getFullYear()}" title="${NX().excelYear}" aria-label="${NX().excelYear}" style="width:84px;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg1);color:var(--text);font-family:var(--font);font-size:12px">
-      <button class="btn btn-green" style="width:auto;padding:10px 18px" onclick="doExport()">${T.expXlsx}</button>\n      <input type="month" id="pdf-month" value="${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}" style="width:auto;max-width:170px;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg1);color:var(--text);font-family:var(--font);font-size:12px">\n      <button class="btn btn-gold" style="width:auto;padding:10px 18px" onclick="exportMonthlyHoursPdf()" title="${T.monthlyPdfInfo}">${T.downloadPdf}</button>\n    </div>\n  </div>\n\n  <div id="mgr-push-banner"></div>\n  <div class="panel-card mode-card" id="mode-card">${_modeCardHtml(cfg.assign_mode || "manual")}</div>\n\n  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">\n    ${absentPanel}\n    <div class="panel-card kpi-link" onclick="mTab('live')">\n      <div class="pc-title"> ${lang === "ar" ? "يعملون الآن" : lang === "it" ? "Al lavoro ora" : "Working now"} <span style="color:var(--muted);font-weight:400">(${workingNow.length})</span></div>\n      ${workingList}\n    </div>\n    <div class="panel-card kpi-link" onclick="mTab('locations')">\n      <div class="pc-title"> ${lang === "ar" ? "الساعات حسب الموقع" : lang === "it" ? "Ore per cantiere" : "Hours by site"}</div>\n      ${locRows.length ? locRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxLoc * 100).toFixed(1)}%"></div></div><span class="bv">${fmtNum(v, 1)} h</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n    <div class="panel-card kpi-link" onclick="mTab('salary')">\n      <div class="pc-title"> ${lang === "ar" ? "الأعلى دخلاً" : lang === "it" ? "Top guadagni" : "Top earners"}</div>\n      ${earnRows.length ? earnRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxEarn * 100).toFixed(1)}%;background:linear-gradient(90deg,#e8801c,#f5a44a)"></div></div><span class="bv">${fmtNum(v, 0)} €</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n  </div>\n\n  <div class="panel-card">\n    <div class="pc-title"> ${lang === "ar" ? "إجراءات سريعة" : lang === "it" ? "Azioni rapide" : "Quick actions"}</div>\n    <div class="quick-grid">\n      <button class="quick-tile" onclick="mTab('live')"><div class="qt-ico"></div><div class="qt-lbl">${L.attendance}</div><div class="qt-sub">${L.sub_live}</div></button>\n      <button class="quick-tile" onclick="mTab('addworker')"><div class="qt-ico"></div><div class="qt-lbl">${L.employees}</div><div class="qt-sub">${L.sub_employees}</div></button>\n      <button class="quick-tile" onclick="mTab('salary')"><div class="qt-ico"></div><div class="qt-lbl">${T.salary}</div><div class="qt-sub">${L.sub_salary}</div></button>\n      <button class="quick-tile" onclick="mTab('cars')"><div class="qt-ico"></div><div class="qt-lbl">${L.cars}</div><div class="qt-sub">${L.sub_cars}</div></button>\n      <button class="quick-tile" onclick="mTab('notifications')"><div class="qt-ico"></div><div class="qt-lbl">${L.notifications}</div><div class="qt-sub">${L.sub_notifications}</div></button>\n    </div>\n  </div>`;
+      <button class="btn btn-green" style="width:auto;padding:10px 18px" onclick="doExport()">${T.expXlsx}</button>\n    </div>\n  </div>\n\n  <div id="mgr-push-banner"></div>\n  <div class="panel-card mode-card" id="mode-card">${_modeCardHtml(cfg.assign_mode || "manual")}</div>\n\n  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">\n    ${absentPanel}\n    <div class="panel-card kpi-link" onclick="mTab('live')">\n      <div class="pc-title"> ${lang === "ar" ? "يعملون الآن" : lang === "it" ? "Al lavoro ora" : "Working now"} <span style="color:var(--muted);font-weight:400">(${workingNow.length})</span></div>\n      ${workingList}\n    </div>\n    <div class="panel-card kpi-link" onclick="mTab('locations')">\n      <div class="pc-title"> ${lang === "ar" ? "الساعات حسب الموقع" : lang === "it" ? "Ore per cantiere" : "Hours by site"}</div>\n      ${locRows.length ? locRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxLoc * 100).toFixed(1)}%"></div></div><span class="bv">${fmtNum(v, 1)} h</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n    <div class="panel-card kpi-link" onclick="mTab('salary')">\n      <div class="pc-title"> ${lang === "ar" ? "الأعلى دخلاً" : lang === "it" ? "Top guadagni" : "Top earners"}</div>\n      ${earnRows.length ? earnRows.map(([n, v]) => `<div class="bar-row"><span class="bl">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${(v / maxEarn * 100).toFixed(1)}%;background:linear-gradient(90deg,#e8801c,#f5a44a)"></div></div><span class="bv">${fmtNum(v, 0)} €</span></div>`).join("") : `<div class="empty" style="padding:18px">—</div>`}\n    </div>\n  </div>\n\n  <div class="panel-card">\n    <div class="pc-title"> ${lang === "ar" ? "إجراءات سريعة" : lang === "it" ? "Azioni rapide" : "Quick actions"}</div>\n    <div class="quick-grid">\n      <button class="quick-tile" onclick="mTab('live')"><div class="qt-ico"></div><div class="qt-lbl">${L.attendance}</div><div class="qt-sub">${L.sub_live}</div></button>\n      <button class="quick-tile" onclick="mTab('addworker')"><div class="qt-ico"></div><div class="qt-lbl">${L.employees}</div><div class="qt-sub">${L.sub_employees}</div></button>\n      <button class="quick-tile" onclick="mTab('salary')"><div class="qt-ico"></div><div class="qt-lbl">${T.salary}</div><div class="qt-sub">${L.sub_salary}</div></button>\n      <button class="quick-tile" onclick="mTab('cars')"><div class="qt-ico"></div><div class="qt-lbl">${L.cars}</div><div class="qt-sub">${L.sub_cars}</div></button>\n      <button class="quick-tile" onclick="mTab('notifications')"><div class="qt-ico"></div><div class="qt-lbl">${L.notifications}</div><div class="qt-sub">${L.sub_notifications}</div></button>\n    </div>\n  </div>`;
 }
 
 function fmtMoney(n) {
@@ -5273,9 +5261,9 @@ function kpiCard(ico, color, label, value, sub, tab) {
   return `<div class="kpi ${tab ? "kpi-link" : ""}" ${tab ? `role="button" tabindex="0" onclick="mTab('${tab}')" onkeydown="if(event.key==='Enter')mTab('${tab}')"` : ""}>\n    <div class="kpi-top">\n      <div class="kpi-ico" style="background:${color}1a;color:${color}">${ico}</div>\n      <div class="kpi-label">${label}</div>\n    </div>\n    <div class="kpi-val" style="color:${color}">${value}</div>\n    ${sub ? `<div class="kpi-sub">${sub}</div>` : ""}\n  </div>`;
 }
 
-// buildReports() was removed — Full Export and the Monthly Hours PDF now
-// live directly in the Dashboard header (see buildDashboard()) instead of
-// a separate Reports tab, and Close Month was removed entirely per request.
+// buildReports() was removed — the Excel export now lives directly in the
+// Dashboard header (see buildDashboard()) instead of a separate Reports tab,
+// and Close Month was removed entirely per request.
 
 function _renderSummaryCards(allUsers, shifts, locations, monthShifts) {
   const el = $("scards");
@@ -9234,206 +9222,6 @@ window.closeMonth = async () => {
   document.head.appendChild(script);
 };
 
-// ── Monthly Hours PDF ────────────────────────────────────────────
-// A separate, simpler export from doExport()/closeMonth() above: a
-// printable attendance-style grid for one CALENDAR month (day 1 through
-// the last day of that month), one column per worker, one row per day,
-// each cell the hours that worker logged that day. Deliberately independent
-// of the pay-cycle (20th→19th) grouping the Excel exports use, since a
-// calendar-month grid is what was asked for here — the Excel exports are
-// untouched by any of this.
-let _pdfLibsPromise = null;
-function _loadPdfLibs() {
-  if (window.jspdf && window.jspdf.jsPDF && typeof window.jspdf.jsPDF.API.autoTable === "function") return Promise.resolve();
-  if (_pdfLibsPromise) return _pdfLibsPromise;
-  _pdfLibsPromise = new Promise((resolve, reject) => {
-    const s1 = document.createElement("script");
-    s1.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s1.onload = () => {
-      const s2 = document.createElement("script");
-      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
-      s2.onload = () => resolve();
-      s2.onerror = () => reject(new Error("autotable load failed"));
-      document.head.appendChild(s2);
-    };
-    s1.onerror = () => reject(new Error("jspdf load failed"));
-    document.head.appendChild(s1);
-  });
-  return _pdfLibsPromise;
-}
-
-async function _fetchImageAsDataURL(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("image fetch failed: " + res.status);
-  const blob = await res.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("image read failed"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-window.exportMonthlyHoursPdf = async () => {
-  const monthInput = document.getElementById("pdf-month");
-  const now0 = new Date;
-  const monthVal = (monthInput && monthInput.value) || `${now0.getFullYear()}-${String(now0.getMonth() + 1).padStart(2, "0")}`;
-  const [year, monthNum] = monthVal.split("-").map(Number);
-  if (!year || !monthNum) {
-    toast("Invalid month", "error");
-    return;
-  }
-  const daysInMonth = new Date(year, monthNum, 0).getDate();
-  const monthLocale = lang === "ar" ? "ar-EG" : lang === "it" ? "it-IT" : "en-GB";
-  const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString(monthLocale, {
-    month: "long",
-    year: "numeric"
-  });
-
-  toast(" " + T.loading, "info");
-
-  const shifts = await dbListShifts();
-  const users = await dbListUsers();
-  const um = {};
-  users.filter(u => u.role === "worker").forEach(u => um[u.username] = u);
-
-  const monthShifts = shifts.filter(s => {
-    if (s.status !== "completed" || !s.date) return false;
-    const [y, m] = s.date.slice(0, 10).split("-").map(Number);
-    return y === year && m === monthNum;
-  });
-
-  if (!monthShifts.length) {
-    toast(lang === "ar" ? "لا توجد ورديات مكتملة لهذا الشهر" : lang === "it" ? "Nessun turno completato per questo mese" : `No completed shifts found for ${monthLabel}`, "warning");
-    return;
-  }
-
-  const workerKeys = [ ...new Set(monthShifts.map(s => s.worker)) ].sort((a, b) => cleanName(um[a]?.label || a).localeCompare(cleanName(um[b]?.label || b), undefined, {
-    sensitivity: "base"
-  }));
-
-  const hoursByDay = {};
-  for (let d = 1; d <= daysInMonth; d++) hoursByDay[d] = {};
-  monthShifts.forEach(s => {
-    const day = Number(s.date.slice(8, 10));
-    if (!day || day < 1 || day > daysInMonth) return;
-    hoursByDay[day][s.worker] = (hoursByDay[day][s.worker] || 0) + (parseFloat(s.work_hours) || 0);
-  });
-
-  const totals = {};
-  workerKeys.forEach(k => totals[k] = 0);
-  for (let d = 1; d <= daysInMonth; d++) workerKeys.forEach(k => {
-    totals[k] += hoursByDay[d][k] || 0;
-  });
-
-  try {
-    await _loadPdfLibs();
-  } catch (e) {
-    toast("Could not load PDF library — check your connection", "error");
-    return;
-  }
-  const logoDataUrl = await _fetchImageAsDataURL("/logo-horizontal.png").catch(() => null);
-
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({
-    orientation: "landscape",
-    unit: "pt",
-    format: "a4"
-  });
-
-  // 5 workers per page — each page shows the FULL month (every day 1→last,
-  // plus a Total row) for that group of 5, at a comfortable, non-shrinking
-  // font. More workers just means more pages, not smaller text.
-  const pageW = doc.internal.pageSize.getWidth();
-  const marginX = 40;
-  const dayColW = 30;
-  const WORKERS_PER_PAGE = 5;
-  const chunks = [];
-  for (let i = 0; i < workerKeys.length; i += WORKERS_PER_PAGE) chunks.push(workerKeys.slice(i, i + WORKERS_PER_PAGE));
-
-  chunks.forEach((chunkKeys, idx) => {
-    const usableW = pageW - marginX * 2 - dayColW;
-    const workerColW = usableW / chunkKeys.length;
-    const columnStyles = {
-      0: {
-        fontStyle: "bold",
-        fillColor: [ 245, 245, 245 ],
-        cellWidth: dayColW
-      }
-    };
-    chunkKeys.forEach((_, i) => {
-      columnStyles[i + 1] = {
-        cellWidth: workerColW
-      };
-    });
-
-    const head = [ [ T.pdfDay || "Day", ...chunkKeys.map(k => cleanName(um[k]?.label || k)) ] ];
-    const body = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      body.push([ String(d), ...chunkKeys.map(k => {
-        const h = hoursByDay[d][k];
-        return h ? fmtNum(h, 1) : "—";
-      }) ]);
-    }
-    body.push([ T.total || "TOTAL", ...chunkKeys.map(k => fmtNum(totals[k], 1)) ]);
-
-    if (idx > 0) doc.addPage();
-
-    doc.autoTable({
-      head,
-      body,
-      startY: 70,
-      tableWidth: usableW + dayColW,
-      styles: {
-        font: "helvetica",
-        fontSize: 9,
-        halign: "center",
-        cellPadding: 3,
-        overflow: "linebreak"
-      },
-      headStyles: {
-        fillColor: [ 232, 128, 28 ],
-        textColor: 255,
-        fontStyle: "bold",
-        fontSize: 9
-      },
-      columnStyles,
-      didParseCell: data => {
-        // Bold the TOTAL row so it stands out from the daily rows above it.
-        if (data.row.index === body.length - 1) data.cell.styles.fontStyle = "bold";
-      },
-      didDrawPage: () => {
-        if (logoDataUrl) {
-          try {
-            doc.addImage(logoDataUrl, "PNG", marginX, 18, 120, 33);
-          } catch (e) {}
-        }
-        doc.setFontSize(13);
-        doc.setTextColor(40, 40, 40);
-        doc.text(monthLabel, pageW - marginX, 32, {
-          align: "right"
-        });
-        if (chunks.length > 1) {
-          doc.setFontSize(9);
-          doc.setTextColor(120, 120, 120);
-          doc.text(`Page ${doc.internal.getNumberOfPages()} / ${chunks.length}`, pageW - marginX, 46, {
-            align: "right"
-          });
-        }
-      },
-      margin: {
-        top: 70,
-        left: marginX,
-        right: marginX
-      }
-    });
-  });
-
-  const fname = `hours-${monthVal}.pdf`;
-  doc.save(fname);
-  toast(` ${monthLabel} exported as ${fname}`, "success");
-};
-
 let _attendanceEditShiftId = null;
 
 let _attendanceEditHourlyRate = 0;
@@ -10239,11 +10027,12 @@ async function _loadExcelJs() {
   }
 }
 
-async function _registerPhotoBase64(u, url) {
-  let dataUrl;
-  try {
-    dataUrl = await _fetchImageAsDataURL(url);
-  } catch (e) {
+// The photo bucket sends no CORS headers, so the browser can't read its bytes
+// directly; the server reads the photo and hands it back as base64. Older
+// photos are stored inline as data URLs and need no request.
+async function _registerPhotoBase64(u) {
+  let dataUrl = u.photo_url;
+  if (dataUrl.indexOf("obj:") === 0) {
     const res = await fetch("/api/storage", {
       method: "POST",
       headers: _authHeaders({
@@ -10251,7 +10040,7 @@ async function _registerPhotoBase64(u, url) {
       }),
       body: JSON.stringify({
         action: "read-base64",
-        key: u.photo_url.slice(4)
+        key: dataUrl.slice(4)
       })
     });
     const d = await res.json();
@@ -10544,11 +10333,10 @@ window.doExport = async () => {
       greenCell.border = border;
     });
     // A photo that can't be fetched only leaves that one cell empty.
-    const photoUrls = await _photoMapFor(workers);
     await Promise.all(workers.map(async (w, i) => {
-      if (!photoUrls[w.username]) return;
+      if (!w.photo_url) return;
       try {
-        const base64 = await _registerPhotoBase64(w, photoUrls[w.username]);
+        const base64 = await _registerPhotoBase64(w);
         const id = wb.addImage({
           base64: base64,
           extension: "jpeg"

@@ -10,7 +10,7 @@
 // worker's — this file only makes sure the PAGE ITSELF is available
 // offline.
 // ─────────────────────────────────────────────────────────────
-const CACHE_NAME = 'newidra-shell-v4';
+const CACHE_NAME = 'newidra-shell-v5';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -123,6 +123,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Other sites (photo storage, CDNs) go straight to the network. Passing them
+  // through here cached every signed photo link and turned failures into errors.
+  if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return; // always network, never cached
   if (request.method !== 'GET') return;
 
