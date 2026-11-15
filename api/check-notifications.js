@@ -22,6 +22,7 @@
 // frequently never sends the same thing twice.
 // ─────────────────────────────────────────────────────────────
 import { sql, setCors, sendPushToUser } from './_lib.js';
+import { closeStaleShifts } from './auto-end.js';
 
 const TZ = 'Europe/Rome'; // the app's real-world users are in Italy
 
@@ -115,6 +116,14 @@ export default async function handler(req, res) {
       const claimedMorning = await _claimOnce(`morning:${today}`);
       if (claimedMorning) {
         results.morningRan = true;
+
+        // Close shifts left running on earlier days. This used to happen
+        // only when someone opened the app; here it runs every morning.
+        try {
+          results.staleClosed = await closeStaleShifts(today);
+        } catch (e) {
+          console.error('[check-notifications] stale shift close failed', e);
+        }
 
         // The cron can fire before anyone has opened the new version of the
         // app, which is what normally adds this column. Once a day, free.

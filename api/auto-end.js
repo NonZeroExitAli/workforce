@@ -122,3 +122,55 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
+
+// The epoch time of a wall-clock moment in TIMEZONE (handles summer time).
+function zonedEpoch(y, mo, d, h, mi) {
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const p = {};
+  new Intl.DateTimeFormat('en-GB', { timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    .formatToParts(new Date(guess)).forEach(x => { if (x.type !== 'literal') p[x.type] = parseInt(x.value, 10); });
+  const shown = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute);
+  return guess - (shown - guess);
+}
+
+// Shifts still running from an earlier day are closed at their site's end
+// time (or the global one) with the usual pay rules; with no end time to go
+// by they are marked for review. Same rules as reconcileStaleShifts in
+// index.html, run daily by /api/check-notifications so it doesn't depend on
+// anyone opening the app.
+export async function closeStaleShifts(today) {
+  const stale = await sql(
+    `SELECT id,date,start_time,billing_start_time,break_minutes,hourly_rate,location_id
+     FROM wf_shifts WHERE status='working' AND date < $1`, [today]
+  );
+  if (!stale.length) return 0;
+  const [locations, configRows] = await Promise.all([
+    sql('SELECT id, end_time FROM wf_locations'),
+    sql('SELECT auto_end_time FROM wf_config WHERE id = 1 LIMIT 1')
+  ]);
+  const endById = {};
+  locations.forEach(l => { endById[l.id] = l.end_time; });
+  const globalEnd = configRows[0]?.auto_end_time || null;
+  let closed = 0;
+  for (const s of stale) {
+    const cut = (s.location_id && endById[s.location_id]) || globalEnd;
+    const [y, mo, d] = String(s.date || '').split('-').map(Number);
+    const [ch, cm] = String(cut || '').split(':').map(Number);
+    if (!cut || [y, mo, d, ch, cm].some(n => isNaN(n))) {
+      await sql("UPDATE wf_shifts SET status='needs_review' WHERE id=$1 AND status='working'", [s.id]);
+      continue;
+    }
+    // "00:00" means midnight at the end of that day.
+    const endMs = zonedEpoch(y, mo, ch === 0 && cm === 0 ? d + 1 : d, ch, cm);
+    const billedMs = Math.max(0, endMs - (Number(s.billing_start_time) || Number(s.start_time)));
+    const breakMs = (parseFloat(s.break_minutes) || 0) * 60000;
+    const minPaidMs = 6 * 3600000;
+    const workHours = (billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs)) / 3600000;
+    await sql(
+      `UPDATE wf_shifts SET status='completed', end_time=$2, work_hours=$3, earnings=$4 WHERE id=$1 AND status='working'`,
+      [s.id, endMs, workHours, workHours * (parseFloat(s.hourly_rate) || 0)]
+    );
+    closed++;
+  }
+  return closed;
+}
