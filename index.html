@@ -1376,18 +1376,19 @@ body:has(.app-shell) #appCredit{ display:none; }
 
 
 <div class="modal-bg" id="pwdModal">
-  <div class="card" style="max-width:400px">
+  <!-- A real form so browsers and password managers treat these as password fields. -->
+  <form class="card" style="max-width:400px" onsubmit="event.preventDefault();doChangePwd()">
     <div class="modal-title"><span id="pwd-title">Change Password</span></div>
-    <div class="sf"><label class="lbl" id="pwd-lbl-cur">Current Password</label><input type="password" id="pw-current"/></div>
-    <div class="sf"><label class="lbl" id="pwd-lbl-new">New Password (min 6 chars)</label><input type="password" id="pw-new"/></div>
-    <div class="sf"><label class="lbl" id="pwd-lbl-cfm">Confirm New Password</label><input type="password" id="pw-confirm"/></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-cur">Current Password</label><input type="password" id="pw-current" autocomplete="current-password"/></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-new">New Password (min 6 chars)</label><input type="password" id="pw-new" autocomplete="new-password"/></div>
+    <div class="sf"><label class="lbl" id="pwd-lbl-cfm">Confirm New Password</label><input type="password" id="pw-confirm" autocomplete="new-password"/></div>
     <div class="err-box" id="pw-err" style="display:none;margin-bottom:12px"></div>
     <div class="modal-btns" style="flex-direction:column;gap:8px">
-      <button class="btn btn-gold" id="pwd-btn-save" onclick="doChangePwd()">Save New Password</button>
-      <button class="btn btn-dark" onclick="doSetDefaultPwd()" style="background:rgba(232,128,28,.1);border-color:rgba(232,128,28,.3);color:var(--red)">Generate Random Temporary Password</button>
-      <button class="btn btn-dark" id="pwd-btn-cancel" onclick="closePwdModal()">Cancel</button>
+      <button type="submit" class="btn btn-gold" id="pwd-btn-save">Save New Password</button>
+      <button type="button" class="btn btn-dark" onclick="doSetDefaultPwd()" style="background:rgba(232,128,28,.1);border-color:rgba(232,128,28,.3);color:var(--red)">Generate Random Temporary Password</button>
+      <button type="button" class="btn btn-dark" id="pwd-btn-cancel" onclick="closePwdModal()">Cancel</button>
     </div>
-  </div>
+  </form>
 </div>
 
 
