@@ -4122,6 +4122,8 @@ window.doLogout = () => {
   S._photoPrompted = false;
   S._wkPhoto = null;
   S._suspendIdle = false;
+  S.mgrTab = "dashboard";
+  _nav.user = null;
   _wsCache = {};
   _cfgCache = null;
   closeWFModal();
@@ -4940,8 +4942,114 @@ window.toggleSidebar = force => {
   document.body.classList.toggle("sidebar-open", open);
 };
 
+// ── Manager page history ─────────────────────────────────────────
+// Every page opened from another one remembers where the manager was, so the
+// header arrow (and any in-page back button that leads to the same page)
+// returns to it at the same scroll position, with the same list search.
+// Home is the root: the header shows the menu there and the arrow elsewhere.
+const _nav = {
+  stack: [],
+  cur: {
+    id: "tab:dashboard"
+  },
+  installed: false
+};
+
+// Pages reached through these functions take part in the history. Forms
+// (creating, or opened in edit mode) are never returned to.
+const _NAV_VIEWS = [ "openWorkerProfile", "openSiteDetail", "openVehicleProfile", "openPropertyProfile", "openArchivedLocations", "openAddSite" ];
+
+function _navView(name, args) {
+  if (name === "mTab") return {
+    id: "tab:" + args[0]
+  };
+  return {
+    id: name + ":" + (args[0] || ""),
+    name: name,
+    arg: args[0],
+    form: name === "openAddSite" || (name !== "openArchivedLocations" && name !== "openSiteDetail" && (!args[0] || !!args[1]))
+  };
+}
+
+function _navSearchInput() {
+  const panel = $("mpanel");
+  return panel && panel.querySelector(".tbl-toolbar input, .loc-search input");
+}
+
+// Returns the history entry being returned to, or null for a new page.
+function _navEnter(view) {
+  if (view.id === _nav.cur.id) return null;
+  let back = null;
+  const i = _nav.stack.map(e => e.view.id).lastIndexOf(view.id);
+  if (i >= 0) {
+    back = _nav.stack[i];
+    _nav.stack.length = i;
+  } else if (!_nav.cur.form) {
+    const input = _navSearchInput();
+    _nav.stack.push({
+      view: _nav.cur,
+      y: window.scrollY,
+      search: input ? input.value : ""
+    });
+  }
+  if (view.id === "tab:dashboard") _nav.stack = [];
+  _nav.cur = view;
+  return back || false;
+}
+
+function _navRestore(entry) {
+  const input = _navSearchInput();
+  if (input && entry.search) {
+    input.value = entry.search;
+    input.dispatchEvent(new Event("input"));
+  }
+  // Photos and late content can still grow the page, so try again shortly.
+  const go = () => {
+    if (window.scrollY < entry.y) window.scrollTo(0, entry.y);
+  };
+  window.scrollTo(0, entry.y);
+  requestAnimationFrame(go);
+  setTimeout(go, 300);
+  setTimeout(go, 900);
+}
+
+function _navUpdateBtn() {
+  const btn = $("navBtn");
+  if (!btn) return;
+  const home = _nav.cur.id === "tab:dashboard";
+  btn.innerHTML = home ? "☰" : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="${lang === "ar" ? "transform:scaleX(-1)" : ""}"><path d="M15 18l-6-6 6-6"/></svg>`;
+  btn.setAttribute("aria-label", home ? "Menu" : T.backToList.replace(/[←→]/g, "").trim());
+}
+
+window.navHeaderBtn = () => {
+  if (_nav.cur.id === "tab:dashboard") toggleSidebar(); else navBack();
+};
+
+window.navBack = () => {
+  const prev = _nav.stack[_nav.stack.length - 1];
+  if (!prev || !prev.view.name) return mTab(prev ? prev.view.id.slice(4) : "dashboard");
+  return window[prev.view.name](prev.view.arg);
+};
+
+function _navInstall() {
+  if (_nav.installed) return;
+  _nav.installed = true;
+  [ "mTab", ..._NAV_VIEWS ].forEach(name => {
+    const fn = window[name];
+    if (typeof fn !== "function") return;
+    window[name] = async (...args) => {
+      const back = _navEnter(_navView(name, args));
+      _navUpdateBtn();
+      const r = await fn(...args);
+      if (back) _navRestore(back); else if (back === false) window.scrollTo(0, 0);
+      return r;
+    };
+  });
+}
+
 async function renderManagerScreen() {
   S.screen = "manager";
+  _navInstall();
   // mgrTab always has a value, so this used to be skipped and tapping a
   // notification landed on the dashboard instead of its screen.
   if (_pendingView) {
@@ -4951,7 +5059,20 @@ async function renderManagerScreen() {
   const L = mgrNav();
   const active = S.mgrTab;
   const meta = mgrTabMeta(active);
-  $("root").innerHTML = `\n  <div class="side-scrim" onclick="toggleSidebar(false)"></div>\n  <div class="app-shell">\n    <aside class="side-nav" id="sideNav">\n      <div class="side-brand">${niTopbarLogo()}</div>\n      <div class="side-user">\n        <div class="side-user-avatar logo"><img src="/icons/logo-mark.png" alt="New Idra"/></div>\n        <div class="side-user-meta">\n          <div class="side-user-name">${disp(S.user.username)}</div>\n          <div class="side-user-role">${lang === "ar" ? "مدير" : "Manager"}</div>\n        </div>\n      </div>\n      <div class="side-section-label">${L.menu}</div>\n      <nav class="side-nav-list">\n        ${mgrTabList().filter(it => ![ "upcoming", "archived", "absent" ].includes(it.key)).map(it => `<button class="nav-tab ${it.key === active ? "active" : ""}" data-tab="${it.key}" onclick="mTab('${it.key}')"><span class="ti">${it.ico}</span><span>${it.label}</span>${it.key === "notifications" ? `<span id="nav-badge-notifications" style="display:none;margin-${lang === "ar" ? "right" : "left"}:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-family:var(--font);font-size:11px;font-weight:800;align-items:center;justify-content:center"></span>` : ""}</button>`).join("")}\n      </nav>\n      <div class="side-bottom">\n        ${langBar(true)}\n        <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n      </div>\n      <div class="side-foot">New Idra · v${APP_VERSION}<br><span style="opacity:.75">Developed by NonZeroExitAli</span></div>\n    </aside>\n    <div class="app-main">\n      <header class="app-header">\n        <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>\n        <div class="page-title" id="mgrPageTitle">${meta.label}<small>${meta.sub}</small></div>\n        <div class="spacer"></div>\n        <div style="position:relative;margin-${lang === "ar" ? "left" : "right"}:14px">\n          <button id="bellBtn" onclick="toggleBell(event)" title="${PL().bellTitle}" style="position:relative;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>\n            <span id="bell-badge" style="display:none;position:absolute;top:-5px;${lang === "ar" ? "left" : "right"}:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-family:var(--font);font-size:10px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg1)"></span>\n          </button>\n          <div id="bellPanel" style="display:none;position:absolute;${lang === "ar" ? "left" : "right"}:0;top:48px;width:340px;max-width:90vw;max-height:60vh;overflow:auto;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);z-index:300"></div>\n        </div>\n        <span class="clock" id="clock"></span>\n      </header>\n      <main class="app-content">\n        <div class="kpi-grid" id="scards"></div>\n        <div id="mpanel"></div>\n      </main>\n    </div>\n  </div>`;
+  // A new sign-in starts a fresh history; a redraw (e.g. language change)
+  // lands on the tab, so anything above it in the history is dropped.
+  if (_nav.user !== S.user.username) {
+    _nav.user = S.user.username;
+    _nav.stack = [];
+  }
+  const _navAt = _nav.stack.map(e => e.view.id).lastIndexOf("tab:" + active);
+  if (_navAt >= 0) _nav.stack.length = _navAt;
+  if (active === "dashboard") _nav.stack = [];
+  _nav.cur = {
+    id: "tab:" + active
+  };
+  $("root").innerHTML = `\n  <div class="side-scrim" onclick="toggleSidebar(false)"></div>\n  <div class="app-shell">\n    <aside class="side-nav" id="sideNav">\n      <div class="side-brand">${niTopbarLogo()}</div>\n      <div class="side-user">\n        <div class="side-user-avatar logo"><img src="/icons/logo-mark.png" alt="New Idra"/></div>\n        <div class="side-user-meta">\n          <div class="side-user-name">${disp(S.user.username)}</div>\n          <div class="side-user-role">${lang === "ar" ? "مدير" : "Manager"}</div>\n        </div>\n      </div>\n      <div class="side-section-label">${L.menu}</div>\n      <nav class="side-nav-list">\n        ${mgrTabList().filter(it => ![ "upcoming", "archived", "absent" ].includes(it.key)).map(it => `<button class="nav-tab ${it.key === active ? "active" : ""}" data-tab="${it.key}" onclick="mTab('${it.key}')"><span class="ti">${it.ico}</span><span>${it.label}</span>${it.key === "notifications" ? `<span id="nav-badge-notifications" style="display:none;margin-${lang === "ar" ? "right" : "left"}:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red);color:#fff;font-family:var(--font);font-size:11px;font-weight:800;align-items:center;justify-content:center"></span>` : ""}</button>`).join("")}\n      </nav>\n      <div class="side-bottom">\n        ${langBar(true)}\n        <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n      </div>\n      <div class="side-foot">New Idra · v${APP_VERSION}<br><span style="opacity:.75">Developed by NonZeroExitAli</span></div>\n    </aside>\n    <div class="app-main">\n      <header class="app-header">\n        <button class="hamburger" id="navBtn" onclick="navHeaderBtn()" aria-label="Menu">☰</button>\n        <div class="page-title" id="mgrPageTitle">${meta.label}<small>${meta.sub}</small></div>\n        <div class="spacer"></div>\n        <div style="position:relative;margin-${lang === "ar" ? "left" : "right"}:14px">\n          <button id="bellBtn" onclick="toggleBell(event)" title="${PL().bellTitle}" style="position:relative;width:40px;height:40px;border-radius:10px;background:var(--bg1);border:1px solid var(--border2);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center">\n            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>\n            <span id="bell-badge" style="display:none;position:absolute;top:-5px;${lang === "ar" ? "left" : "right"}:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-family:var(--font);font-size:10px;font-weight:800;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg1)"></span>\n          </button>\n          <div id="bellPanel" style="display:none;position:absolute;${lang === "ar" ? "left" : "right"}:0;top:48px;width:340px;max-width:90vw;max-height:60vh;overflow:auto;background:var(--bg1);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);z-index:300"></div>\n        </div>\n        <span class="clock" id="clock"></span>\n      </header>\n      <main class="app-content">\n        <div class="kpi-grid" id="scards"></div>\n        <div id="mpanel"></div>\n      </main>\n    </div>\n  </div>`;
+  _navUpdateBtn();
   const _initPanel = $("mpanel");
   const _sc = $("scards");
   if (active === "dashboard") {
