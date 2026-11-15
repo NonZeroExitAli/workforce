@@ -1450,7 +1450,9 @@ function _authHeaders(extra = {}) {
   const h = {
     ...extra
   };
-  const token = typeof S !== "undefined" && S.authToken || localStorage.getItem("wf_mgr_token");
+  // A worker's token stays on their phone after the idle sign-out, so shifts
+  // saved offline can still be sent once the connection is back.
+  const token = typeof S !== "undefined" && S.authToken || localStorage.getItem("wf_mgr_token") || localStorage.getItem("wf_wk_token");
   if (token) h["Authorization"] = "Bearer " + token;
   return h;
 }
@@ -1475,7 +1477,11 @@ async function sql(query, params = []) {
     res = await post();
   }
   const data = await res.json().catch(() => null);
-  if (!data || !data.ok) throw new Error(data?.error || `SQL failed (${res.status})`);
+  if (!data || !data.ok) {
+    const err = new Error(data?.error || `SQL failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
   return data.rows || [];
 }
 
@@ -3767,18 +3773,9 @@ async function init() {
       hour12: false
     });
   }, 1e3);
-  try {
-    _dbReady = initDB();
-    await _dbReady;
-    // Every device used to run this on every page load, and only the first
-    // one each day can find anything.
-    if (localStorage.getItem("wf_reconciled") !== todayStr()) {
-      reconcileStaleShifts().then(() => localStorage.setItem("wf_reconciled", todayStr())).catch(() => {});
-    }
-    _trySyncOfflineQueue().catch(() => {});
-  } catch (e) {
-    $("root").innerHTML = `<div class="center"><div style="max-width:520px;text-align:center;padding:40px">\n      <div style="font-size:36px;margin-bottom:16px"></div>\n      <div style="font-family:var(--font);font-size:15px;color:#2b2b2b;font-weight:700;margin-bottom:12px">Database Connection Failed</div>\n      <div style="font-family:var(--font);font-size:12px;color:#aaa;line-height:2;margin-bottom:16px">${esc(e.message)}</div>\n      <div style="background:#141414;border:1px solid #2a2a2a;border-radius:6px;padding:18px;text-align:left;font-family:var(--font);font-size:12px;color:#888;line-height:2">\n        <div style="color:var(--brand-ink);font-weight:700;margin-bottom:8px">How to fix:</div>\n        1. Set NEON_DATABASE_URL environment variable in Vercel/Netlify<br>\n        2. Make sure /api/sql.js is deployed<br>\n        3. Check browser console for more details\n      </div>\n    </div></div>`;
-  }
+  // Nothing reaches the database before sign-in. A worker's phone may still
+  // hold shifts saved offline; those go with the worker's token.
+  if (localStorage.getItem("wf_wk_token")) _trySyncOfflineQueue().catch(() => {});
 }
 
 function render() {
@@ -3830,7 +3827,7 @@ async function _notifyManagerLoginIssue(name, phone, issue, urgent) {
   try {
     await fetch("/api/notify-login-issue", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: _authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ name, phone, issue, urgent: !!urgent })
     });
   } catch (e) {
@@ -3913,44 +3910,32 @@ window.doPhoneLogin = async () => {
       showErr(T.badPhoneNum);
       return;
     }
-    await _dbReady;
-    const [match, foundWorker, cfg] = await Promise.all([ dbGetPhone(norm), dbFindWorkerByNorm(norm), dbGetConfig() ]);
-    if (!match) {
-      showErr(T.phoneNoAuth);
-      return;
-    }
-    const freeMode = cfg.assign_mode === "free";
-    let workerUser = foundWorker;
-    if (_isArchived(workerUser)) {
-      showErr(NX().archivedLogin);
-      return;
-    }
-    if (!workerUser) {
-      const uname = (match.label || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") || "w" + norm.slice(-6);
-      const finalName = await dbGetUser(uname) ? uname + "_" + norm.slice(-4) : uname;
-      await dbSetUser(finalName, {
-        password: norm,
-        role: "worker",
+    // The server checks the phone list, archived status and the registered
+    // device, and returns a worker session that only reaches this worker's data.
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
         phone: ph,
-        hourly_rate: match.rate || 15,
-        device_id: DEVICE_ID,
-        can_restart: false
-      });
-      await dbSetPhone(norm, {
-        used: true
-      });
-      workerUser = await dbGetUser(finalName);
-    }
-    if (!workerUser.device_id) {
-      await dbSetUser(workerUser.username, {
-        device_id: DEVICE_ID
-      });
-      workerUser.device_id = DEVICE_ID;
-    } else if (workerUser.device_id !== DEVICE_ID) {
-      showErr(T.deviceBlocked);
-      _notifyManagerLoginIssue(workerUser.label || workerUser.username, workerUser.phone || ph, "Ha provato ad accedere da un telefono diverso da quello registrato / حاول الدخول من جهاز مختلف عن الجهاز المسجل");
+        deviceId: DEVICE_ID
+      })
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || !data.ok) {
+      const code = data && data.error;
+      showErr(code === "not_authorized" ? T.phoneNoAuth : code === "archived" ? NX().archivedLogin : code === "device" ? T.deviceBlocked : code === "bad_phone" ? T.badPhoneNum : code === "too_many" ? NX().loginTooMany : NX().loginFailed);
       return;
     }
+    S.authToken = data.token;
+    localStorage.setItem("wf_wk_token", data.token);
+    // The schema is kept up to date by managers; workers never alter it.
+    _onboardingColsEnsured = true;
+    _reviewColEnsured = true;
+    let workerUser = data.user;
+    const cfg = await dbGetConfig();
+    const freeMode = cfg.assign_mode === "free";
     const locations = await dbListLocations();
     _wsCache = {
       cfg: cfg,
@@ -4083,6 +4068,13 @@ window.doLogin = async () => {
     }
     S.authToken = data.token;
     localStorage.setItem("wf_mgr_token", data.token);
+    // Schema updates and the daily tidy-up of shifts left open on earlier days
+    // need a manager session, so they run here rather than on page load.
+    _dbReady = initDB();
+    await _dbReady;
+    if (localStorage.getItem("wf_reconciled") !== todayStr()) {
+      reconcileStaleShifts().then(() => localStorage.setItem("wf_reconciled", todayStr())).catch(() => {});
+    }
     const fresh = await dbGetUser(data.user.username);
     S.user = fresh || data.user;
     _resetInactiveTimer();
@@ -4102,7 +4094,7 @@ window.doLogout = () => {
   clearTimeout(_inactiveTimer);
   clearTimeout(_sleepTimer);
   clearInterval(S.timerInt);
-  if (S.authToken) {
+  if (S.authToken && S.user && S.user.role === "manager") {
     fetch("/api/logout", {
       method: "POST",
       headers: _authHeaders({
@@ -4740,7 +4732,8 @@ async function _trySyncOfflineQueue() {
         q.shift();
         _saveOfflineQueue(q);
       } catch (e) {
-        if (_isNetworkError(e)) break;
+        // Not signed in yet (or the session ran out): keep it for the next sign-in.
+        if (_isNetworkError(e) || e.status === 401) break;
         console.error("[offline-sync] could not sync queued action, dropping it to avoid blocking the queue:", item, e);
         q.shift();
         _saveOfflineQueue(q);
@@ -9498,6 +9491,8 @@ function NX() {
     modeSaved: ar ? "تم تغيير طريقة الدخول" : "Modalità di accesso aggiornata",
     farFromAll: ar ? " أنت بعيد عن جميع المواقع. توجّه إلى أحد المواقع لتسجيل الدخول." : " Sei lontano da tutti i cantieri. Recati in un cantiere per accedere.",
     farFromAllPush: "Troppo lontano da tutti i cantieri per accedere / بعيد جدًا عن جميع المواقع",
+    loginTooMany: ar ? "محاولات كثيرة. انتظر بضع دقائق ثم حاول مجددًا." : "Troppi tentativi. Attendi qualche minuto e riprova.",
+    loginFailed: ar ? "تعذّر تسجيل الدخول. تحقق من الاتصال وحاول مجددًا." : "Accesso non riuscito. Controlla la connessione e riprova.",
     gpsTry: n => ar ? `فعّل الموقع (GPS) ثم اضغط دخول مرة أخرى. المحاولة ${n} من ${GPS_MAX_TRIES}.` : `Attiva la posizione (GPS) e premi di nuovo Accedi. Tentativo ${n} di ${GPS_MAX_TRIES}.`,
     pickSite: ar ? "اختر موقع العمل" : "Scegli il cantiere",
     pickSiteHint: ar ? "اختر الموقع الذي تعمل فيه اليوم." : "Scegli il cantiere in cui lavori oggi.",

@@ -9,14 +9,11 @@
 // clock in and here's why" — something that's only useful in the moment,
 // not as a persistent list to manage later.
 //
-// No session on this one — a worker hitting a login problem has, by
-// definition, no session (workers never have one) and may not even be
-// past the point of being recognized as a real account yet (e.g. a
-// device mismatch happens BEFORE any session-like state exists). Rate
-// limiting is the guard here instead, same pattern as the other
-// no-session worker-facing endpoints.
+// Needs the worker's session from /api/login: the problems reported here
+// (GPS, site too far or closed, no assignment) all come after sign-in.
+// A different device is reported by /api/login itself.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, rateLimit, sendPushToUser } from './_lib.js';
+import { sql, setCors, rateLimit, sendPushToUser, verifySession } from './_lib.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -33,11 +30,18 @@ export default async function handler(req, res) {
   // IP, so keying on IP was silently swallowing every attempt after the
   // first "different device" try — exactly the case a manager most needs
   // to hear about.
-  const { name, phone, issue, urgent } = req.body || {};
+  // Only a signed-in worker can raise an alert, and the name and phone come
+  // from their record, so nobody can push made-up messages to the managers.
+  // Problems before sign-in (unknown phone, other device) are handled by
+  // /api/login itself.
+  const session = await verifySession(req);
+  if (!session || session.role !== 'worker') return res.status(401).json({ ok: false, error: 'Not signed in' });
+  const { issue, urgent } = req.body || {};
   if (!issue) return res.status(400).json({ ok: false, error: 'Missing issue' });
-  const safeName = String(name || 'Unknown').slice(0, 80);
-  const safePhone = String(phone || '—').slice(0, 30);
-  const safeIssue = String(issue).slice(0, 200);
+  const [me] = await sql('SELECT label,phone FROM wf_users WHERE username=$1 LIMIT 1', [session.username]);
+  const safeName = String(me?.label || session.username).slice(0, 80);
+  const safePhone = String(me?.phone || '—').slice(0, 30);
+  const safeIssue = String(issue).slice(0, 300);
 
   if (!rateLimit(`login-issue:${safePhone}:${safeIssue}`, 1, 5 * 1000)) {
     return res.status(200).json({ ok: true, throttled: true });

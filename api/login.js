@@ -11,7 +11,59 @@
 // Existing plaintext rows are migrated automatically: on first successful
 // login with the old plaintext password, it's re-hashed and saved.
 // ─────────────────────────────────────────────────────────────
-import { sql, setCors, createSession, bcryptHash, bcryptCompare, looksHashed, rateLimit, clientIp, audit } from './_lib.js';
+import { sql, setCors, createSession, bcryptHash, bcryptCompare, looksHashed, rateLimit, clientIp, audit, sendPushToUser } from './_lib.js';
+import { USER_COLS, normPhone } from './_worker.js';
+
+// Worker sign-in: {phone, deviceId}. The phone must be on the manager's list,
+// the worker not archived, and the device the one registered on first sign-in.
+// Returns a worker session, which /api/sql limits to the worker's own data.
+async function workerLogin(req, res, ip) {
+  if (!rateLimit(`wlogin:ip:${ip}`, 20, 5 * 60 * 1000)) {
+    return res.status(429).json({ ok: false, error: 'too_many' });
+  }
+  const { phone, deviceId } = req.body || {};
+  const norm = normPhone(phone);
+  if (!norm || typeof deviceId !== 'string' || deviceId.length < 8 || deviceId.length > 80) {
+    return res.status(400).json({ ok: false, error: 'bad_phone' });
+  }
+  const [match] = await sql('SELECT norm,phone,label,rate FROM wf_phones WHERE norm=$1 LIMIT 1', [norm]);
+  if (!match) return res.status(403).json({ ok: false, error: 'not_authorized' });
+
+  const find = () => sql(`SELECT ${USER_COLS} FROM wf_users WHERE role='worker' AND ltrim(regexp_replace(COALESCE(phone,''),'\\D','','g'),'0')=$1 ORDER BY COALESCE(archived,false) ASC LIMIT 1`, [norm]);
+  let [user] = await find();
+  if (user && user.archived) return res.status(403).json({ ok: false, error: 'archived' });
+
+  if (!user) {
+    // First sign-in: the account is made from the phone list entry.
+    const base = String(match.label || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'w' + norm.slice(-6);
+    const [taken] = await sql('SELECT 1 FROM wf_users WHERE username=$1 LIMIT 1', [base]);
+    const uname = taken ? base + '_' + norm.slice(-4) : base;
+    await sql("INSERT INTO wf_users(username,role,phone,hourly_rate,device_id,can_restart) VALUES($1,'worker',$2,$3,$4,false) ON CONFLICT(username) DO NOTHING",
+      [uname, String(phone).trim(), Number(match.rate) || 15, deviceId]);
+    await sql('UPDATE wf_phones SET used=true WHERE norm=$1', [norm]);
+    [user] = await find();
+    if (!user) return res.status(500).json({ ok: false, error: 'create_failed' });
+  }
+
+  if (!user.device_id) {
+    await sql('UPDATE wf_users SET device_id=$1 WHERE username=$2', [deviceId, user.username]);
+    user.device_id = deviceId;
+  } else if (user.device_id !== deviceId) {
+    const managers = await sql("SELECT username FROM wf_users WHERE role='manager'");
+    await Promise.all(managers.map(m => sendPushToUser(m.username, {
+      title: 'Newidra — Problema di accesso / مشكلة دخول',
+      body: `${user.label || user.username} (${user.phone || '—'}) — Ha provato ad accedere da un telefono diverso da quello registrato / حاول الدخول من جهاز مختلف عن الجهاز المسجل`,
+      url: '/?source=push',
+      tag: `login-issue-${Date.now()}`,
+    })));
+    return res.status(403).json({ ok: false, error: 'device' });
+  }
+
+  // One live session per worker: signing in again replaces the old one.
+  await sql("DELETE FROM wf_sessions WHERE username=$1 AND role='worker'", [user.username]);
+  const { token } = await createSession(user.username, 'worker', 7);
+  return res.status(200).json({ ok: true, token, user });
+}
 
 export default async function handler(req, res) {
   setCors(res);
@@ -19,6 +71,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
 
   const ip = clientIp(req);
+  if (req.body && req.body.phone !== undefined) {
+    try {
+      return await workerLogin(req, res, ip);
+    } catch (e) {
+      console.error('worker login failed', e);
+      return res.status(500).json({ ok: false, error: 'login_failed' });
+    }
+  }
   // 8 attempts / 5 minutes per IP, and per attempted username — blocks both
   // a single attacker hammering one account and one hammering many accounts.
   if (!rateLimit(`login:ip:${ip}`, 8, 5 * 60 * 1000)) {
