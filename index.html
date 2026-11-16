@@ -5652,7 +5652,8 @@ async function buildAddWorker() {
     return `<div class="phone-row" data-search="${disp(p.label || "")} ${esc(p.phone || "")}" style="flex-direction:column;gap:10px">\n      <div style="display:flex;align-items:flex-start;gap:10px;width:100%;flex-wrap:wrap">\n        <div style="flex:1;min-width:200px">\n          <div ${workerUser ? `onclick="openWorkerProfile('${esc(workerUser.username)}')" title="${T.viewProfile}" style="cursor:pointer;display:flex;align-items:center;gap:12px"` : 'style="display:flex;align-items:center;gap:12px"'}>\n            ${photoUrl ? `<img src="${esc(photoUrl)}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg1);box-shadow:0 2px 6px rgba(0,0,0,.15)"/>` : _avatarHtml(p.label || p.phone, 50)}\n            <div style="min-width:0">\n              <div style="font-family:var(--font);font-size:20px;font-weight:800;letter-spacing:.3px;color:var(--text)">${disp(p.label || p.phone)}</div>\n              ${p.label ? `<div style="font-family:var(--font);font-size:12px;color:var(--muted);margin-top:3px">${esc(p.phone)}</div>` : ""}\n            </div>\n          </div>\n          <div class="phone-meta">\n            <span style="font-family:var(--font);font-size:10px;color:var(--muted)">${T.rateLabel}</span>\n            <input type="number" min="1" step="0.5" value="${p.rate || 15}" style="width:70px;padding:4px 8px;border:1px solid #e8801c66;border-radius:3px;background:var(--bg);color:var(--brand-ink);font-weight:700;font-family:var(--font);font-size:13px" onchange="updRate('${esc(norm)}',this.value)"/>\n            <span style="color:var(--brand-ink);font-family:var(--font);font-size:10px">/hr</span>\n          </div>\n          <div class="pmbadges">\n            <span class="badge ${linked.length >= 1 ? "bg" : "br"}">${linked.length === 0 ? T.noAccount : T.registered}</span>\n            ${linked.map(u => `<span class="badge bb" data-worker-link="${esc(u.username)}" onclick="openWorkerProfile('${esc(u.username)}')" title="${T.viewProfile}" style="cursor:pointer">${disp(u.label || u.username)}</span>`).join("")}\n            ${workerUser ? hasDevice ? `<span class="badge bg" style="font-size:9px">${T.lockedDevice}</span>` : `<span class="badge bgr" style="font-size:9px">${T.anyDevice}</span>` : ""}\n          </div>\n        </div>\n        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;align-items:center">\n          ${workerUser ? `<button class="btn-sm" style="background:rgba(232,128,28,.1);border:1px solid rgba(232,128,28,.3);color:var(--brand-ink);font-size:11px" onclick="openWorkerProfile('${esc(workerUser.username)}')">${T.profile}</button>` : ""}\n          ${workerUser ? (() => {
       const bypassed = workerUser.gps_bypass === true || workerUser.gps_bypass === "true";
       return `<button class="btn-sm" title="GPS Bypass" style="background:${bypassed ? "rgba(232,128,28,.15)" : "rgba(58,96,128,.15)"};border:1px solid ${bypassed ? "rgba(232,128,28,.4)" : "var(--border2)"};color:${bypassed ? "#f59a44" : "#6f6257"};font-size:11px;letter-spacing:1px" onclick="toggleGpsBypass('${esc(workerUser.username)}','${disp(p.label || p.phone)}',${bypassed})">\n               GPS ${bypassed ? "OFF" : "ON"}\n            </button>`;
-    })() : ""}\n          ${workerUser && hasDevice ? `<button class="btn-sm" style="background:rgba(47,115,184,.12);border:1px solid rgba(47,115,184,.35);color:#f59a44;font-size:11px" onclick="resetDevice('${esc(workerUser.username)}','${disp(p.label || p.phone)}')">${T.resetDevice}</button>` : workerUser ? `<span style="font-family:var(--font);font-size:10px;color:#6f6257;padding:4px 0">${T.noDeviceYet}</span>` : ""}\n          <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="padding:6px 10px;font-size:14px">✕</button>\n        </div>\n      </div>\n    </div>`;
+    })() : ""}\n          ${workerUser && hasDevice ? `<button class="btn-sm" style="background:rgba(47,115,184,.12);border:1px solid rgba(47,115,184,.35);color:#f59a44;font-size:11px" onclick="resetDevice('${esc(workerUser.username)}','${disp(p.label || p.phone)}')">${T.resetDevice}</button>` : workerUser ? `<span style="font-family:var(--font);font-size:10px;color:#6f6257;padding:4px 0">${T.noDeviceYet}</span>` : ""}\n          ${workerUser ? `<button class="btn-sm" style="background:rgba(232,128,28,.1);border:1px solid rgba(232,128,28,.3);color:var(--orange);padding:6px 10px;font-size:12px" onclick="archiveWorker('${esc(workerUser.username)}',true)">${NX().archive}</button>` : ""}
+          <button class="btn-sm btn-red" onclick="delPhone('${esc(norm)}')" style="padding:6px 10px;font-size:14px">✕</button>\n        </div>\n      </div>\n    </div>`;
   }).join("");
   return _empSubTabBar("active", phones.length, upcomingCount, archivedCount) + `<div class="panel-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">\n    <div class="pc-title" style="margin:0">${T.approved} <span style="color:var(--muted);font-weight:400">(${phones.length})</span></div>\n    <div style="display:flex;gap:8px;flex-wrap:wrap">\n      <button class="btn btn-gold" style="width:auto;padding:9px 16px" onclick="openAddWorker()">+ ${PL().addWorker}</button>\n      <button class="btn-sm" style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.35);color:var(--green);padding:9px 16px;font-weight:800" onclick="openOnboardWorker()">+ ${PL().addUpcomingWorker}</button>\n    </div>\n  </div>\n  <div class="sc">\n    <div id="plist">${listHtml}</div>\n  </div>`;
 }
@@ -9957,7 +9958,9 @@ if ("serviceWorker" in navigator) {
 }
 
 // ── Workers: archive and notes ───────────────────────────────────
-window.archiveWorker = async username => {
+// fromList: archived from the employees list, so stay on it at the same spot
+// instead of jumping to the archive.
+window.archiveWorker = async (username, fromList) => {
   const N = NX();
   try {
     const u = (await dbListUsersCached()).find(x => x.username === username);
@@ -9977,7 +9980,11 @@ window.archiveWorker = async username => {
     _liveCache = null;
     toast(N.archivedDone, "warning");
     updateNotifyBadge();
-    mTab("archived");
+    if (fromList) {
+      const y = window.scrollY;
+      await mTab(S.mgrTab);
+      window.scrollTo(0, y);
+    } else mTab("archived");
   } catch (e) {
     toast("Error: " + e.message, "error");
   }
