@@ -109,12 +109,12 @@ async function writeShift(username, cols, params) {
   if (!keys.length) return [];
   await sql(`UPDATE wf_shifts SET ${keys.map((k, i) => `${k}=$${i + 3}`).join(',')} WHERE id=$1 AND worker=$2`, [id, username, ...vals]);
   if (!('end_time' in v || 'work_hours' in v)) return [];
-  // Paid hours can't be more than the time from paid start to end, and pay is
-  // those hours × the rate stored on the shift.
+  // Paid hours can't be more than the time from paid start to end, are
+  // rounded down to the half hour, and pay is those hours × the shift's rate.
   await sql(`UPDATE wf_shifts SET
       billing_start_time = GREATEST(COALESCE(billing_start_time, start_time), start_time),
       work_hours = CASE WHEN end_time IS NULL OR work_hours IS NULL THEN work_hours
-        ELSE ROUND(LEAST(work_hours::numeric, GREATEST(0, end_time - GREATEST(COALESCE(billing_start_time, start_time), start_time)) / 3600000.0), 6) END
+        ELSE FLOOR(LEAST(work_hours::numeric, GREATEST(0, end_time - GREATEST(COALESCE(billing_start_time, start_time), start_time)) / 3600000.0) * 2) / 2 END
     WHERE id=$1 AND worker=$2`, [id, username]);
   await sql('UPDATE wf_shifts SET earnings = CASE WHEN work_hours IS NULL THEN NULL ELSE ROUND(work_hours * COALESCE(hourly_rate,0), 4) END WHERE id=$1 AND worker=$2', [id, username]);
   return [];

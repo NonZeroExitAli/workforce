@@ -4220,7 +4220,7 @@ function startTimer() {
     const now = Date.now();
     const r = _liveShiftPay(S.shift, S.autoEndTime, now);
     const e = $("tbig");
-    if (e) e.textContent = fmtMs(r.netMs);
+    if (e) e.textContent = fmtMs(r.exactMs);
     const wt = $("wt");
     if (wt) wt.textContent = fmtDur(r.netMs);
     const cap = $("tcap");
@@ -4260,6 +4260,10 @@ function _paintEndLock(now) {
   }
 }
 
+// Pay goes up in whole half hours; the same step is used by the server
+// (api/auto-end.js, api/_worker.js) and the Excel register.
+const PAY_STEP_MS = 30 * 60000;
+
 function _finalizeShift(billingStartMs, rawEndMs, autoEndTimeStr, breakMinutes, hourlyRate, anchorDateMs) {
   let billingEndMs = rawEndMs;
   if (autoEndTimeStr) {
@@ -4284,11 +4288,14 @@ function _finalizeShift(billingStartMs, rawEndMs, autoEndTimeStr, breakMinutes, 
   // so working a little longer can never pay less.
   const MIN_PAID_WITH_BREAK_MS = 6 * 36e5;
   const breakMs = (parseFloat(breakMinutes) || 0) * 6e4;
-  const netMs = billedMs <= MIN_PAID_WITH_BREAK_MS ? billedMs : Math.max(MIN_PAID_WITH_BREAK_MS, billedMs - breakMs);
+  const exactMs = billedMs <= MIN_PAID_WITH_BREAK_MS ? billedMs : Math.max(MIN_PAID_WITH_BREAK_MS, billedMs - breakMs);
+  // Paid time is always rounded DOWN to the half hour (7h43 pays 7h30).
+  const netMs = Math.floor(exactMs / PAY_STEP_MS) * PAY_STEP_MS;
   const netWorkHours = netMs / 36e5;
   const earnings = netWorkHours * (parseFloat(hourlyRate) || 0);
   return {
     billingEndMs: billingEndMs,
+    exactMs: exactMs,
     netMs: netMs,
     netWorkHours: netWorkHours,
     earnings: earnings
@@ -4308,8 +4315,8 @@ function _timerCaption(s, autoEnd, now, r) {
   if (now < billingStart) return N.timerStartsAt(fmtTime(billingStart));
   if (r.billingEndMs < now) return N.timerEndedAt(fmtTime(r.billingEndMs));
   const billed = now - billingStart;
-  if (billed > 6 * 36e5 && r.netMs < billed && r.netMs === 6 * 36e5) return N.timerOnBreak;
-  return N.timerPaid;
+  if (billed > 6 * 36e5 && r.exactMs < billed && r.exactMs === 6 * 36e5) return N.timerOnBreak;
+  return N.timerPaidHalf(fmtDur(r.netMs));
 }
 
 async function reconcileStaleShifts() {
@@ -9572,6 +9579,7 @@ function NX() {
     pushTestKeys: ar ? "مفاتيح VAPID غير مضبوطة في Vercel." : "Chiavi VAPID non configurate su Vercel.",
     pushTestFailed: c => ar ? `فشل الإرسال (${c}).` : `Invio non riuscito (${c}).`,
     timerPaid: ar ? "الساعات المدفوعة حتى الآن" : "Ore pagate finora",
+    timerPaidHalf: d => ar ? `المدفوع حتى الآن: ${d} (تُحسب كل نصف ساعة كاملة)` : `Pagate finora: ${d} (si conta ogni mezz'ora intera)`,
     timerOnBreak: ar ? "يتم خصم الاستراحة" : "Pausa in corso di detrazione",
     timerStartsAt: t => ar ? `يبدأ الحساب في ${t}` : `Il conteggio inizia alle ${t}`,
     timerEndedAt: t => ar ? `الساعات مدفوعة حتى ${t}` : `Ore pagate fino alle ${t}`,
@@ -10284,8 +10292,8 @@ function _regAddDataSheet(wb, name, rows, fmts) {
   return ws;
 }
 
-// Register cells show hours to the nearest half hour, like the paper register.
-const _halfHour = h => Math.round(h * 2) / 2;
+// Register cells show hours rounded down to the half hour, like pay.
+const _halfHour = h => Math.floor(h * 2 + 1e-9) / 2;
 
 window.doExport = async () => {
   const N = NX();

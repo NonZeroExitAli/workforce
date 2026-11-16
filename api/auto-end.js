@@ -3,6 +3,9 @@ import { sql } from './_lib.js';
 const CRON_SECRET = process.env.CRON_SECRET || null;
 const TIMEZONE    = process.env.TIMEZONE || 'Europe/Rome';
 
+// Paid hours always round DOWN to the half hour, as in index.html.
+export const payHours = ms => Math.floor(ms / 1800000) / 2;
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -93,7 +96,7 @@ export default async function handler(req, res) {
       const billedMs       = Math.max(0, endMs - billingStartMs);
       const breakMs        = (parseFloat(shift.break_minutes) || 0) * 60000;
       const minPaidMs      = 6 * 3600000;
-      const workHours      = (billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs)) / 3600000;
+      const workHours      = payHours(billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs));
       const earnings       = workHours * (parseFloat(shift.hourly_rate) || 0);
 
       await sql(
@@ -165,7 +168,7 @@ export async function closeStaleShifts(today) {
     const billedMs = Math.max(0, endMs - (Number(s.billing_start_time) || Number(s.start_time)));
     const breakMs = (parseFloat(s.break_minutes) || 0) * 60000;
     const minPaidMs = 6 * 3600000;
-    const workHours = (billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs)) / 3600000;
+    const workHours = payHours(billedMs <= minPaidMs ? billedMs : Math.max(minPaidMs, billedMs - breakMs));
     await sql(
       `UPDATE wf_shifts SET status='completed', end_time=$2, work_hours=$3, earnings=$4 WHERE id=$1 AND status='working'`,
       [s.id, endMs, workHours, workHours * (parseFloat(s.hourly_rate) || 0)]
