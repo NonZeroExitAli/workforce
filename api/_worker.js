@@ -62,6 +62,7 @@ async function writeUser(username, cols, params) {
 }
 
 const SHIFT_STATUS = new Set(['working', 'completed', 'needs_review']);
+const MIN_SHIFT_MS = 10 * 60000;
 
 async function writeShift(username, cols, params) {
   const id = params[0];
@@ -88,7 +89,7 @@ async function writeShift(username, cols, params) {
   const keys = Object.keys(v);
   const vals = keys.map(k => v[k]);
 
-  const [row] = await sql('SELECT worker,status FROM wf_shifts WHERE id=$1 LIMIT 1', [id]);
+  const [row] = await sql('SELECT worker,status,start_time FROM wf_shifts WHERE id=$1 LIMIT 1', [id]);
   if (!row) {
     // A new shift always starts as a running one.
     if (v.status !== 'working' || !v.start_time || v.end_time != null) throw new Refused('A new shift must be a running one');
@@ -100,6 +101,11 @@ async function writeShift(username, cols, params) {
   }
   // Only their own shift, and only while it is still running.
   if (row.worker !== username || row.status !== 'working') throw new Refused('Not your running shift');
+  // A worker can't end their own shift in its first 10 minutes (a manager can).
+  if ((v.status && v.status !== 'working') || v.end_time != null) {
+    const end = v.end_time != null ? v.end_time : now;
+    if (end - Number(row.start_time) < MIN_SHIFT_MS) throw new Refused('Shift can be ended after 10 minutes');
+  }
   if (!keys.length) return [];
   await sql(`UPDATE wf_shifts SET ${keys.map((k, i) => `${k}=$${i + 3}`).join(',')} WHERE id=$1 AND worker=$2`, [id, username, ...vals]);
   if (!('end_time' in v || 'work_hours' in v)) return [];
