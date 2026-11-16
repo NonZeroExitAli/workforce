@@ -32,7 +32,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: 'Session expired or invalid, please sign in again.' });
   }
   // Counted per person, not per IP: phones on one site's Wi-Fi share an IP.
-  if (!rateLimit(`sql:${session.username}`, 240, 60 * 1000)) {
+  // Managers get more: the schema update after a deploy alone sends ~100.
+  if (!rateLimit(`sql:${session.username}`, session.role === 'manager' ? 1200 : 240, 60 * 1000)) {
     return res.status(429).json({ ok: false, error: 'Too many requests, please slow down.' });
   }
 

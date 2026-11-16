@@ -1442,7 +1442,7 @@ body:has(.app-shell) #appCredit{ display:none; }
 <script>
 const GPS_RADIUS = 500;
 
-const SCHEMA_VERSION = "24";
+const SCHEMA_VERSION = "25";
 
 const APP_VERSION = "2.3";
 
@@ -2304,7 +2304,7 @@ async function initDB() {
     _onboardingColsEnsured = true;
     _reviewColEnsured = true;
   }
-  const wasPrevious = localStorage.getItem("wf_schema") === "23";
+  const wasPrevious = [ "23", "24" ].includes(localStorage.getItem("wf_schema"));
   if (!alreadyInit) {
     let migrationFailures = 0;
     if (!wasPrevious) {
@@ -2329,6 +2329,16 @@ async function initDB() {
       ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS assign_mode TEXT DEFAULT 'manual';
       ALTER TABLE wf_config ADD COLUMN IF NOT EXISTS schema_version TEXT;
       INSERT INTO wf_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING
+    `);
+    // v25: pay rounds down to the half hour. November 2026 shifts recorded
+    // before that change are rounded the same way (asked for by the owner).
+    // Running it again changes nothing.
+    migrationFailures += await _runMigrationBatch(`
+      UPDATE wf_shifts SET
+        earnings = FLOOR(work_hours::numeric * 2 + 0.000001) / 2 * COALESCE(NULLIF(hourly_rate, 0), earnings / NULLIF(work_hours, 0), 0),
+        work_hours = FLOOR(work_hours::numeric * 2 + 0.000001) / 2
+      WHERE date >= '2026-11-01' AND date <= '2026-11-30' AND status <> 'working'
+        AND work_hours IS NOT NULL AND work_hours::numeric <> FLOOR(work_hours::numeric * 2 + 0.000001) / 2
     `);
     if (migrationFailures === 0) {
       await dbSetConfig({
