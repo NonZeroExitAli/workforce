@@ -4214,7 +4214,7 @@ async function renderWorkerScreen() {
     if (siteBreak > 0) banners += `<div style="background:rgba(180,100,0,.06);border:1px solid rgba(180,100,0,.2);border-radius:4px;padding:8px 12px;font-family:var(--font);font-size:11px;color:#c07800;margin-bottom:8px">\n           ${T.breakLbl || "Break"}: ${siteBreak} ${lang === "ar" ? "دقيقة" : "min"} — ${T.breakHint || "deducted from billed hours"}\n        </div>`;
     if (!banners) banners = `<div class="banner-spacer" style="margin-bottom:14px"></div>`;
     return banners;
-  })()}\n      <div class="act-grid">\n        <button class="act-btn start" id="bst"\n          style="${startDisabled ? "opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed" : ""}"\n          onclick="wAct('start')">${T.startWork}</button>\n        <button class="act-btn end${active ? " pulse" : ""}" id="ben"\n          style="${active ? "" : "opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed"}"\n          onclick="wAct('end')">${T.endWork}</button>\n      </div>\n      <div id="ben-lock" style="display:none;text-align:center;margin-top:10px;font-family:var(--font);font-size:12px;font-weight:700;color:var(--muted)"></div>\n    </div>\n  </div>\n  <div class="wk-drawer">\n    <div class="wk-drawer-head">\n      <div class="wk-drawer-title">${T.shiftHist}<small>${disp(u.label || u.username)}</small></div>\n      <button class="wk-drawer-close" onclick="toggleWorkerDrawer(false)" aria-label="Close">✕</button>\n    </div>\n    <div class="wk-drawer-body">\n      <div class="wk-drawer-stats">\n        <div class="wk-drawer-stat"><div class="n">${myMonthShifts.length}</div><div class="l">${T.shiftsC} (${T.month})</div></div>\n        <div class="wk-drawer-stat"><div class="n">${fmtDur(myMonthShifts.reduce((a, sh) => a + (parseFloat(sh.work_hours) || 0), 0) * 36e5)}</div><div class="l">${T.worked} (${T.month})</div></div>\n      </div>\n      ${!myMonthShifts.length ? `<div class="empty">${T.noShifts}</div>` : myMonthShifts.map(sh => `\n          <div class="wk-shift-row">\n            <div class="wk-shift-left">\n              <div class="wk-shift-date">${sh.date}</div>\n              <div class="wk-shift-site">${disp(sh.location_name || "—")}</div>\n              <div class="wk-shift-times">${fmtTime(sh.start_time)} → ${fmtTime(sh.end_time)}</div>\n            </div>\n            <div class="wk-shift-right">\n              <div class="wk-shift-dur">${fmtDur((parseFloat(sh.work_hours) || 0) * 36e5)}</div>\n              ${statusBadge(sh.status)}\n            </div>\n          </div>`).join("")}\n    </div>\n    <div class="wk-drawer-foot">\n      ${wkPushSupported && wkPushSub ? `<button class="btn btn-dark" onclick="disablePushNotificationsWorker()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : ""}\n      ${langBar(true)}\n      <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n    </div>\n  </div>`;
+  })()}\n      <div class="act-grid">\n        <button class="act-btn start" id="bst"\n          style="${startDisabled ? "opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed" : ""}"\n          onclick="wAct('start')">${T.startWork}</button>\n        <button class="act-btn end${active ? " pulse" : ""}" id="ben"\n          style="${active ? "" : "opacity:.3;filter:grayscale(.7);box-shadow:none;cursor:not-allowed"}"\n          onclick="wAct('end')">${T.endWork}</button>\n      </div>\n    </div>\n  </div>\n  <div class="wk-drawer">\n    <div class="wk-drawer-head">\n      <div class="wk-drawer-title">${T.shiftHist}<small>${disp(u.label || u.username)}</small></div>\n      <button class="wk-drawer-close" onclick="toggleWorkerDrawer(false)" aria-label="Close">✕</button>\n    </div>\n    <div class="wk-drawer-body">\n      <div class="wk-drawer-stats">\n        <div class="wk-drawer-stat"><div class="n">${myMonthShifts.length}</div><div class="l">${T.shiftsC} (${T.month})</div></div>\n        <div class="wk-drawer-stat"><div class="n">${fmtDur(myMonthShifts.reduce((a, sh) => a + (parseFloat(sh.work_hours) || 0), 0) * 36e5)}</div><div class="l">${T.worked} (${T.month})</div></div>\n      </div>\n      ${!myMonthShifts.length ? `<div class="empty">${T.noShifts}</div>` : myMonthShifts.map(sh => `\n          <div class="wk-shift-row">\n            <div class="wk-shift-left">\n              <div class="wk-shift-date">${sh.date}</div>\n              <div class="wk-shift-site">${disp(sh.location_name || "—")}</div>\n              <div class="wk-shift-times">${fmtTime(sh.start_time)} → ${fmtTime(sh.end_time)}</div>\n            </div>\n            <div class="wk-shift-right">\n              <div class="wk-shift-dur">${fmtDur((parseFloat(sh.work_hours) || 0) * 36e5)}</div>\n              ${statusBadge(sh.status)}\n            </div>\n          </div>`).join("")}\n    </div>\n    <div class="wk-drawer-foot">\n      ${wkPushSupported && wkPushSub ? `<button class="btn btn-dark" onclick="disablePushNotificationsWorker()">${lang === "ar" ? "إيقاف الإشعارات" : lang === "it" ? "Disattiva notifiche" : "Disable Notifications"}</button>` : ""}\n      ${langBar(true)}\n      <button class="side-logout" onclick="doLogout()">${T.logout}</button>\n    </div>\n  </div>`;
   startTimer();
   _updateOfflineBanner();
   _refreshWorkerPhoto();
@@ -4254,9 +4254,10 @@ function _endLockedUntil(shift, now = Date.now()) {
   return now < start + MIN_SHIFT_MS ? start + MIN_SHIFT_MS : 0;
 }
 
-// Locked look and the "Puoi terminare dopo le…" line, refreshed every second.
+// Locked look of the End button, refreshed every second. Only a tap on it
+// says when it unlocks.
 function _paintEndLock(now) {
-  const btn = $("ben"), note = $("ben-lock");
+  const btn = $("ben");
   if (!btn || !S.shift || S.shift.status !== "working") return;
   const until = _endLockedUntil(S.shift, now);
   btn.style.opacity = until ? ".35" : "";
@@ -4264,10 +4265,6 @@ function _paintEndLock(now) {
   btn.style.cursor = until ? "not-allowed" : "";
   btn.classList.toggle("pulse", !until);
   btn.setAttribute("aria-disabled", until ? "true" : "false");
-  if (note) {
-    note.textContent = until ? NX().endLocked(_regHm(until)) : "";
-    note.style.display = until ? "" : "none";
-  }
 }
 
 // Pay goes up in whole half hours; the same step is used by the server
@@ -4326,7 +4323,7 @@ function _timerCaption(s, autoEnd, now, r) {
   if (r.billingEndMs < now) return N.timerEndedAt(fmtTime(r.billingEndMs));
   const billed = now - billingStart;
   if (billed > 6 * 36e5 && r.exactMs < billed && r.exactMs === 6 * 36e5) return N.timerOnBreak;
-  return N.timerPaidHalf(fmtDur(r.netMs));
+  return N.timerPaid;
 }
 
 async function reconcileStaleShifts() {
@@ -9590,7 +9587,6 @@ function NX() {
     pushTestKeys: ar ? "مفاتيح VAPID غير مضبوطة في Vercel." : "Chiavi VAPID non configurate su Vercel.",
     pushTestFailed: c => ar ? `فشل الإرسال (${c}).` : `Invio non riuscito (${c}).`,
     timerPaid: ar ? "الساعات المدفوعة حتى الآن" : "Ore pagate finora",
-    timerPaidHalf: d => ar ? `المدفوع حتى الآن: ${d} (تُحسب كل نصف ساعة كاملة)` : `Pagate finora: ${d} (si conta ogni mezz'ora intera)`,
     timerOnBreak: ar ? "يتم خصم الاستراحة" : "Pausa in corso di detrazione",
     timerStartsAt: t => ar ? `يبدأ الحساب في ${t}` : `Il conteggio inizia alle ${t}`,
     timerEndedAt: t => ar ? `الساعات مدفوعة حتى ${t}` : `Ore pagate fino alle ${t}`,
